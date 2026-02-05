@@ -1,0 +1,226 @@
+import { Router } from "express";
+import type { Request, Response } from "express";
+import { supabaseAdmin } from "../lib/supabase.js";
+import { requireAuth } from "../middleware/auth.middleware.js";
+
+const router = Router();
+
+/**
+ * POST /api/auth/login
+ * Authenticate user with email and password
+ */
+router.post("/login", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      res.status(400).json({ error: "Email and password are required" });
+      return;
+    }
+
+    const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      res.status(401).json({ error: error.message });
+      return;
+    }
+
+    // Log the login event
+    try {
+      await supabaseAdmin.rpc("log_auth_event", {
+        p_event_type: "LOGIN",
+        p_user_id: data.user.id,
+      });
+    } catch (rpcError) {
+      console.error("RPC log_auth_event error:", rpcError);
+    }
+
+    // Use the security definer function to get user data (bypasses RLS)
+    const { data: userData, error: userDataError } = await supabaseAdmin.rpc("get_user_full_data", {
+      p_user_id: data.user.id,
+    });
+
+    console.log("User data from RPC:", userData);
+    if (userDataError) {
+      console.error("User data RPC error:", userDataError);
+    }
+
+    // Extract data from the RPC result (cast to any since the function returns JSON)
+    const userDataObj = userData as { profile: any; roles: string[]; branches: any[] } | null;
+    const profile = userDataObj?.profile || null;
+    const userRoles = userDataObj?.roles || [];
+    const branchAssignments = userDataObj?.branches || [];
+
+    res.json({
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+        profile,
+        roles: userRoles || [],
+        branches: branchAssignments || [],
+      },
+      session: {
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_at: data.session.expires_at,
+      },
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    res.status(500).json({ error: "Login failed" });
+  }
+});
+
+/**
+ * POST /api/auth/logout
+ * Sign out the current user
+ */
+router.post("/logout", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Log the logout event before invalidating the session
+    await supabaseAdmin.rpc("log_auth_event", {
+      p_event_type: "LOGOUT",
+      p_user_id: req.user!.id,
+    });
+
+    // Sign out the user
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.split(" ")[1];
+
+    if (token) {
+      await supabaseAdmin.auth.admin.signOut(token);
+    }
+
+    res.json({ message: "Logged out successfully" });
+  } catch (error) {
+    console.error("Logout error:", error);
+    res.status(500).json({ error: "Logout failed" });
+  }
+});
+
+/**
+ * POST /api/auth/refresh
+ * Refresh the access token using refresh token
+ */
+router.post("/refresh", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { refresh_token } = req.body;
+
+    if (!refresh_token) {
+      res.status(400).json({ error: "Refresh token is required" });
+      return;
+    }
+
+    const { data, error } = await supabaseAdmin.auth.refreshSession({
+      refresh_token,
+    });
+
+    if (error || !data.session) {
+      res.status(401).json({ error: "Invalid refresh token" });
+      return;
+    }
+
+    res.json({
+      session: {
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_at: data.session.expires_at,
+      },
+    });
+  } catch (error) {
+    console.error("Token refresh error:", error);
+    res.status(500).json({ error: "Token refresh failed" });
+  }
+});
+
+/**
+ * GET /api/auth/me
+ * Get current authenticated user's information
+ */
+router.get("/me", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Use the security definer function to get user data (bypasses RLS)
+    const { data: userData, error: userDataError } = await supabaseAdmin.rpc("get_user_full_data", {
+      p_user_id: req.user!.id,
+    });
+
+    if (userDataError) {
+      console.error("User data RPC error:", userDataError);
+    }
+
+    // Extract data from the RPC result (cast to any since the function returns JSON)
+    const userDataObj = userData as { profile: any; roles: string[]; branches: any[] } | null;
+    const profile = userDataObj?.profile || null;
+    const userRoles = userDataObj?.roles || [];
+    const branchAssignments = userDataObj?.branches || [];
+
+    res.json({
+      id: req.user!.id,
+      email: req.user!.email,
+      profile,
+      roles: userRoles,
+      branches: branchAssignments,
+    });
+  } catch (error) {
+    console.error("Get user error:", error);
+    res.status(500).json({ error: "Failed to get user information" });
+  }
+});
+
+/**
+ * POST /api/auth/change-password
+ * Change the current user's password
+ */
+router.post("/change-password", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      res.status(400).json({ error: "Current password and new password are required" });
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      res.status(400).json({ error: "New password must be at least 8 characters" });
+      return;
+    }
+
+    // Verify current password by attempting to sign in
+    const { error: verifyError } = await supabaseAdmin.auth.signInWithPassword({
+      email: req.user!.email,
+      password: currentPassword,
+    });
+
+    if (verifyError) {
+      res.status(401).json({ error: "Current password is incorrect" });
+      return;
+    }
+
+    // Update password
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+      req.user!.id,
+      { password: newPassword }
+    );
+
+    if (updateError) {
+      res.status(500).json({ error: "Failed to update password" });
+      return;
+    }
+
+    // Log the password change event
+    await supabaseAdmin.rpc("log_auth_event", {
+      p_event_type: "PASSWORD_CHANGE",
+      p_user_id: req.user!.id,
+    });
+
+    res.json({ message: "Password changed successfully" });
+  } catch (error) {
+    console.error("Change password error:", error);
+    res.status(500).json({ error: "Failed to change password" });
+  }
+});
+
+export default router;

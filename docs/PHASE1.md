@@ -1,201 +1,280 @@
-# Petrozone Pulse – Project Setup & Phase 1 Development Guide
+# Phase 1 – Foundation Development Guide (Copilot Context)
 
-This document defines the **approved folder structure**, **project setup steps**, and a **Phase 1 (Sprint 1) development guide** intended to be used directly as context for GitHub Copilot.
+## Project Name
+**Petrozone Pulse**  
+Multi-Branch Auto-Repair Order Management System
 
-This is a **FOUNDATION document**. Do not skip steps.
+This document defines **Phase 1 (Sprint 1)** implementation rules, scope, and development order.  
+It is intended to be used as **primary context for GitHub Copilot** during development.
 
 ---
 
-## 1. Approved Folder Structure (Sprint 1)
+## Phase 1 Objective
 
-This project intentionally uses a **simple backend / frontend split** to reduce friction and speed up development.
+Establish a **secure, role-based, branch-aware system foundation** that all future features can safely build upon.
 
+Phase 1 focuses on **architecture, security, and correctness**, not business workflows or UI polish.
+
+---
+
+## Repository Structure (Authoritative)
+
+Copilot must assume and respect the following structure:
+
+```txt
 petrozone-pulse/
-├─ frontend/                    # React application (JavaScript)
+├─ backend/
 │  ├─ src/
-│  │  ├─ auth/                  # Auth context, guards
-│  │  ├─ routes/                # Protected & public routes
-│  │  ├─ components/            # Shared UI components
-│  │  ├─ validations/           # Form validation rules
-│  │  ├─ lib/                   # Supabase client, helpers
-│  │  └─ pages/                 # Page-level components
-│  ├─ public/
+│  │  ├─ auth/
+│  │  ├─ rbac/
+│  │  ├─ branches/
+│  │  ├─ audit/
+│  │  ├─ middleware/
+│  │  └─ routes/
 │  └─ package.json
 │
-├─ backend/                     # Node.js API
+├─ frontend/
 │  ├─ src/
-│  │  ├─ auth/                  # Auth middleware, helpers
-│  │  ├─ rbac/                  # Role & permission logic
-│  │  ├─ branches/              # Branch domain logic
-│  │  ├─ audit/                 # Audit logging
-│  │  ├─ middleware/            # Request middleware
-│  │  └─ routes/                # API routes
-│  ├─ tests/                    # Core module tests
+│  │  ├─ auth/
+│  │  ├─ routes/
+│  │  ├─ pages/
+│  │  ├─ components/
+│  │  ├─ validations/
+│  │  └─ lib/
 │  └─ package.json
-│
-├─ supabase/                    # Supabase-related assets
-│  ├─ migrations/               # SQL migrations
-│  ├─ rls/                      # RLS policies
-│  └─ seed.sql                  # Initial seed data
 │
 ├─ docs/
-│  ├─ requirements/             # Provided requirement files
-│  └─ checklist/                # Testing checklists
+│  ├─ requirements/
+│  └─ checklist/
 │
-├─ .env.example
 └─ README.md
+Reference Requirements (Mandatory)
+Copilot must treat all files under /docs/requirements/ as the source of truth:
 
-Folder Structure Rules
-Do not collapse frontend and backend into one app
-Do not over-engineer monorepos in Sprint 1
-Keep domains separated (auth, rbac, audit)
-Copilot must respect this structure when generating files
+Functional and Non-Functional Requirements
 
-2. Project Setup Guide (Step-by-Step)
-2.1 Repository Initialization
-Create a new Git repository
+Use Case Diagram
 
-Initialize folders:
-frontend/
-backend/
-supabase/
-docs/requirements/
-docs/checklist/
-Commit the empty structure
+BPMN Analysis
 
-2.2 Frontend Setup
-Create React app using Vite
-Use TypeScript
+User Stories
 
-Install dependencies:
-react-router-dom
-@supabase/supabase-js
-form validation library (e.g. zod or yup)
+SYSTEM_CONCEPT.md
 
-Create Supabase client inside:
-frontend/src/lib/supabase.js
+No requirements may be invented or assumed.
 
-2.3 Backend Setup
-Initialize Node.js project
-Use Express or Fastify
+If behavior is unclear, implement the minimum safe and configurable solution.
 
-Install dependencies:
-cors
-dotenv
-@supabase/supabase-js
+Technology Stack (Locked for Phase 1)
+Frontend: React + TypeScript
 
-Create entry point:
-backend/src/index.js
-Add basic health check route (/health)
+Backend: Node.js + TypeScript (Express or Fastify)
 
-2.4 Supabase Setup
-Create Supabase project
-Enable Email/Password auth
-Configure environment variables:
-SUPABASE_URL
-SUPABASE_ANON_KEY
-SUPABASE_SERVICE_ROLE_KEY
+Database & Auth: Supabase (PostgreSQL)
 
-Create base SQL migrations:
-branches
-roles
-users ↔ branches mapping
-audit_logs
-Implement Row Level Security (RLS)
+Architecture: PERN
 
-2.5 Environment Configuration
-Create .env.example
-Mirror env vars for frontend and backend
-Never commit real secrets
+Security: Supabase Auth + Row Level Security (RLS)
 
-3. Phase 1 Development Guide (Sprint 1)
-Phase 1 Goal
-Establish a secure, branch-aware, role-based system backbone with auditability.
-No business workflows are finalized in this phase.
-
-4. Phase 1 Development Order (IMPORTANT)
-Copilot should follow this order strictly.
-
-Step 1: Authentication
+Phase 1 Scope (Allowed Work)
+1. Authentication
 Integrate Supabase Auth
+
 Enforce login for all protected routes
-Ensure sessions persist correctly
-Restrict user creation to Admin/System roles
 
-Step 2: Role-Based Access Control (RBAC)
+Session-based access only
+
+User creation restricted to Admin/System roles
+
+2. Role-Based Access Control (RBAC)
 Define role templates:
-Admin
-HM
-POC
-JS
-R
-T
+HM (Higher Management)
 
-Implement role-to-user mapping
-Enforce access rules using:
-Supabase RLS (primary)
+POC (POC Supervisor)
+
+JS (Junior Supervisor)
+
+R (Receptionists)
+
+T (Technician)
+
+Users may have:
+
+Multiple roles
+
+Multiple branch assignments
+
+RBAC must be enforced using:
+
+Database-level RLS (primary)
+
 Backend middleware (secondary)
-No role checks hardcoded in UI
 
-Step 3: Branch Management
-Create branch entity
-Allow create / update / view branches
+Role checks must NOT be hardcoded in frontend UI
 
-Link branches to:
+3. Branch Management
+Branch is a first-class entity
+
+Create, update, and view branch profiles
+
+Branches must be linkable to:
+
 Users
-Customers
-Vehicles
-Enforce branch isolation at DB level
 
-Step 4: Mandatory Field Enforcement
-Identify critical fields (IDs, names, references)
+Customers
+
+Vehicles
+
+Branch isolation must be enforced at the database level
+
+4. Mandatory Field Enforcement
+Identify critical fields for all Phase 1 entities
 
 Enforce validation:
-Frontend (form blocking)
-Backend (request validation)
-Reject incomplete or invalid submissions
 
-Step 5: Audit Logging
-Create append-only audit_logs table
+Frontend (form-level blocking)
 
-Log:
-Authentication events
+Backend (request-level validation)
+
+Incomplete or invalid data must never be persisted
+
+5. Audit Logging
+Implement system-wide audit logging
+
+Audit logs must record:
+
+Login and logout events
+
 Create / Update / Delete actions
+
 Role and branch assignments
-Ensure audit logs cannot be modified or deleted
 
-Step 6: Core Architecture Testing
-Verify login enforcement
-Verify role restrictions
-Verify branch isolation
-Verify audit log entries
-Add minimal tests or manual verification scripts
+Audit logs must be:
 
-5. Phase 1 Rules for Copilot (Non-Negotiable)
-Do NOT implement job workflows
-Do NOT implement pricing logic
-Do NOT implement inventory movement
-Do NOT implement dashboards with real data
-Do NOT implement reports or analytics
-Do NOT optimize prematurely
+Append-only
 
-If a feature is unclear:
-Implement the minimum safe version
-Leave a TODO
-Document the assumption
+Immutable
 
-6. Phase 1 Definition of Done
-Phase 1 is complete when:
-Users must log in to access the system
-RBAC works correctly
-Branch data is isolated correctly
-Mandatory fields are enforced
-Audit logs are recorded consistently
-Manual testing checklist can be completed successfully
+Accessible only to authorized roles
 
-This document is intended to be used as:
-A Copilot context file
-A developer execution guide
-A Sprint 1 boundary contract
+6. Core Architecture Verification
+Verify correctness of:
 
-Do not proceed to Sprint 2 until Phase 1 is verified.
+Login enforcement
+
+RBAC behavior
+
+Branch isolation
+
+Audit log recording
+
+Unit tests or manual verification are acceptable
+
+Focus on correctness over coverage
+
+Explicitly Out of Scope (Do NOT Implement)
+Job orders or job workflows
+
+Pricing matrices
+
+Inventory management
+
+Dashboards with real data
+
+Reporting or analytics
+
+Notifications or reminders
+
+Performance optimization
+
+UI polish or final design
+
+If any of these appear during implementation, stop immediately.
+
+Development Order (Strict)
+Copilot must follow this order:
+
+Authentication setup
+
+RBAC models and enforcement
+
+Branch schema and APIs
+
+Mandatory field validation
+
+Audit logging
+
+Core verification and testing
+
+Skipping or reordering steps is not allowed.
+
+Architectural Rules (Non-Negotiable)
+All security must be enforced server-side or at the database level
+
+Supabase Row Level Security is mandatory for data protection
+
+No business rules in frontend components
+
+No hardcoded role checks
+
+Audit logs must never be modified or deleted
+
+Favor extensibility over completeness
+
+Prefer configuration over conditional logic
+
+Coding Standards
+Write clean, readable, production-quality TypeScript
+
+Use comments to explain intent, not obvious syntax
+
+Keep modules small and focused
+
+Avoid premature optimization
+
+If uncertain, implement the minimum safe version and document assumptions
+
+Documentation & Testing Requirement
+As part of Phase 1, a manual testing checklist must be created at:
+
+/docs/checklist/phase-1-checklist.md
+The checklist must:
+
+Use Markdown checkbox format (- [ ])
+
+Be step-by-step and verifiable
+
+Cover:
+
+Environment setup
+
+Authentication
+
+RBAC
+
+Branch assignment
+
+Mandatory field validation
+
+Audit log verification
+
+Access restriction (negative tests)
+
+Phase 1 Definition of Done
+Phase 1 is complete only when:
+
+All users must authenticate to access the system
+
+RBAC correctly restricts access by role and branch
+
+Branch data is fully isolated
+
+Mandatory fields are enforced consistently
+
+Audit logs record all key actions
+
+Phase 1 checklist can be completed successfully
+
+This document is a contract for Phase 1.
+
+No Phase 2 development may begin until Phase 1 is verified and complete.

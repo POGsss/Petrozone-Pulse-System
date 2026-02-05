@@ -1,68 +1,79 @@
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+@import "tailwindcss";
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+/* Custom theme colors */
+@theme {
+  /* Primary color - #5570F1 */
+  --color-primary-50: #f3f5fb;
+  --color-primary-100: #dfe3fd;
+  --color-primary-200: #c5cbfb;
+  --color-primary-300: #9ca8f7;
+  --color-primary-400: #7082f4;
+  --color-primary-500: #5570f1;
+  --color-primary-600: #4558e6;
+  --color-primary-700: #3a47d3;
+  --color-primary-800: #313cab;
+  --color-primary-900: #2c3787;
+  --color-primary-950: #1a2050;
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
+  /* Secondary color - #FFCC91 */
+  --color-secondary-50: #fff9ed;
+  --color-secondary-100: #fff1d4;
+  --color-secondary-200: #ffe0a8;
+  --color-secondary-300: #ffcc91;
+  --color-secondary-400: #ffab4a;
+  --color-secondary-500: #fe8f1f;
+  --color-secondary-600: #ef7310;
+  --color-secondary-700: #c55610;
+  --color-secondary-800: #9d4416;
+  --color-secondary-900: #7e3914;
+  --color-secondary-950: #441b06;
+
+  /* Neutral (Black base - #1C1D22) */
+  --color-neutral-50: #f6f6f7;
+  --color-neutral-100: #e3e3e5;
+  --color-neutral-200: #c7c7cb;
+  --color-neutral-300: #a4a4ab;
+  --color-neutral-400: #818189;
+  --color-neutral-500: #66666f;
+  --color-neutral-600: #52525a;
+  --color-neutral-700: #43434a;
+  --color-neutral-800: #37373d;
+  --color-neutral-900: #2b2b30;
+  --color-neutral-950: #1c1d22;
+
+  /* Positive - #519C66 */
+  --color-positive-50: #f0faf2;
+  --color-positive-100: #daf4e0;
+  --color-positive-200: #b8e7c4;
+  --color-positive-300: #87d59e;
+  --color-positive-400: #519c66;
+  --color-positive-500: #3b8f53;
+  --color-positive-600: #2d7241;
+  --color-positive-700: #265b36;
+  --color-positive-800: #22492e;
+  --color-positive-900: #1d3c27;
+  --color-positive-950: #0e2115;
+
+  /* Negative - #CC5F5F */
+  --color-negative-50: #fef3f2;
+  --color-negative-100: #fde5e3;
+  --color-negative-200: #fccfcb;
+  --color-negative-300: #f8aca6;
+  --color-negative-400: #f17c73;
+  --color-negative-500: #cc5f5f;
+  --color-negative-600: #b44848;
+  --color-negative-700: #973a3a;
+  --color-negative-800: #7e3434;
+  --color-negative-900: #6a3131;
+  --color-negative-950: #391515;
+}
+
+/* Custom styles */
+html {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-}
-
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+.color {
+  color: #f3f5fb;
 }
