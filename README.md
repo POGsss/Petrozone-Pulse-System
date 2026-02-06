@@ -8,14 +8,11 @@ A multi-branch Auto-Repair Order Management System designed to streamline operat
 
 - [Overview](#overview)
 - [Features](#features)
-- [System Architecture](#system-architecture)
 - [Technology Stack](#technology-stack)
 - [User Roles](#user-roles)
 - [Getting Started](#getting-started)
 - [Project Structure](#project-structure)
 - [API Documentation](#api-documentation)
-- [Development Phases](#development-phases)
-- [Contributing](#contributing)
 
 ---
 
@@ -77,37 +74,6 @@ The system is designed to support various roles including Higher Management, POC
 - Notifications & Reminders
 - Reporting & Analytics
 - Performance Dashboards
-
----
-
-## System Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Presentation Layer                          │
-│                   React + TypeScript + Vite                     │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     Application Layer                           │
-│                 Node.js + Express + TypeScript                  │
-│  ┌──────────────┬──────────────┬──────────────┬───────────────┐│
-│  │ Auth Service │ RBAC Service │ Branch APIs  │ Audit Service ││
-│  └──────────────┴──────────────┴──────────────┴───────────────┘│
-└───────────────────────────┬─────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                       Data Layer                                │
-│                 Supabase (PostgreSQL)                           │
-│  ┌──────────────┬──────────────┬──────────────┬───────────────┐│
-│  │ Auth Tables  │ User Profiles │   Branches   │  Audit Logs  ││
-│  │              │  User Roles   │  Assignments │              ││
-│  └──────────────┴──────────────┴──────────────┴───────────────┘│
-│              + Row Level Security (RLS) Policies                │
-└─────────────────────────────────────────────────────────────────┘
-```
 
 ---
 
@@ -330,39 +296,6 @@ Petrozone-Pulse-System/
 
 ---
 
-## Development Phases
-
-### Phase 1: Foundation (Complete ✓)
-- [x] Authentication setup with Supabase
-- [x] RBAC models and enforcement
-- [ ] Branch schema and APIs
-- [x] Mandatory field validation
-- [ ] Audit logging implementation
-- [ ] User Management UI
-- [ ] Branch Management UI
-
-### Phase 2: Core Flows (Upcoming)
-- [ ] Customer & Vehicle Management
-- [ ] Pricing Matrix Engine
-- [ ] Quotation → Job Order Workflow
-
-### Phase 3: Inventory & Automation
-- [ ] Inventory Tracking
-- [ ] Purchase Order Workflows
-- [ ] Notification Engine
-
-### Phase 4: Dashboards & Reporting
-- [ ] Analytics Aggregation
-- [ ] Dashboard Widgets
-- [ ] Report Builder
-
-### Phase 5: Hardening
-- [ ] Performance Tuning
-- [ ] Validation & Edge Cases
-- [ ] Role-Based UI Refinement
-
----
-
 ## Security Features
 
 - **Authentication**: Supabase Auth with JWT tokens
@@ -373,23 +306,3 @@ Petrozone-Pulse-System/
 - **Session Management**: Secure token handling with refresh capability
 
 ---
-
-## Contributing
-
-1. Follow the coding standards defined in `docs/PHASE1.md`
-2. Ensure all changes pass TypeScript compilation
-3. Write clean, readable code with proper comments
-4. Test changes against the phase checklist
-5. Keep modules small and focused
-
----
-
-## License
-
-Proprietary - Petrozone Philippines
-
----
-
-## Support
-
-For technical support or questions, contact the development team or refer to the documentation in the `/docs` folder.
