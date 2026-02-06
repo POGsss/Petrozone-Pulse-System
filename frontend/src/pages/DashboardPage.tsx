@@ -3,6 +3,10 @@ import { useAuth } from "../auth";
 import { DashboardLayout, NavIcons } from "../components";
 import type { NavItem } from "../components";
 
+// Admin components (lazy loaded for HM role)
+import { UserManagement } from "./admin/UserManagement";
+import { BranchManagement } from "./admin/BranchManagement";
+
 // Page content data
 const pageData: Record<string, { title: string; description: string }> = {
   dashboard: {
@@ -17,6 +21,18 @@ const pageData: Record<string, { title: string; description: string }> = {
     title: "Branch Management",
     description: "View and manage all branches in the system.",
   },
+  inventory: {
+    title: "Inventory",
+    description: "Manage parts, supplies, and stock levels across branches.",
+  },
+  pricing: {
+    title: "Pricing Config",
+    description: "Configure pricing rules, discounts, and service rates.",
+  },
+  orders: {
+    title: "Order & Sales",
+    description: "Manage orders, track sales, and process transactions.",
+  },
   reports: {
     title: "Reports",
     description: "Generate and view system reports and analytics.",
@@ -25,41 +41,17 @@ const pageData: Record<string, { title: string; description: string }> = {
     title: "Audit Logs",
     description: "Track and review all system activities and changes.",
   },
+  messages: {
+    title: "Messages",
+    description: "View and send messages within the system.",
+  },
   settings: {
     title: "Settings",
     description: "Configure system settings and preferences.",
   },
-  jobs: {
-    title: "Job Orders",
-    description: "Manage job orders, track progress, and assign technicians.",
-  },
-  inventory: {
-    title: "Inventory",
-    description: "Manage parts, supplies, and stock levels.",
-  },
   customers: {
     title: "Customers",
     description: "View and manage customer information and history.",
-  },
-  myjobs: {
-    title: "My Jobs",
-    description: "View your assigned jobs and update progress.",
-  },
-  intake: {
-    title: "Customer Intake",
-    description: "Register new customers and create service requests.",
-  },
-  quotations: {
-    title: "Quotations",
-    description: "Create and manage service quotations for customers.",
-  },
-  technicians: {
-    title: "Technicians",
-    description: "View technician assignments and availability.",
-  },
-  messages: {
-    title: "Messages",
-    description: "View and send messages within the system.",
   },
 };
 
@@ -67,59 +59,74 @@ const pageData: Record<string, { title: string; description: string }> = {
 function getNavItemsForRole(roles: string[]): NavItem[] {
   const hasRole = (role: string) => roles.includes(role);
   
-  // Base items for all roles
-  const items: NavItem[] = [
-    { id: "dashboard", label: "Dashboard", icon: <NavIcons.Dashboard /> },
-  ];
-
-  // HM (Head Manager) - full access
+  // Higher Management (HM) - full access
   if (hasRole("HM")) {
-    items.push(
+    return [
+      { id: "dashboard", label: "Dashboard", icon: <NavIcons.Dashboard /> },
       { id: "users", label: "User Management", icon: <NavIcons.Users /> },
-      { id: "branches", label: "Branches", icon: <NavIcons.Branch /> },
+      { id: "branches", label: "Branch Management", icon: <NavIcons.Branch /> },
+      { id: "inventory", label: "Inventory", icon: <NavIcons.Inventory /> },
+      { id: "pricing", label: "Pricing Config", icon: <NavIcons.Pricing /> },
+      { id: "orders", label: "Order & Sales", icon: <NavIcons.Sales /> },
       { id: "reports", label: "Reports", icon: <NavIcons.Reports /> },
       { id: "audit", label: "Audit Logs", icon: <NavIcons.Audit /> },
-      { id: "settings", label: "Settings", icon: <NavIcons.Settings /> },
-    );
-  }
-
-  // POC (Supervisor)
-  if (hasRole("POC")) {
-    if (!hasRole("HM")) {
-      items.push(
-        { id: "jobs", label: "Job Orders", icon: <NavIcons.Jobs />, badge: 0 },
-        { id: "inventory", label: "Inventory", icon: <NavIcons.Inventory /> },
-        { id: "customers", label: "Customers", icon: <NavIcons.Customers /> },
-        { id: "reports", label: "Branch Reports", icon: <NavIcons.Reports /> },
-      );
-    }
-  }
-
-  // JS (Junior Supervisor)
-  if (hasRole("JS") && !hasRole("POC") && !hasRole("HM")) {
-    items.push(
-      { id: "jobs", label: "Job Orders", icon: <NavIcons.Jobs />, badge: 0 },
-      { id: "technicians", label: "Technicians", icon: <NavIcons.Users /> },
-    );
-  }
-
-  // R (Receptionist)
-  if (hasRole("R") && !hasRole("JS") && !hasRole("POC") && !hasRole("HM")) {
-    items.push(
-      { id: "intake", label: "Customer Intake", icon: <NavIcons.Customers /> },
-      { id: "quotations", label: "Quotations", icon: <NavIcons.Orders /> },
       { id: "messages", label: "Messages", icon: <NavIcons.Messages />, badge: 0 },
-    );
+      { id: "settings", label: "Settings", icon: <NavIcons.Settings /> },
+    ];
   }
 
-  // T (Technician)
-  if (hasRole("T") && roles.length === 1) {
-    items.push(
-      { id: "myjobs", label: "My Jobs", icon: <NavIcons.Jobs />, badge: 0 },
-    );
+  // POC Supervisor
+  if (hasRole("POC")) {
+    return [
+      { id: "dashboard", label: "Dashboard", icon: <NavIcons.Dashboard /> },
+      { id: "inventory", label: "Inventory", icon: <NavIcons.Inventory /> },
+      { id: "pricing", label: "Pricing Config", icon: <NavIcons.Pricing /> },
+      { id: "orders", label: "Orders", icon: <NavIcons.Orders /> },
+      { id: "reports", label: "Reports", icon: <NavIcons.Reports /> },
+      { id: "customers", label: "Customers", icon: <NavIcons.Customers /> },
+      { id: "messages", label: "Messages", icon: <NavIcons.Messages />, badge: 0 },
+    ];
   }
 
-  return items;
+  // Junior Supervisor (JS)
+  if (hasRole("JS")) {
+    return [
+      { id: "dashboard", label: "Dashboard", icon: <NavIcons.Dashboard /> },
+      { id: "inventory", label: "Inventory", icon: <NavIcons.Inventory /> },
+      { id: "pricing", label: "Pricing Config", icon: <NavIcons.Pricing /> },
+      { id: "orders", label: "Orders", icon: <NavIcons.Orders /> },
+      { id: "reports", label: "Reports", icon: <NavIcons.Reports /> },
+      { id: "customers", label: "Customers", icon: <NavIcons.Customers /> },
+      { id: "messages", label: "Messages", icon: <NavIcons.Messages />, badge: 0 },
+    ];
+  }
+
+  // Receptionist (R)
+  if (hasRole("R")) {
+    return [
+      { id: "dashboard", label: "Dashboard", icon: <NavIcons.Dashboard /> },
+      { id: "orders", label: "Orders", icon: <NavIcons.Orders /> },
+      { id: "reports", label: "Reports", icon: <NavIcons.Reports /> },
+      { id: "customers", label: "Customers", icon: <NavIcons.Customers /> },
+      { id: "messages", label: "Messages", icon: <NavIcons.Messages />, badge: 0 },
+    ];
+  }
+
+  // Technician (T)
+  if (hasRole("T")) {
+    return [
+      { id: "dashboard", label: "Dashboard", icon: <NavIcons.Dashboard /> },
+      { id: "orders", label: "Orders", icon: <NavIcons.Orders /> },
+      { id: "reports", label: "Reports", icon: <NavIcons.Reports /> },
+      { id: "customers", label: "Customers", icon: <NavIcons.Customers /> },
+      { id: "messages", label: "Messages", icon: <NavIcons.Messages />, badge: 0 },
+    ];
+  }
+
+  // Default (fallback)
+  return [
+    { id: "dashboard", label: "Dashboard", icon: <NavIcons.Dashboard /> },
+  ];
 }
 
 export function DashboardPage() {
@@ -130,6 +137,7 @@ export function DashboardPage() {
 
   const userRoles = user.roles || [];
   const navItems = getNavItemsForRole(userRoles);
+  const isHM = userRoles.includes("HM");
 
   // Get page data
   const currentPage = pageData[activeNav] || { title: "Page", description: "" };
@@ -142,7 +150,7 @@ export function DashboardPage() {
       title={currentPage.title}
       description={currentPage.description}
     >
-      {/* Content area - shows role badges on dashboard */}
+      {/* Dashboard content */}
       {activeNav === "dashboard" && (
         <div className="bg-white rounded-xl p-6 border border-primary-200/50">
           <div className="flex items-center gap-2 mb-4">
@@ -160,14 +168,35 @@ export function DashboardPage() {
               </span>
             ))}
           </div>
-          <p className="text-neutral-500">Phase 1 is complete. More features coming in Phase 2.</p>
+          <p className="text-neutral-500">Welcome to Petrozone Pulse System. Select a menu item to get started.</p>
+        </div>
+      )}
+
+      {/* User Management - HM only */}
+      {activeNav === "users" && isHM && (
+        <div className="bg-white rounded-xl border border-primary-200/50 p-6">
+          <UserManagement />
+        </div>
+      )}
+
+      {/* Branch Management - HM only */}
+      {activeNav === "branches" && isHM && (
+        <div className="bg-white rounded-xl border border-primary-200/50 p-6">
+          <BranchManagement />
+        </div>
+      )}
+
+      {/* Settings page placeholder */}
+      {activeNav === "settings" && (
+        <div className="bg-white rounded-xl p-6 border border-primary-200/50">
+          <p className="text-neutral-500">System settings and preferences will be available here.</p>
         </div>
       )}
 
       {/* Empty state for other pages */}
-      {activeNav !== "dashboard" && (
+      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && (
         <div className="bg-white rounded-xl p-6 border border-primary-200/50">
-          <p className="text-neutral-500">This feature is coming in Phase 2.</p>
+          <p className="text-neutral-500">This feature is coming in the next phase.</p>
         </div>
       )}
     </DashboardLayout>

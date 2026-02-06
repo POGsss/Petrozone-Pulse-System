@@ -16,6 +16,9 @@ import {
   LuFileText,
   LuChartBar,
   LuClipboardList,
+  LuUserCog,
+  LuDollarSign,
+  LuShoppingCart,
 } from "react-icons/lu";
 
 // Navigation item type
@@ -223,12 +226,11 @@ export function DashboardLayout({
                       <button
                         onClick={() => {
                           setProfileDropdownOpen(false);
-                          logout();
                         }}
                         className="w-full flex items-center gap-2 px-3 py-2 text-sm text-negative-500 hover:bg-primary-100 rounded-lg transition-colors"
                       >
-                        <LuLogOut className="w-4 h-4" />
-                        Logout
+                        <LuUserCog className="w-4 h-4" />
+                        Profile
                       </button>
                     </div>
                   </div>
@@ -248,7 +250,7 @@ export function DashboardLayout({
 
 export const NavIcons = {
   Dashboard: () => <LuLayoutDashboard className="w-5 h-5" />,
-  Orders: () => <LuPackage className="w-5 h-5" />,
+  Orders: () => <LuShoppingCart className="w-5 h-5" />,
   Customers: () => <LuUsers className="w-5 h-5" />,
   Inventory: () => <LuBox className="w-5 h-5" />,
   Messages: () => <LuMessageSquare className="w-5 h-5" />,
@@ -258,4 +260,6 @@ export const NavIcons = {
   Audit: () => <LuFileText className="w-5 h-5" />,
   Reports: () => <LuChartBar className="w-5 h-5" />,
   Jobs: () => <LuClipboardList className="w-5 h-5" />,
+  Pricing: () => <LuDollarSign className="w-5 h-5" />,
+  Sales: () => <LuPackage className="w-5 h-5" />,
 };
