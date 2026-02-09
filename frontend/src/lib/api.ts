@@ -150,6 +150,29 @@ export const rbacApi = {
     });
   },
 
+  updateUser: async (userId: string, data: {
+    full_name?: string;
+    phone?: string;
+    is_active?: boolean;
+  }) => {
+    return fetchWithAuth<import("../types").UserProfile>(
+      `/api/rbac/users/${userId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }
+    );
+  },
+
+  deleteUser: async (userId: string) => {
+    return fetchWithAuth<{ message: string }>(
+      `/api/rbac/users/${userId}`,
+      {
+        method: "DELETE",
+      }
+    );
+  },
+
   updateUserRoles: async (userId: string, roles: string[]) => {
     return fetchWithAuth<{ message: string; roles: string[] }>(
       `/api/rbac/users/${userId}/roles`,

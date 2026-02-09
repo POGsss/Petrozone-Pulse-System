@@ -316,4 +316,81 @@ router.put("/users/:userId/status", requireAdmin, async (req: Request, res: Resp
   }
 });
 
+/**
+ * PUT /api/rbac/users/:userId
+ * Update a user's profile (full_name, phone, is_active)
+ * Admin only
+ */
+router.put("/users/:userId", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.params.userId as string;
+    const { full_name, phone, is_active } = req.body;
+
+    // Build update object
+    const updateData: { full_name?: string; phone?: string; is_active?: boolean } = {};
+    if (full_name !== undefined) updateData.full_name = full_name;
+    if (phone !== undefined) updateData.phone = phone;
+    if (is_active !== undefined) {
+      // Prevent deactivating yourself
+      if (req.user!.id === userId && !is_active) {
+        res.status(400).json({ error: "Cannot deactivate your own account" });
+        return;
+      }
+      updateData.is_active = is_active;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      res.status(400).json({ error: "No valid fields to update" });
+      return;
+    }
+
+    const { data: user, error } = await supabaseAdmin
+      .from("user_profiles")
+      .update(updateData)
+      .eq("id", userId)
+      .select()
+      .single();
+
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+
+    res.json(user);
+  } catch (error) {
+    console.error("Update user error:", error);
+    res.status(500).json({ error: "Failed to update user" });
+  }
+});
+
+/**
+ * DELETE /api/rbac/users/:userId
+ * Delete a user (removes auth user and cascades to profile/roles/branches)
+ * Admin only
+ */
+router.delete("/users/:userId", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.params.userId as string;
+
+    // Prevent deleting yourself
+    if (req.user!.id === userId) {
+      res.status(400).json({ error: "Cannot delete your own account" });
+      return;
+    }
+
+    // Delete the auth user (this cascades to user_profiles via trigger/RLS)
+    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+
+    if (authError) {
+      res.status(500).json({ error: authError.message });
+      return;
+    }
+
+    res.json({ message: "User deleted successfully" });
+  } catch (error) {
+    console.error("Delete user error:", error);
+    res.status(500).json({ error: "Failed to delete user" });
+  }
+});
+
 export default router;

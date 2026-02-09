@@ -183,13 +183,13 @@ export function BranchManagement() {
 
   if (error) {
     return (
-      <div className="bg-negative-50 border border-negative-200 rounded-lg p-4 flex items-center gap-3">
+      <div className="bg-neutral-100 rounded-lg p-4 flex items-center gap-3">
         <LuCircleAlert className="w-5 h-5 text-negative flex-shrink-0" />
         <div>
-          <p className="text-sm text-negative-700">{error}</p>
+          <p className="text-sm text-negative-950">{error}</p>
           <button
             onClick={fetchBranches}
-            className="text-sm text-negative-600 hover:underline mt-1"
+            className="text-sm text-negative-900 hover:text-negative-950 hover:underline mt-1"
           >
             Try again
           </button>
@@ -220,11 +220,7 @@ export function BranchManagement() {
         {branches.map((branch) => (
           <div
             key={branch.id}
-            className={`bg-white rounded-xl border p-4 ${
-              branch.is_active
-                ? "border-primary-200/50"
-                : "border-negative-200/50 bg-negative-50/30"
-            }`}
+            className={`bg-white rounded-xl border p-4 border-neutral-100`}
           >
             <div className="flex items-start justify-between mb-3">
               <div>
@@ -253,7 +249,7 @@ export function BranchManagement() {
               {branch.email && <p>{branch.email}</p>}
             </div>
 
-            <div className="flex items-center justify-end gap-4 pt-3 border-t border-primary-100">
+            <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-100">
               <button
                 onClick={() => openEditModal(branch)}
                 className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"

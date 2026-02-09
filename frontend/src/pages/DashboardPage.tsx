@@ -153,7 +153,7 @@ export function DashboardPage() {
     >
       {/* Dashboard content */}
       {activeNav === "dashboard" && (
-        <div className="bg-white rounded-xl p-6 border border-primary-200/50">
+        <div className="bg-white rounded-xl p-6 border border-neutral-100">
           <div className="flex items-center gap-2 mb-4">
             <span className="text-sm text-neutral-950">Your roles:</span>
             {userRoles.map((role) => (
@@ -175,28 +175,28 @@ export function DashboardPage() {
 
       {/* User Management - HM only */}
       {activeNav === "users" && isHM && (
-        <div className="bg-white rounded-xl border border-primary-200/50 p-6">
+        <div className="bg-white rounded-xl border border-neutral-100 p-6">
           <UserManagement />
         </div>
       )}
 
       {/* Branch Management - HM only */}
       {activeNav === "branches" && isHM && (
-        <div className="bg-white rounded-xl border border-primary-200/50 p-6">
+        <div className="bg-white rounded-xl border border-neutral-100 p-6">
           <BranchManagement />
         </div>
       )}
 
       {/* Settings page placeholder */}
       {activeNav === "settings" && (
-        <div className="bg-white rounded-xl p-6 border border-primary-200/50">
+        <div className="bg-white rounded-xl p-6 border border-neutral-100">
           <p className="text-neutral-900">System settings and preferences will be available here.</p>
         </div>
       )}
 
       {/* Empty state for other pages */}
       {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && (
-        <div className="bg-white rounded-xl p-6 border border-primary-200/50">
+        <div className="bg-white rounded-xl p-6 border border-neutral-100">
           <p className="text-neutral-900">This feature is coming in the next phase.</p>
         </div>
       )}

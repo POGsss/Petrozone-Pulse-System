@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { LuPlus, LuCheck, LuCircleAlert, LuRefreshCw, LuBuilding } from "react-icons/lu";
+import { useState, useEffect, useMemo } from "react";
+import { LuPlus, LuCheck, LuCircleAlert, LuRefreshCw, LuSearch, LuPencil, LuTrash2, LuUsers, LuUserCheck, LuUserX, LuChevronLeft, LuChevronRight } from "react-icons/lu";
 import { rbacApi, branchesApi } from "../../lib/api";
 import { Modal, ModalSection, ModalInput, ModalButtons, ModalError } from "../../components";
 import type { Branch, UserProfile, BranchAssignment, RoleInfo } from "../../types";
@@ -9,12 +9,18 @@ interface User extends UserProfile {
   branches: BranchAssignment[];
 }
 
+const ITEMS_PER_PAGE = 10;
+
 export function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [roles, setRoles] = useState<RoleInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Search and pagination state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
   
   // Add user modal state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -29,18 +35,55 @@ export function UserManagement() {
   });
   const [addUserError, setAddUserError] = useState<string | null>(null);
 
-  // Assign branch modal state
-  const [showAssignModal, setShowAssignModal] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [assigningBranches, setAssigningBranches] = useState(false);
-  const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
-  const [primaryBranchId, setPrimaryBranchId] = useState<string | null>(null);
-  const [assignError, setAssignError] = useState<string | null>(null);
+  // Edit user modal state
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingUser, setEditingUser] = useState(false);
+  const [editUserForm, setEditUserForm] = useState({
+    id: "",
+    full_name: "",
+    phone: "",
+    is_active: true,
+    roles: [] as string[],
+    branch_ids: [] as string[],
+    primary_branch_id: null as string | null,
+  });
+  const [editUserError, setEditUserError] = useState<string | null>(null);
+
+  // Delete confirmation state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletingUser, setDeletingUser] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+
+  // Computed stats
+  const stats = useMemo(() => {
+    const total = users.length;
+    const active = users.filter(u => u.is_active).length;
+    const inactive = total - active;
+    return { total, active, inactive };
+  }, [users]);
+
+  // Filtered and paginated users
+  const { filteredUsers, paginatedUsers, totalPages } = useMemo(() => {
+    const filtered = users.filter(user =>
+      user.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.phone?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    const total = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    const paginated = filtered.slice(start, start + ITEMS_PER_PAGE);
+    return { filteredUsers: filtered, paginatedUsers: paginated, totalPages: total };
+  }, [users, searchQuery, currentPage]);
 
   // Fetch data on mount
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
 
   async function fetchData() {
     try {
@@ -102,39 +145,80 @@ export function UserManagement() {
     }
   }
 
-  // Open assign branch modal
-  function openAssignModal(user: User) {
-    setSelectedUser(user);
-    setSelectedBranches(user.branches.map(b => b.branch_id));
-    setPrimaryBranchId(user.branches.find(b => b.is_primary)?.branch_id || null);
-    setAssignError(null);
-    setShowAssignModal(true);
+  // Open edit user modal
+  function openEditModal(user: User) {
+    setEditUserForm({
+      id: user.id,
+      full_name: user.full_name,
+      phone: user.phone || "",
+      is_active: user.is_active,
+      roles: user.roles,
+      branch_ids: user.branches.map(b => b.branch_id),
+      primary_branch_id: user.branches.find(b => b.is_primary)?.branch_id || null,
+    });
+    setEditUserError(null);
+    setShowEditModal(true);
   }
 
-  // Assign branches handler
-  async function handleAssignBranches(e: React.FormEvent) {
+  // Edit user handler
+  async function handleEditUser(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedUser) return;
-    
-    setAssignError(null);
+    setEditUserError(null);
+
+    if (editUserForm.roles.length === 0) {
+      setEditUserError("Please select at least one role");
+      return;
+    }
 
     try {
-      setAssigningBranches(true);
+      setEditingUser(true);
+      
+      // Update user profile
+      await rbacApi.updateUser(editUserForm.id, {
+        full_name: editUserForm.full_name,
+        phone: editUserForm.phone || undefined,
+        is_active: editUserForm.is_active,
+      });
+
+      // Update roles
+      await rbacApi.updateUserRoles(editUserForm.id, editUserForm.roles);
+
+      // Update branches
       await rbacApi.updateUserBranches(
-        selectedUser.id,
-        selectedBranches,
-        primaryBranchId || undefined
+        editUserForm.id,
+        editUserForm.branch_ids,
+        editUserForm.primary_branch_id || undefined
       );
       
-      setShowAssignModal(false);
-      setSelectedUser(null);
-      
-      // Refresh users list
+      setShowEditModal(false);
       fetchData();
     } catch (err) {
-      setAssignError(err instanceof Error ? err.message : "Failed to assign branches");
+      setEditUserError(err instanceof Error ? err.message : "Failed to update user");
     } finally {
-      setAssigningBranches(false);
+      setEditingUser(false);
+    }
+  }
+
+  // Open delete confirmation
+  function openDeleteModal(user: User) {
+    setUserToDelete(user);
+    setShowDeleteModal(true);
+  }
+
+  // Delete user handler
+  async function handleDeleteUser() {
+    if (!userToDelete) return;
+
+    try {
+      setDeletingUser(true);
+      await rbacApi.deleteUser(userToDelete.id);
+      setShowDeleteModal(false);
+      setUserToDelete(null);
+      fetchData();
+    } catch (err) {
+      console.error("Failed to delete user:", err);
+    } finally {
+      setDeletingUser(false);
     }
   }
 
@@ -148,6 +232,33 @@ export function UserManagement() {
     }));
   }
 
+  // Toggle role selection in edit form
+  function toggleEditRole(role: string) {
+    setEditUserForm(prev => ({
+      ...prev,
+      roles: prev.roles.includes(role)
+        ? prev.roles.filter(r => r !== role)
+        : [...prev.roles, role],
+    }));
+  }
+
+  // Toggle branch selection in edit form
+  function toggleEditBranch(branchId: string) {
+    setEditUserForm(prev => {
+      const newBranches = prev.branch_ids.includes(branchId)
+        ? prev.branch_ids.filter(id => id !== branchId)
+        : [...prev.branch_ids, branchId];
+      
+      // Reset primary if removed
+      let newPrimary = prev.primary_branch_id;
+      if (!newBranches.includes(prev.primary_branch_id || "")) {
+        newPrimary = newBranches[0] || null;
+      }
+      
+      return { ...prev, branch_ids: newBranches, primary_branch_id: newPrimary };
+    });
+  }
+
   // Toggle branch selection in add user form
   function toggleBranchInForm(branchId: string) {
     setAddUserForm(prev => ({
@@ -156,22 +267,6 @@ export function UserManagement() {
         ? prev.branch_ids.filter(id => id !== branchId)
         : [...prev.branch_ids, branchId],
     }));
-  }
-
-  // Toggle branch selection in assign modal
-  function toggleBranchInAssign(branchId: string) {
-    setSelectedBranches(prev => {
-      const newBranches = prev.includes(branchId)
-        ? prev.filter(id => id !== branchId)
-        : [...prev, branchId];
-      
-      // Reset primary if removed
-      if (!newBranches.includes(primaryBranchId || "")) {
-        setPrimaryBranchId(newBranches[0] || null);
-      }
-      
-      return newBranches;
-    });
   }
 
   if (loading) {
@@ -201,102 +296,193 @@ export function UserManagement() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header with title and add button */}
       <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-neutral-950">Users</h3>
-          <p className="text-sm text-neutral-900">{users.length} users total</p>
-        </div>
+        <h3 className="text-lg font-semibold text-neutral-950">Users Summary</h3>
         <button
           onClick={() => setShowAddModal(true)}
           className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
         >
           <LuPlus className="w-4 h-4" />
-          Add User
+          Add a New User
         </button>
       </div>
 
-      {/* Users table */}
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-primary-200/50">
-              <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Name</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Email</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Roles</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Branches</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Status</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((user) => (
-              <tr key={user.id} className="border-b border-neutral-200/50 hover:bg-neutral-100">
-                <td className="py-3 px-4">
-                  <span className="font-medium text-neutral-900">{user.full_name}</span>
-                </td>
-                <td className="py-3 px-4 text-sm text-neutral-900">{user.email}</td>
-                <td className="py-3 px-4">
-                  <div className="flex flex-wrap gap-1">
-                    {user.roles.map((role) => (
-                      <span
-                        key={role}
-                        className="px-2 py-0.5 bg-neutral-100 text-primary rounded text-xs font-medium"
-                      >
-                        {role}
-                      </span>
-                    ))}
-                  </div>
-                </td>
-                <td className="py-3 px-4">
-                  <div className="flex flex-wrap gap-1">
-                    {user.branches.length === 0 ? (
-                      <span className="text-sm text-neutral-900">No branch</span>
-                    ) : (
-                      user.branches.map((ba) => (
-                        <span
-                          key={ba.branch_id}
-                          className={`px-2 py-0.5 rounded text-xs font-medium ${
-                            ba.is_primary
-                              ? "bg-positive-100 text-positive"
-                              : "bg-neutral-100 text-neutral"
-                          }`}
-                        >
-                          {ba.branches?.code || ba.branch_id.slice(0, 8)}
-                          {ba.is_primary && " ★"}
-                        </span>
-                      ))
-                    )}
-                  </div>
-                </td>
-                <td className="py-3 px-4">
-                  <span
-                    className={`px-2 py-1 rounded text-xs font-medium ${
-                      user.is_active
-                        ? "bg-positive-100 text-positive"
-                        : "bg-negative-100 text-negative"
-                    }`}
-                  >
-                    {user.is_active ? "Active" : "Inactive"}
-                  </span>
-                </td>
-                <td className="py-3 px-4">
-                  <button
-                    onClick={() => openAssignModal(user)}
-                    className="flex items-center gap-1 text-sm text-primary-950 hover:text-primary-900"
-                  >
-                    <LuBuilding className="w-4 h-4" />
-                    Assign Branch
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {/* Summary Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white border border-neutral-200 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary-100 rounded-lg">
+              <LuUsers className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm text-neutral-600">All Users</p>
+              <p className="text-2xl font-bold text-neutral-950">{stats.total}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white border border-neutral-200 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-positive-100 rounded-lg">
+              <LuUserCheck className="w-5 h-5 text-positive" />
+            </div>
+            <div>
+              <p className="text-sm text-neutral-600">Active</p>
+              <p className="text-2xl font-bold text-neutral-950">{stats.active}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white border border-neutral-200 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-negative-100 rounded-lg">
+              <LuUserX className="w-5 h-5 text-negative" />
+            </div>
+            <div>
+              <p className="text-sm text-neutral-600">Inactive</p>
+              <p className="text-2xl font-bold text-neutral-950">{stats.inactive}</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
-        {users.length === 0 && (
-          <div className="text-center py-12 text-neutral-900">
-            No users found. Click "Add User" to create one.
+      {/* Table Section */}
+      <div className="bg-white border border-neutral-200 rounded-xl">
+        {/* Table Header with Search */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 border-b border-neutral-200">
+          <h4 className="font-semibold text-neutral-950">Users</h4>
+          <div className="relative">
+            <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+            <input
+              type="text"
+              placeholder="Search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 pr-4 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary w-full sm:w-64"
+            />
+          </div>
+        </div>
+
+        {/* Responsive Table Container */}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[800px]">
+            <thead>
+              <tr className="border-b border-neutral-200 bg-neutral-50">
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Name</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Email</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Phone</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Roles</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Branches</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Status</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedUsers.map((user) => (
+                <tr key={user.id} className="border-b border-neutral-100 hover:bg-neutral-50 transition-colors">
+                  <td className="py-3 px-4 whitespace-nowrap">
+                    <span className="font-medium text-neutral-900">{user.full_name}</span>
+                  </td>
+                  <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap">{user.email}</td>
+                  <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap">{user.phone || "-"}</td>
+                  <td className="py-3 px-4">
+                    <div className="flex flex-wrap gap-1">
+                      {user.roles.map((role) => (
+                        <span
+                          key={role}
+                          className="px-2 py-0.5 bg-neutral-100 text-neutral-700 rounded text-xs font-medium"
+                        >
+                          {role}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="py-3 px-4">
+                    <div className="flex flex-wrap gap-1">
+                      {user.branches.length === 0 ? (
+                        <span className="text-sm text-neutral-400">-</span>
+                      ) : (
+                        user.branches.map((ba) => (
+                          <span
+                            key={ba.branch_id}
+                            className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              ba.is_primary
+                                ? "bg-positive-100 text-positive-950"
+                                : "bg-neutral-100 text-neutral-950"
+                            }`}
+                          >
+                            {ba.branches?.code || ba.branch_id.slice(0, 8)}
+                            {ba.is_primary && " ★"}
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-3 px-4 whitespace-nowrap">
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        user.is_active
+                          ? "bg-positive-100 text-positive-950"
+                          : "bg-neutral-100 text-neutral-950"
+                      }`}
+                    >
+                      {user.is_active ? "Active" : "Inactive"}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 whitespace-nowrap">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => openEditModal(user)}
+                        className="p-2 text-primary-950 hover:text-primary-900 hover:bg-primary-50 rounded-lg transition-colors"
+                        title="Edit user"
+                      >
+                        <LuPencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => openDeleteModal(user)}
+                        className="p-2 text-negative-950 hover:text-negative-900 hover:bg-negative-50 rounded-lg transition-colors"
+                        title="Delete user"
+                      >
+                        <LuTrash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {paginatedUsers.length === 0 && (
+            <div className="text-center py-12 text-neutral-500">
+              {searchQuery ? "No users match your search." : "No users found. Click \"Add a New User\" to create one."}
+            </div>
+          )}
+        </div>
+
+        {/* Pagination */}
+        {filteredUsers.length > ITEMS_PER_PAGE && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border-t border-neutral-200">
+            <p className="text-sm text-neutral-600">
+              {(currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredUsers.length)} of {filteredUsers.length} users
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-2 border border-neutral-300 rounded-lg text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <LuChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm text-neutral-600 px-2">
+                {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 border border-neutral-300 rounded-lg text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <LuChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -398,75 +584,167 @@ export function UserManagement() {
         </form>
       </Modal>
 
-      {/* Assign Branch Modal */}
+      {/* Edit User Modal */}
       <Modal
-        isOpen={showAssignModal && !!selectedUser}
-        onClose={() => setShowAssignModal(false)}
-        title="Assign Branches"
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        title="Edit User"
+        maxWidth="lg"
       >
-        {selectedUser && (
-          <form onSubmit={handleAssignBranches}>
-            <p className="text-sm text-neutral-900 -mt-2 mb-4">{selectedUser.full_name}</p>
-            
-            <ModalError message={assignError} />
-            
-            <ModalSection title="Select Branches">
-              <div className="space-y-3">
-                {branches.filter(b => b.is_active).map((branch) => (
-                  <div
-                    key={branch.id}
-                    className={`flex items-center justify-between p-4 rounded-xl transition-all cursor-pointer ${
-                      selectedBranches.includes(branch.id)
-                        ? "bg-positive-50 ring-2 ring-positive"
-                        : "bg-neutral-100 hover:bg-neutral-150"
-                    }`}
-                    onClick={() => toggleBranchInAssign(branch.id)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
-                          selectedBranches.includes(branch.id)
-                            ? "bg-positive border-positive"
-                            : "border-neutral-300 bg-white"
-                        }`}
-                      >
-                        {selectedBranches.includes(branch.id) && (
-                          <LuCheck className="w-4 h-4 text-white" />
-                        )}
-                      </div>
-                      <div>
-                        <p className="font-medium text-neutral-900">{branch.name}</p>
-                        <p className="text-xs text-neutral-900">{branch.code}</p>
-                      </div>
-                    </div>
-                    
-                    {selectedBranches.includes(branch.id) && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setPrimaryBranchId(branch.id);
-                        }}
-                        className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
-                          primaryBranchId === branch.id
-                            ? "bg-positive text-white"
-                            : "bg-white text-neutral hover:bg-neutral-50 border border-neutral-200"
-                        }`}
-                      >
-                        {primaryBranchId === branch.id ? "Primary" : "Set Primary"}
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </ModalSection>
-
-            <ModalButtons
-              onCancel={() => setShowAssignModal(false)}
-              submitText={assigningBranches ? "Saving..." : "Save Changes"}
-              loading={assigningBranches}
+        <form onSubmit={handleEditUser}>
+          <ModalError message={editUserError} />
+          
+          <ModalSection title="User Information">
+            <ModalInput
+              type="text"
+              value={editUserForm.full_name}
+              onChange={(v) => setEditUserForm(prev => ({ ...prev, full_name: v }))}
+              placeholder="Full Name"
+              required
             />
-          </form>
+            
+            <ModalInput
+              type="tel"
+              value={editUserForm.phone}
+              onChange={(v) => setEditUserForm(prev => ({ ...prev, phone: v }))}
+              placeholder="Phone Number"
+            />
+
+            <div className="flex items-center gap-3 mt-4">
+              <button
+                type="button"
+                onClick={() => setEditUserForm(prev => ({ ...prev, is_active: !prev.is_active }))}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  editUserForm.is_active ? "bg-positive" : "bg-neutral-300"
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    editUserForm.is_active ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+              <span className="text-sm text-neutral-700">
+                {editUserForm.is_active ? "Active" : "Inactive"}
+              </span>
+            </div>
+          </ModalSection>
+
+          <ModalSection title="Assign Roles">
+            <div className="flex flex-wrap gap-2">
+              {roles.map((role) => (
+                <button
+                  key={role.code}
+                  type="button"
+                  onClick={() => toggleEditRole(role.code)}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    editUserForm.roles.includes(role.code)
+                      ? "bg-primary text-white shadow-md"
+                      : "bg-neutral-100 text-neutral hover:bg-neutral-200"
+                  }`}
+                >
+                  {editUserForm.roles.includes(role.code) && <LuCheck className="w-4 h-4" />}
+                  {role.name}
+                </button>
+              ))}
+            </div>
+          </ModalSection>
+
+          <ModalSection title="Assign to Branches">
+            <div className="space-y-3">
+              {branches.filter(b => b.is_active).map((branch) => (
+                <div
+                  key={branch.id}
+                  className={`flex items-center justify-between p-4 rounded-xl transition-all cursor-pointer ${
+                    editUserForm.branch_ids.includes(branch.id)
+                      ? "bg-positive-50 ring-2 ring-positive"
+                      : "bg-neutral-100 hover:bg-neutral-150"
+                  }`}
+                  onClick={() => toggleEditBranch(branch.id)}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+                        editUserForm.branch_ids.includes(branch.id)
+                          ? "bg-positive border-positive"
+                          : "border-neutral-300 bg-white"
+                      }`}
+                    >
+                      {editUserForm.branch_ids.includes(branch.id) && (
+                        <LuCheck className="w-4 h-4 text-white" />
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-medium text-neutral-900">{branch.name}</p>
+                      <p className="text-xs text-neutral-500">{branch.code}</p>
+                    </div>
+                  </div>
+                  
+                  {editUserForm.branch_ids.includes(branch.id) && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditUserForm(prev => ({ ...prev, primary_branch_id: branch.id }));
+                      }}
+                      className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
+                        editUserForm.primary_branch_id === branch.id
+                          ? "bg-positive text-white"
+                          : "bg-white text-neutral hover:bg-neutral-50 border border-neutral-200"
+                      }`}
+                    >
+                      {editUserForm.primary_branch_id === branch.id ? "Primary" : "Set Primary"}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </ModalSection>
+
+          <ModalButtons
+            onCancel={() => setShowEditModal(false)}
+            submitText={editingUser ? "Saving..." : "Save Changes"}
+            loading={editingUser}
+          />
+        </form>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={showDeleteModal && !!userToDelete}
+        onClose={() => setShowDeleteModal(false)}
+        title="Delete User"
+        maxWidth="sm"
+      >
+        {userToDelete && (
+          <div>
+            <div className="bg-neutral-100 rounded-xl p-4 my-4">
+              <p className="text-neutral-900">
+                Are you sure you want to delete <strong className="text-neutral-950">{userToDelete.full_name}</strong>?
+              </p>
+            </div>
+            <p className="text-sm text-neutral-900 mb-2">
+              This action cannot be undone. All user data will be permanently removed.
+            </p>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                className="flex-1 px-4 py-3.5 border-2 border-negative text-negative rounded-xl font-semibold hover:bg-negative-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteUser}
+                disabled={deletingUser}
+                className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {deletingUser ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
         )}
       </Modal>
     </div>
