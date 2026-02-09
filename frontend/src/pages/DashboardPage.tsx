@@ -175,16 +175,12 @@ export function DashboardPage() {
 
       {/* User Management - HM only */}
       {activeNav === "users" && isHM && (
-        <div className="bg-white rounded-xl border border-neutral-100 p-6">
           <UserManagement />
-        </div>
       )}
 
       {/* Branch Management - HM only */}
       {activeNav === "branches" && isHM && (
-        <div className="bg-white rounded-xl border border-neutral-100 p-6">
           <BranchManagement />
-        </div>
       )}
 
       {/* Settings page placeholder */}

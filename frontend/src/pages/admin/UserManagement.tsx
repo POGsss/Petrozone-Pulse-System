@@ -298,7 +298,10 @@ export function UserManagement() {
     <div className="space-y-6">
       {/* Header with title and add button */}
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-neutral-950">Users Summary</h3>
+        <div>
+          <h3 className="text-lg font-semibold text-neutral-950">Users</h3>
+          <p className="text-sm text-neutral-900">Summary of users</p>
+        </div>
         <button
           onClick={() => setShowAddModal(true)}
           className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
@@ -349,7 +352,6 @@ export function UserManagement() {
       <div className="bg-white border border-neutral-200 rounded-xl">
         {/* Table Header with Search */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 border-b border-neutral-200">
-          <h4 className="font-semibold text-neutral-950">Users</h4>
           <div className="relative">
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
             <input
