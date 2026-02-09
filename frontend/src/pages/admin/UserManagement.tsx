@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { LuPlus, LuX, LuCheck, LuCircleAlert, LuRefreshCw, LuBuilding } from "react-icons/lu";
+import { LuPlus, LuCheck, LuCircleAlert, LuRefreshCw, LuBuilding } from "react-icons/lu";
 import { rbacApi, branchesApi } from "../../lib/api";
+import { Modal, ModalSection, ModalInput, ModalButtons, ModalError } from "../../components";
 import type { Branch, UserProfile, BranchAssignment, RoleInfo } from "../../types";
 
 interface User extends UserProfile {
@@ -176,7 +177,7 @@ export function UserManagement() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <LuRefreshCw className="w-6 h-6 animate-spin text-primary-500" />
+        <LuRefreshCw className="w-6 h-6 animate-spin text-primary" />
       </div>
     );
   }
@@ -184,7 +185,7 @@ export function UserManagement() {
   if (error) {
     return (
       <div className="bg-negative-50 border border-negative-200 rounded-lg p-4 flex items-center gap-3">
-        <LuCircleAlert className="w-5 h-5 text-negative-500 flex-shrink-0" />
+        <LuCircleAlert className="w-5 h-5 text-negative flex-shrink-0" />
         <div>
           <p className="text-sm text-negative-700">{error}</p>
           <button
@@ -203,12 +204,12 @@ export function UserManagement() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-neutral-900">Users</h3>
-          <p className="text-sm text-neutral-500">{users.length} users total</p>
+          <h3 className="text-lg font-semibold text-neutral-950">Users</h3>
+          <p className="text-sm text-neutral-900">{users.length} users total</p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
         >
           <LuPlus className="w-4 h-4" />
           Add User
@@ -220,27 +221,27 @@ export function UserManagement() {
         <table className="w-full">
           <thead>
             <tr className="border-b border-primary-200/50">
-              <th className="text-left py-3 px-4 text-sm font-medium text-neutral-500">Name</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-neutral-500">Email</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-neutral-500">Roles</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-neutral-500">Branches</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-neutral-500">Status</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-neutral-500">Actions</th>
+              <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Name</th>
+              <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Email</th>
+              <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Roles</th>
+              <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Branches</th>
+              <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Status</th>
+              <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Actions</th>
             </tr>
           </thead>
           <tbody>
             {users.map((user) => (
-              <tr key={user.id} className="border-b border-primary-100/50 hover:bg-primary-50/50">
+              <tr key={user.id} className="border-b border-neutral-200/50 hover:bg-neutral-100">
                 <td className="py-3 px-4">
                   <span className="font-medium text-neutral-900">{user.full_name}</span>
                 </td>
-                <td className="py-3 px-4 text-sm text-neutral-600">{user.email}</td>
+                <td className="py-3 px-4 text-sm text-neutral-900">{user.email}</td>
                 <td className="py-3 px-4">
                   <div className="flex flex-wrap gap-1">
                     {user.roles.map((role) => (
                       <span
                         key={role}
-                        className="px-2 py-0.5 bg-primary-100 text-primary-700 rounded text-xs font-medium"
+                        className="px-2 py-0.5 bg-neutral-100 text-primary rounded text-xs font-medium"
                       >
                         {role}
                       </span>
@@ -250,15 +251,15 @@ export function UserManagement() {
                 <td className="py-3 px-4">
                   <div className="flex flex-wrap gap-1">
                     {user.branches.length === 0 ? (
-                      <span className="text-sm text-neutral-400">No branch</span>
+                      <span className="text-sm text-neutral-900">No branch</span>
                     ) : (
                       user.branches.map((ba) => (
                         <span
                           key={ba.branch_id}
                           className={`px-2 py-0.5 rounded text-xs font-medium ${
                             ba.is_primary
-                              ? "bg-positive-100 text-positive-700"
-                              : "bg-neutral-100 text-neutral-600"
+                              ? "bg-positive-100 text-positive"
+                              : "bg-neutral-100 text-neutral"
                           }`}
                         >
                           {ba.branches?.code || ba.branch_id.slice(0, 8)}
@@ -272,8 +273,8 @@ export function UserManagement() {
                   <span
                     className={`px-2 py-1 rounded text-xs font-medium ${
                       user.is_active
-                        ? "bg-positive-100 text-positive-700"
-                        : "bg-negative-100 text-negative-700"
+                        ? "bg-positive-100 text-positive"
+                        : "bg-negative-100 text-negative"
                     }`}
                   >
                     {user.is_active ? "Active" : "Inactive"}
@@ -282,7 +283,7 @@ export function UserManagement() {
                 <td className="py-3 px-4">
                   <button
                     onClick={() => openAssignModal(user)}
-                    className="flex items-center gap-1 text-sm text-primary-600 hover:text-primary-700"
+                    className="flex items-center gap-1 text-sm text-primary-950 hover:text-primary-900"
                   >
                     <LuBuilding className="w-4 h-4" />
                     Assign Branch
@@ -294,281 +295,180 @@ export function UserManagement() {
         </table>
 
         {users.length === 0 && (
-          <div className="text-center py-12 text-neutral-500">
+          <div className="text-center py-12 text-neutral-900">
             No users found. Click "Add User" to create one.
           </div>
         )}
       </div>
 
       {/* Add User Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-4 border-b border-primary-200/50">
-              <h3 className="text-lg font-semibold text-neutral-900">Add New User</h3>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="p-1 text-neutral-400 hover:text-neutral-600"
-              >
-                <LuX className="w-5 h-5" />
-              </button>
-            </div>
+      <Modal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        title="Add a New User"
+        maxWidth="lg"
+      >
+        <form onSubmit={handleAddUser}>
+          <ModalError message={addUserError} />
+          
+          <ModalSection title="User Information">
+            <ModalInput
+              type="text"
+              value={addUserForm.full_name}
+              onChange={(v) => setAddUserForm(prev => ({ ...prev, full_name: v }))}
+              placeholder="Full Name"
+              required
+            />
             
-            <form onSubmit={handleAddUser} className="p-4 space-y-4">
-              {addUserError && (
-                <div className="bg-negative-50 border border-negative-200 rounded-lg p-3 flex items-center gap-2">
-                  <LuCircleAlert className="w-4 h-4 text-negative-500" />
-                  <p className="text-sm text-negative-700">{addUserError}</p>
-                </div>
-              )}
+            <ModalInput
+              type="email"
+              value={addUserForm.email}
+              onChange={(v) => setAddUserForm(prev => ({ ...prev, email: v }))}
+              placeholder="Email Address"
+              required
+            />
+            
+            <ModalInput
+              type="password"
+              value={addUserForm.password}
+              onChange={(v) => setAddUserForm(prev => ({ ...prev, password: v }))}
+              placeholder="Password (min 8 characters)"
+              required
+              minLength={8}
+            />
+            
+            <ModalInput
+              type="tel"
+              value={addUserForm.phone}
+              onChange={(v) => setAddUserForm(prev => ({ ...prev, phone: v }))}
+              placeholder="Phone Number"
+            />
+          </ModalSection>
 
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">
-                  Full Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={addUserForm.full_name}
-                  onChange={(e) => setAddUserForm(prev => ({ ...prev, full_name: e.target.value }))}
-                  className="w-full px-3 py-2 border border-primary-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="John Doe"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">
-                  Email *
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={addUserForm.email}
-                  onChange={(e) => setAddUserForm(prev => ({ ...prev, email: e.target.value }))}
-                  className="w-full px-3 py-2 border border-primary-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="john@petrozone.com"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">
-                  Password *
-                </label>
-                <input
-                  type="password"
-                  required
-                  minLength={8}
-                  value={addUserForm.password}
-                  onChange={(e) => setAddUserForm(prev => ({ ...prev, password: e.target.value }))}
-                  className="w-full px-3 py-2 border border-primary-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="Min 8 characters"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">
-                  Phone
-                </label>
-                <input
-                  type="tel"
-                  value={addUserForm.phone}
-                  onChange={(e) => setAddUserForm(prev => ({ ...prev, phone: e.target.value }))}
-                  className="w-full px-3 py-2 border border-primary-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="+63 XXX XXX XXXX"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Roles *
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {roles.map((role) => (
-                    <button
-                      key={role.code}
-                      type="button"
-                      onClick={() => toggleRole(role.code)}
-                      className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                        addUserForm.roles.includes(role.code)
-                          ? "bg-primary-500 text-white"
-                          : "bg-primary-100 text-primary-700 hover:bg-primary-200"
-                      }`}
-                    >
-                      {addUserForm.roles.includes(role.code) && <LuCheck className="w-3 h-3" />}
-                      {role.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Assign to Branches
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {branches.filter(b => b.is_active).map((branch) => (
-                    <button
-                      key={branch.id}
-                      type="button"
-                      onClick={() => toggleBranchInForm(branch.id)}
-                      className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                        addUserForm.branch_ids.includes(branch.id)
-                          ? "bg-positive-500 text-white"
-                          : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
-                      }`}
-                    >
-                      {addUserForm.branch_ids.includes(branch.id) && <LuCheck className="w-3 h-3" />}
-                      {branch.name} ({branch.code})
-                    </button>
-                  ))}
-                </div>
-                {addUserForm.branch_ids.length > 0 && (
-                  <p className="text-xs text-neutral-500 mt-1">
-                    First selected branch will be the primary branch.
-                  </p>
-                )}
-              </div>
-
-              <div className="flex justify-end gap-2 pt-4 border-t border-primary-200/50">
+          <ModalSection title="Assign Roles">
+            <div className="flex flex-wrap gap-2">
+              {roles.map((role) => (
                 <button
+                  key={role.code}
                   type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 text-neutral-600 hover:text-neutral-800"
+                  onClick={() => toggleRole(role.code)}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    addUserForm.roles.includes(role.code)
+                      ? "bg-primary text-white shadow-md"
+                      : "bg-neutral-100 text-neutral hover:bg-neutral-200"
+                  }`}
                 >
-                  Cancel
+                  {addUserForm.roles.includes(role.code) && <LuCheck className="w-4 h-4" />}
+                  {role.name}
                 </button>
+              ))}
+            </div>
+          </ModalSection>
+
+          <ModalSection title="Assign to Branches">
+            <div className="flex flex-wrap gap-2">
+              {branches.filter(b => b.is_active).map((branch) => (
                 <button
-                  type="submit"
-                  disabled={addingUser}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  key={branch.id}
+                  type="button"
+                  onClick={() => toggleBranchInForm(branch.id)}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    addUserForm.branch_ids.includes(branch.id)
+                      ? "bg-positive text-white shadow-md"
+                      : "bg-neutral-100 text-neutral hover:bg-neutral-200"
+                  }`}
                 >
-                  {addingUser ? (
-                    <>
-                      <LuRefreshCw className="w-4 h-4 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    <>
-                      <LuPlus className="w-4 h-4" />
-                      Create User
-                    </>
-                  )}
+                  {addUserForm.branch_ids.includes(branch.id) && <LuCheck className="w-4 h-4" />}
+                  {branch.name} ({branch.code})
                 </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+              ))}
+            </div>
+            {addUserForm.branch_ids.length > 0 && (
+              <p className="text-xs text-neutral-900 mt-2">
+                First selected branch will be the primary branch.
+              </p>
+            )}
+          </ModalSection>
+
+          <ModalButtons
+            onCancel={() => setShowAddModal(false)}
+            submitText={addingUser ? "Creating..." : "Create User"}
+            loading={addingUser}
+          />
+        </form>
+      </Modal>
 
       {/* Assign Branch Modal */}
-      {showAssignModal && selectedUser && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-4 border-b border-primary-200/50">
-              <div>
-                <h3 className="text-lg font-semibold text-neutral-900">Assign Branches</h3>
-                <p className="text-sm text-neutral-500">{selectedUser.full_name}</p>
-              </div>
-              <button
-                onClick={() => setShowAssignModal(false)}
-                className="p-1 text-neutral-400 hover:text-neutral-600"
-              >
-                <LuX className="w-5 h-5" />
-              </button>
-            </div>
+      <Modal
+        isOpen={showAssignModal && !!selectedUser}
+        onClose={() => setShowAssignModal(false)}
+        title="Assign Branches"
+      >
+        {selectedUser && (
+          <form onSubmit={handleAssignBranches}>
+            <p className="text-sm text-neutral-900 -mt-2 mb-4">{selectedUser.full_name}</p>
             
-            <form onSubmit={handleAssignBranches} className="p-4 space-y-4">
-              {assignError && (
-                <div className="bg-negative-50 border border-negative-200 rounded-lg p-3 flex items-center gap-2">
-                  <LuCircleAlert className="w-4 h-4 text-negative-500" />
-                  <p className="text-sm text-negative-700">{assignError}</p>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Select Branches
-                </label>
-                <div className="space-y-2">
-                  {branches.filter(b => b.is_active).map((branch) => (
-                    <div
-                      key={branch.id}
-                      className={`flex items-center justify-between p-3 rounded-lg border transition-colors cursor-pointer ${
-                        selectedBranches.includes(branch.id)
-                          ? "border-positive-500 bg-positive-50"
-                          : "border-primary-200 hover:border-primary-300"
-                      }`}
-                      onClick={() => toggleBranchInAssign(branch.id)}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`w-5 h-5 rounded border flex items-center justify-center ${
-                            selectedBranches.includes(branch.id)
-                              ? "bg-positive-500 border-positive-500"
-                              : "border-neutral-300"
-                          }`}
-                        >
-                          {selectedBranches.includes(branch.id) && (
-                            <LuCheck className="w-3 h-3 text-white" />
-                          )}
-                        </div>
-                        <div>
-                          <p className="font-medium text-neutral-900">{branch.name}</p>
-                          <p className="text-xs text-neutral-500">{branch.code}</p>
-                        </div>
+            <ModalError message={assignError} />
+            
+            <ModalSection title="Select Branches">
+              <div className="space-y-3">
+                {branches.filter(b => b.is_active).map((branch) => (
+                  <div
+                    key={branch.id}
+                    className={`flex items-center justify-between p-4 rounded-xl transition-all cursor-pointer ${
+                      selectedBranches.includes(branch.id)
+                        ? "bg-positive-50 ring-2 ring-positive"
+                        : "bg-neutral-100 hover:bg-neutral-150"
+                    }`}
+                    onClick={() => toggleBranchInAssign(branch.id)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+                          selectedBranches.includes(branch.id)
+                            ? "bg-positive border-positive"
+                            : "border-neutral-300 bg-white"
+                        }`}
+                      >
+                        {selectedBranches.includes(branch.id) && (
+                          <LuCheck className="w-4 h-4 text-white" />
+                        )}
                       </div>
-                      
-                      {selectedBranches.includes(branch.id) && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPrimaryBranchId(branch.id);
-                          }}
-                          className={`text-xs px-2 py-1 rounded ${
-                            primaryBranchId === branch.id
-                              ? "bg-positive-500 text-white"
-                              : "bg-neutral-200 text-neutral-600 hover:bg-neutral-300"
-                          }`}
-                        >
-                          {primaryBranchId === branch.id ? "Primary" : "Set Primary"}
-                        </button>
-                      )}
+                      <div>
+                        <p className="font-medium text-neutral-900">{branch.name}</p>
+                        <p className="text-xs text-neutral-900">{branch.code}</p>
+                      </div>
                     </div>
-                  ))}
-                </div>
+                    
+                    {selectedBranches.includes(branch.id) && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPrimaryBranchId(branch.id);
+                        }}
+                        className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
+                          primaryBranchId === branch.id
+                            ? "bg-positive text-white"
+                            : "bg-white text-neutral hover:bg-neutral-50 border border-neutral-200"
+                        }`}
+                      >
+                        {primaryBranchId === branch.id ? "Primary" : "Set Primary"}
+                      </button>
+                    )}
+                  </div>
+                ))}
               </div>
+            </ModalSection>
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-primary-200/50">
-                <button
-                  type="button"
-                  onClick={() => setShowAssignModal(false)}
-                  className="px-4 py-2 text-neutral-600 hover:text-neutral-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={assigningBranches}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {assigningBranches ? (
-                    <>
-                      <LuRefreshCw className="w-4 h-4 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <LuCheck className="w-4 h-4" />
-                      Save Changes
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            <ModalButtons
+              onCancel={() => setShowAssignModal(false)}
+              submitText={assigningBranches ? "Saving..." : "Save Changes"}
+              loading={assigningBranches}
+            />
+          </form>
+        )}
+      </Modal>
     </div>
   );
 }

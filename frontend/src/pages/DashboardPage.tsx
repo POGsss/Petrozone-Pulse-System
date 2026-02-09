@@ -3,6 +3,7 @@ import { useAuth } from "../auth";
 import { DashboardLayout, NavIcons } from "../components";
 import type { NavItem } from "../components";
 
+
 // Admin components (lazy loaded for HM role)
 import { UserManagement } from "./admin/UserManagement";
 import { BranchManagement } from "./admin/BranchManagement";
@@ -154,11 +155,11 @@ export function DashboardPage() {
       {activeNav === "dashboard" && (
         <div className="bg-white rounded-xl p-6 border border-primary-200/50">
           <div className="flex items-center gap-2 mb-4">
-            <span className="text-sm text-neutral-500">Your roles:</span>
+            <span className="text-sm text-neutral-950">Your roles:</span>
             {userRoles.map((role) => (
               <span
                 key={role}
-                className="px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-xs font-medium"
+                className="px-3 py-1 bg-neutral-100 text-primary rounded-full text-xs font-medium"
               >
                 {role === "HM" ? "Head Manager" : 
                  role === "POC" ? "POC Supervisor" :
@@ -168,7 +169,7 @@ export function DashboardPage() {
               </span>
             ))}
           </div>
-          <p className="text-neutral-500">Welcome to Petrozone Pulse System. Select a menu item to get started.</p>
+          <p className="text-neutral-900">Welcome to Petrozone Pulse System. Select a menu item to get started.</p>
         </div>
       )}
 
@@ -189,14 +190,14 @@ export function DashboardPage() {
       {/* Settings page placeholder */}
       {activeNav === "settings" && (
         <div className="bg-white rounded-xl p-6 border border-primary-200/50">
-          <p className="text-neutral-500">System settings and preferences will be available here.</p>
+          <p className="text-neutral-900">System settings and preferences will be available here.</p>
         </div>
       )}
 
       {/* Empty state for other pages */}
       {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && (
         <div className="bg-white rounded-xl p-6 border border-primary-200/50">
-          <p className="text-neutral-500">This feature is coming in the next phase.</p>
+          <p className="text-neutral-900">This feature is coming in the next phase.</p>
         </div>
       )}
     </DashboardLayout>

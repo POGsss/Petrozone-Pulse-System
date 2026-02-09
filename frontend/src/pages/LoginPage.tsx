@@ -25,13 +25,13 @@ export function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-primary-50 p-4">
+        <div className="min-h-screen flex items-center justify-center bg-neutral-100 p-4">
             <div className="w-full max-w-md">
                 {/* Login card */}
                 <div className="bg-white rounded-2xl p-8">
                     {/* Logo and title */}
                     <div className="flex flex-col items-center mb-8">
-                        <h1 className="text-2xl font-bold text-neutral-900 mt-6">Welcome back!</h1>
+                        <h1 className="text-2xl font-bold text-neutral-950 mt-6">Welcome back!</h1>
                         <p className="text-neutral-500 mt-1">Login to your account</p>
                     </div>
 
@@ -46,14 +46,14 @@ export function LoginPage() {
                         {/* Email field */}
                         <div className="relative">
                             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                <LuMail className="w-5 h-5 text-neutral-400" />
+                                <LuMail className="w-5 h-5 text-neutral-900" />
                             </div>
                             <input
                                 type="email"
                                 required
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
-                                className="w-full pl-12 pr-4 py-3 bg-primary-50 border border-primary-200/50 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:bg-white outline-none transition text-neutral-900 placeholder-neutral-400"
+                                className="w-full pl-12 pr-4 py-3 bg-neutral-100 border border-neutral-200/50 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary focus:bg-white outline-none transition text-neutral-950 placeholder-neutral-400"
                                 placeholder="Email Address"
                                 disabled={isLoading}
                             />
@@ -62,14 +62,14 @@ export function LoginPage() {
                         {/* Password field */}
                         <div className="relative">
                             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                <LuLock className="w-5 h-5 text-neutral-400" />
+                                <LuLock className="w-5 h-5 text-neutral-900" />
                             </div>
                             <input
                                 type={showPassword ? "text" : "password"}
                                 required
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="w-full pl-12 pr-12 py-3 bg-primary-50 border border-primary-200/50 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:bg-white outline-none transition text-neutral-900 placeholder-neutral-400"
+                                className="w-full pl-12 pr-12 py-3 bg-neutral-100 border border-neutral-200/50 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary focus:bg-white outline-none transition text-neutral-950 placeholder-neutral-400"
                                 placeholder="Password"
                                 disabled={isLoading}
                             />
@@ -80,25 +80,17 @@ export function LoginPage() {
                                 tabIndex={-1}
                             >
                                 {showPassword ? (
-                                    <LuEye className="w-5 h-5 text-neutral-400 hover:text-neutral-600" />
+                                    <LuEye className="w-5 h-5 text-neutral-900 hover:text-neutral-950" />
                                 ) : (
-                                    <LuEyeOff className="w-5 h-5 text-neutral-400 hover:text-neutral-600" />
+                                    <LuEyeOff className="w-5 h-5 text-neutral-900 hover:text-neutral-950" />
                                 )}
                             </button>
                         </div>
 
                         {/* Recover password link */}
                         <div className="text-right">
-                            <a href="#" className="text-sm text-primary-500 hover:text-primary-600 font-medium">
+                            <a href="#" className="text-sm text-primary hover:text-primary-950 font-medium">
                                 Recover Password
-                            </a>
-                        </div>
-
-                        {/* Sign up link */}
-                        <div className="text-center text-sm text-neutral-500">
-                            Don't have an account?{" "}
-                            <a href="#" className="text-primary-500 hover:text-primary-600 font-medium">
-                                Sign Up
                             </a>
                         </div>
 
@@ -106,7 +98,7 @@ export function LoginPage() {
                         <button
                             type="submit"
                             disabled={isLoading}
-                            className="w-full bg-primary-500 text-white py-3.5 px-4 rounded-xl font-semibold hover:bg-primary-600 focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                            className="w-full bg-primary text-white py-3.5 px-4 rounded-xl font-semibold hover:bg-primary-950 focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition"
                         >
                             {isLoading ? (
                                 <span className="flex items-center justify-center">
