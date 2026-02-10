@@ -52,34 +52,27 @@ export async function requireAuth(
       return;
     }
 
-    // Fetch user profile
-    const { data: profile } = await supabaseAdmin
-      .from("user_profiles")
-      .select("*")
-      .eq("id", user.id)
-      .single();
+    // Use the optimized RPC to get all user data in a single call
+    const { data: userData, error: userDataError } = await supabaseAdmin.rpc("get_user_full_data", {
+      p_user_id: user.id,
+    });
+
+    if (userDataError) {
+      console.error("Get user data error:", userDataError);
+      res.status(500).json({ error: "Failed to fetch user data" });
+      return;
+    }
+
+    const userDataObj = userData as { profile: any; roles: string[]; branches: any[] } | null;
+    const profile = userDataObj?.profile || null;
+    const roles = userDataObj?.roles || [];
+    const branchIds = userDataObj?.branches?.map((b: any) => b.branch_id) || [];
 
     // Check if user is active
     if (profile && !profile.is_active) {
       res.status(403).json({ error: "User account is deactivated" });
       return;
     }
-
-    // Fetch user roles
-    const { data: userRoles } = await supabaseAdmin
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id);
-
-    const roles = userRoles?.map((r) => r.role) ?? [];
-
-    // Fetch user branch assignments
-    const { data: branchAssignments } = await supabaseAdmin
-      .from("user_branch_assignments")
-      .select("branch_id")
-      .eq("user_id", user.id);
-
-    const branchIds = branchAssignments?.map((b) => b.branch_id) ?? [];
 
     // Attach user info and authenticated Supabase client to request
     req.user = {

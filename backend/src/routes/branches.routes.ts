@@ -12,11 +12,29 @@ router.use(requireAuth);
 /**
  * GET /api/branches
  * Get all branches the current user has access to
- * Uses RLS to filter based on user's role and assignments
+ * HM users get all branches, others get branches based on assignments
  */
 router.get("/", async (req: Request, res: Response): Promise<void> => {
   try {
-    // Use the user's authenticated Supabase client to respect RLS
+    // HM users have access to all branches - use supabaseAdmin for faster query
+    const isHM = req.user?.roles.includes("HM");
+    
+    if (isHM) {
+      const { data: branches, error } = await supabaseAdmin
+        .from("branches")
+        .select("*")
+        .order("name");
+
+      if (error) {
+        res.status(500).json({ error: error.message });
+        return;
+      }
+
+      res.json(branches);
+      return;
+    }
+
+    // For other users, use RLS to filter based on assignments
     const { data: branches, error } = await req.supabase!
       .from("branches")
       .select("*")

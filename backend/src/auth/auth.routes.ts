@@ -223,4 +223,96 @@ router.post("/change-password", requireAuth, async (req: Request, res: Response)
   }
 });
 
+/**
+ * PUT /api/auth/profile
+ * Update the current user's profile information
+ */
+router.put("/profile", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { full_name, phone, email } = req.body;
+
+    // Validate input
+    if (!full_name || full_name.trim().length === 0) {
+      res.status(400).json({ error: "Full name is required" });
+      return;
+    }
+
+    // Update user_profiles table
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from("user_profiles")
+      .update({
+        full_name: full_name.trim(),
+        phone: phone?.trim() || null,
+        email: email?.trim() || req.user!.email,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", req.user!.id)
+      .select()
+      .single();
+
+    if (profileError) {
+      console.error("Profile update error:", profileError);
+      res.status(500).json({ error: "Failed to update profile" });
+      return;
+    }
+
+    // If email was changed, update in auth.users as well
+    if (email && email.trim() !== req.user!.email) {
+      const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(
+        req.user!.id,
+        { email: email.trim() }
+      );
+
+      if (authError) {
+        console.error("Auth email update error:", authError);
+        // Revert the profile change
+        await supabaseAdmin
+          .from("user_profiles")
+          .update({ email: req.user!.email })
+          .eq("id", req.user!.id);
+        res.status(500).json({ error: "Failed to update email" });
+        return;
+      }
+    }
+
+    // Log the profile update event
+    await supabaseAdmin.rpc("log_auth_event", {
+      p_event_type: "PROFILE_UPDATE",
+      p_user_id: req.user!.id,
+    });
+
+    res.json({ 
+      message: "Profile updated successfully",
+      profile 
+    });
+  } catch (error) {
+    console.error("Profile update error:", error);
+    res.status(500).json({ error: "Failed to update profile" });
+  }
+});
+
+/**
+ * GET /api/auth/profile
+ * Get the current user's profile information
+ */
+router.get("/profile", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { data: profile, error } = await supabaseAdmin
+      .from("user_profiles")
+      .select("*")
+      .eq("id", req.user!.id)
+      .single();
+
+    if (error) {
+      res.status(404).json({ error: "Profile not found" });
+      return;
+    }
+
+    res.json({ profile });
+  } catch (error) {
+    console.error("Get profile error:", error);
+    res.status(500).json({ error: "Failed to get profile" });
+  }
+});
+
 export default router;

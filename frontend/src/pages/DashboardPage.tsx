@@ -7,6 +7,7 @@ import type { NavItem } from "../components";
 // Admin components (lazy loaded for HM role)
 import { UserManagement } from "./admin/UserManagement";
 import { BranchManagement } from "./admin/BranchManagement";
+import { ProfileSettings } from "./admin/ProfileSettings";
 
 // Page content data
 const pageData: Record<string, { title: string; description: string }> = {
@@ -53,6 +54,10 @@ const pageData: Record<string, { title: string; description: string }> = {
   customers: {
     title: "Customers",
     description: "View and manage customer information and history.",
+  },
+  profile: {
+    title: "Profile Settings",
+    description: "Manage your account information and change your password.",
   },
 };
 
@@ -183,6 +188,11 @@ export function DashboardPage() {
           <BranchManagement />
       )}
 
+      {/* Profile Settings - all users */}
+      {activeNav === "profile" && (
+          <ProfileSettings />
+      )}
+
       {/* Settings page placeholder */}
       {activeNav === "settings" && (
         <div className="bg-white rounded-xl p-6 border border-neutral-100">
@@ -191,7 +201,7 @@ export function DashboardPage() {
       )}
 
       {/* Empty state for other pages */}
-      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && (
+      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && (
         <div className="bg-white rounded-xl p-6 border border-neutral-100">
           <p className="text-neutral-900">This feature is coming in the next phase.</p>
         </div>

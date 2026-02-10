@@ -84,6 +84,17 @@ export const authApi = {
       body: JSON.stringify({ currentPassword, newPassword }),
     });
   },
+
+  updateProfile: async (data: { full_name: string; phone?: string; email?: string }) => {
+    return fetchWithAuth<{ message: string; profile: import("../types").UserProfile }>("/api/auth/profile", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  getProfile: async () => {
+    return fetchWithAuth<{ profile: import("../types").UserProfile }>("/api/auth/profile");
+  },
 };
 
 // Branches API
