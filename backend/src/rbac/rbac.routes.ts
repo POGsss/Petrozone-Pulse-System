@@ -17,7 +17,7 @@ router.get("/roles", requireManagement, async (_req: Request, res: Response): Pr
   // Return the list of available roles with descriptions
   // Note: ADMIN role has been merged into HM
   const roles = [
-    { code: "HM", name: "Head Manager", description: "Full system access, user and branch management, multi-branch oversight" },
+    { code: "HM", name: "Higher Management", description: "Full system access, user and branch management, multi-branch oversight" },
     { code: "POC", name: "POC Supervisor", description: "Branch operations, approvals, and staff management" },
     { code: "JS", name: "Junior Supervisor", description: "Daily operations and technician supervision" },
     { code: "R", name: "Receptionist", description: "Customer intake, quotations, and daily reports" },

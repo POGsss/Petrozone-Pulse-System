@@ -127,7 +127,7 @@ export function requireRoles(...allowedRoles: UserRole[]) {
 }
 
 /**
- * Middleware to require HM (Head Manager) role - has full system access
+ * Middleware to require HM (Higher Management) role - has full system access
  * Note: ADMIN role has been merged into HM
  */
 export const requireAdmin = requireRoles("HM");

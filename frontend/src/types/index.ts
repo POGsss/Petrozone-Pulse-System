@@ -1,5 +1,5 @@
 // Role types matching backend
-// Note: ADMIN role has been merged into HM (Head Manager)
+// Note: ADMIN role has been merged into HM (Higher Management)
 export type UserRole = "HM" | "POC" | "JS" | "R" | "T";
 
 // Branch type

@@ -161,7 +161,7 @@ export function DashboardPage() {
                 key={role}
                 className="px-3 py-1 bg-neutral-100 text-primary rounded-full text-xs font-medium"
               >
-                {role === "HM" ? "Head Manager" : 
+                {role === "HM" ? "Higher Management" : 
                  role === "POC" ? "POC Supervisor" :
                  role === "JS" ? "Junior Supervisor" :
                  role === "R" ? "Receptionist" :
