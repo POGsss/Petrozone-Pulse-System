@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { LuPlus, LuCheck, LuCircleAlert, LuRefreshCw, LuSearch, LuPencil, LuTrash2, LuUsers, LuUserCheck, LuUserX, LuChevronLeft, LuChevronRight } from "react-icons/lu";
+import { LuPlus, LuCircleAlert, LuRefreshCw, LuSearch, LuPencil, LuTrash2, LuUsers, LuUserCheck, LuUserX, LuChevronLeft, LuChevronRight } from "react-icons/lu";
 import { rbacApi, branchesApi } from "../../lib/api";
 import { Modal, ModalSection, ModalInput, ModalButtons, ModalError } from "../../components";
 import type { Branch, UserProfile, BranchAssignment, RoleInfo } from "../../types";
@@ -249,11 +249,8 @@ export function UserManagement() {
         ? prev.branch_ids.filter(id => id !== branchId)
         : [...prev.branch_ids, branchId];
       
-      // Reset primary if removed
-      let newPrimary = prev.primary_branch_id;
-      if (!newBranches.includes(prev.primary_branch_id || "")) {
-        newPrimary = newBranches[0] || null;
-      }
+      // First selected branch is always primary
+      const newPrimary = newBranches[0] || null;
       
       return { ...prev, branch_ids: newBranches, primary_branch_id: newPrimary };
     });
@@ -326,7 +323,7 @@ export function UserManagement() {
         </div>
         <div className="bg-white border border-neutral-200 rounded-xl p-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-positive-100 rounded-lg">
+            <div className="p-2 bg-primary-100 rounded-lg">
               <LuUserCheck className="w-5 h-5 text-positive" />
             </div>
             <div>
@@ -408,7 +405,7 @@ export function UserManagement() {
                             key={ba.branch_id}
                             className={`px-2 py-0.5 rounded text-xs font-medium ${
                               ba.is_primary
-                                ? "bg-positive-100 text-positive-950"
+                                ? "bg-primary-100 text-positive-950"
                                 : "bg-neutral-100 text-neutral-950"
                             }`}
                           >
@@ -423,7 +420,7 @@ export function UserManagement() {
                     <span
                       className={`px-3 py-1 rounded-full text-xs font-medium ${
                         user.is_active
-                          ? "bg-positive-100 text-positive-950"
+                          ? "bg-primary-100 text-positive-950"
                           : "bg-neutral-100 text-neutral-950"
                       }`}
                     >
@@ -546,7 +543,6 @@ export function UserManagement() {
                       : "bg-neutral-100 text-neutral hover:bg-neutral-200"
                   }`}
                 >
-                  {addUserForm.roles.includes(role.code) && <LuCheck className="w-4 h-4" />}
                   {role.name}
                 </button>
               ))}
@@ -562,11 +558,10 @@ export function UserManagement() {
                   onClick={() => toggleBranchInForm(branch.id)}
                   className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
                     addUserForm.branch_ids.includes(branch.id)
-                      ? "bg-positive text-white shadow-md"
+                      ? "bg-primary text-white shadow-md"
                       : "bg-neutral-100 text-neutral hover:bg-neutral-200"
                   }`}
                 >
-                  {addUserForm.branch_ids.includes(branch.id) && <LuCheck className="w-4 h-4" />}
                   {branch.name} ({branch.code})
                 </button>
               ))}
@@ -617,7 +612,7 @@ export function UserManagement() {
                 type="button"
                 onClick={() => setEditUserForm(prev => ({ ...prev, is_active: !prev.is_active }))}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  editUserForm.is_active ? "bg-positive" : "bg-neutral-300"
+                  editUserForm.is_active ? "bg-primary" : "bg-neutral-200"
                 }`}
               >
                 <span
@@ -645,7 +640,6 @@ export function UserManagement() {
                       : "bg-neutral-100 text-neutral hover:bg-neutral-200"
                   }`}
                 >
-                  {editUserForm.roles.includes(role.code) && <LuCheck className="w-4 h-4" />}
                   {role.name}
                 </button>
               ))}
@@ -653,54 +647,27 @@ export function UserManagement() {
           </ModalSection>
 
           <ModalSection title="Assign to Branches">
-            <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
               {branches.filter(b => b.is_active).map((branch) => (
-                <div
+                <button
                   key={branch.id}
-                  className={`flex items-center justify-between p-4 rounded-xl transition-all cursor-pointer ${
-                    editUserForm.branch_ids.includes(branch.id)
-                      ? "bg-positive-50 ring-2 ring-positive"
-                      : "bg-neutral-100 hover:bg-neutral-150"
-                  }`}
+                  type="button"
                   onClick={() => toggleEditBranch(branch.id)}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    editUserForm.branch_ids.includes(branch.id)
+                      ? "bg-primary text-white shadow-md"
+                      : "bg-neutral-100 text-neutral hover:bg-neutral-200"
+                  }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
-                        editUserForm.branch_ids.includes(branch.id)
-                          ? "bg-positive border-positive"
-                          : "border-neutral-300 bg-white"
-                      }`}
-                    >
-                      {editUserForm.branch_ids.includes(branch.id) && (
-                        <LuCheck className="w-4 h-4 text-white" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="font-medium text-neutral-900">{branch.name}</p>
-                      <p className="text-xs text-neutral-500">{branch.code}</p>
-                    </div>
-                  </div>
-                  
-                  {editUserForm.branch_ids.includes(branch.id) && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditUserForm(prev => ({ ...prev, primary_branch_id: branch.id }));
-                      }}
-                      className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
-                        editUserForm.primary_branch_id === branch.id
-                          ? "bg-positive text-white"
-                          : "bg-white text-neutral hover:bg-neutral-50 border border-neutral-200"
-                      }`}
-                    >
-                      {editUserForm.primary_branch_id === branch.id ? "Primary" : "Set Primary"}
-                    </button>
-                  )}
-                </div>
+                  {branch.name} ({branch.code})
+                </button>
               ))}
             </div>
+            {editUserForm.branch_ids.length > 0 && (
+              <p className="text-xs text-neutral-900 mt-2">
+                First selected branch will be the primary branch.
+              </p>
+            )}
           </ModalSection>
 
           <ModalButtons

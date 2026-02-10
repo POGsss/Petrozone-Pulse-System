@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { LuPlus, LuCircleAlert, LuRefreshCw, LuPencil, LuTrash2 } from "react-icons/lu";
 import { branchesApi } from "../../lib/api";
-import { Modal, ModalSection, ModalInput, ModalToggle, ModalButtons, ModalError } from "../../components";
+import { Modal, ModalSection, ModalInput, ModalButtons, ModalError } from "../../components";
 import type { Branch } from "../../types";
 
 export function BranchManagement() {
@@ -389,15 +389,25 @@ export function BranchManagement() {
                 onChange={(v) => setEditBranchForm(prev => ({ ...prev, email: v }))}
                 placeholder="Email Address"
               />
-            </ModalSection>
-
-            <ModalSection title="Branch Status">
-              <ModalToggle
-                label="Branch Active"
-                description={editBranchForm.is_active ? "Active" : "Inactive"}
-                checked={editBranchForm.is_active}
-                onChange={(v) => setEditBranchForm(prev => ({ ...prev, is_active: v }))}
-              />
+              
+              <div className="flex items-center gap-3 mt-4">
+                <button
+                  type="button"
+                  onClick={() => setEditBranchForm(prev => ({ ...prev, is_active: !prev.is_active }))}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    editBranchForm.is_active ? "bg-primary" : "bg-neutral-200"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      editBranchForm.is_active ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+                <span className="text-sm text-neutral-700">
+                  {editBranchForm.is_active ? "Active" : "Inactive"}
+                </span>
+              </div>
             </ModalSection>
 
             <ModalButtons
