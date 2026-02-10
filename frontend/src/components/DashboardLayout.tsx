@@ -97,7 +97,7 @@ export function DashboardLayout({
         </ul>
       </nav>
 
-      <div className="p-3 space-y-2 border-t border-neutral-100">
+      <div className="p-3 space-y-2 border-t border-neutral-200">
         
         <button
           onClick={logout}
@@ -120,20 +120,20 @@ export function DashboardLayout({
         />
       )}
 
-      <aside className={`fixed inset-y-0 left-0 w-64 bg-white border-r border-neutral-100 z-50 transform transition-transform duration-300 lg:hidden ${
+      <aside className={`fixed inset-y-0 left-0 w-64 bg-white border-r border-neutral-200 z-50 transform transition-transform duration-300 lg:hidden ${
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       }`}>
         <SidebarContent mobile />
       </aside>
 
-      <aside className={`hidden lg:flex flex-col h-screen sticky top-0 bg-white border-r border-neutral-100 transition-all duration-300 ${
+      <aside className={`hidden lg:flex flex-col h-screen sticky top-0 bg-white border-r border-neutral-200 transition-all duration-300 ${
         sidebarCollapsed ? "w-20" : "w-64"
       }`}>
         <SidebarContent collapsed={sidebarCollapsed} />
       </aside>
 
       <div className="flex-1 flex flex-col min-h-screen">
-        <header className="bg-white border-b border-neutral-100 px-4 lg:px-6 py-4 sticky top-0 z-30">
+        <header className="bg-white border-b border-neutral-200 px-4 lg:px-6 py-4 sticky top-0 z-30">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button
@@ -170,7 +170,7 @@ export function DashboardLayout({
                   <LuChevronDown className="w-4 h-4" />
                 </button>
                 {branchDropdownOpen && user?.branches && user.branches.length > 0 && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg border border-neutral-100 py-1 z-10">
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg border border-neutral-200 py-1 z-10">
                     {user.branches.map((assignment) => (
                       <button
                         key={assignment.branch_id}
@@ -200,7 +200,7 @@ export function DashboardLayout({
                   {user?.profile?.full_name?.charAt(0) || user?.email?.charAt(0) || "U"}
                 </button>
                 {profileDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg border border-neutral-100 py-3 z-10">
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg border border-neutral-200 py-3 z-10">
                     <div className="px-4 gap-2 flex items-start flex-col">
                       <div>
                         <p className="font-medium text-neutral-950">{userName}</p>

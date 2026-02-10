@@ -1,0 +1,422 @@
+import { useState, useEffect, useMemo } from "react";
+import { LuFileText, LuRefreshCw, LuCircleAlert, LuSearch, LuFilter, LuChevronLeft, LuChevronRight, LuLogIn, LuActivity, LuClock } from "react-icons/lu";
+import { auditApi } from "../../lib/api";
+import type { AuditLog, PaginatedResponse } from "../../types";
+
+const ITEMS_PER_PAGE = 20;
+
+// Action types for filtering
+const ACTION_TYPES = [
+  { value: "", label: "All Actions" },
+  { value: "LOGIN", label: "Login" },
+  { value: "LOGOUT", label: "Logout" },
+  { value: "CREATE", label: "Create" },
+  { value: "UPDATE", label: "Update" },
+  { value: "DELETE", label: "Delete" },
+];
+
+// Format date helper
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+// Get action badge color
+function getActionColor(action: string): string {
+  switch (action) {
+    case "LOGIN":
+    case "LOGOUT":
+      return "bg-primary-100 text-primary-950";
+    case "CREATE":
+      return "bg-positive-100 text-positive-950";
+    case "UPDATE":
+      return "bg-negative-100 text-negative-950";
+    case "DELETE":
+      return "bg-negative-100 text-negative-950";
+    default:
+      return "bg-neutral-100 text-neutral-950";
+  }
+}
+
+export function AuditLogs() {
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<{
+    total_events: number;
+    logins: number;
+    actions: Record<string, number>;
+  } | null>(null);
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+
+  // Filters
+  const [filters, setFilters] = useState({
+    action: "",
+    search: "",
+    startDate: "",
+    endDate: "",
+  });
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Stats summary
+  const summaryStats = useMemo(() => {
+    if (!stats) return { total: 0, logins: 0, actions: 0 };
+    return {
+      total: stats.total_events,
+      logins: stats.logins || 0,
+      actions: Object.values(stats.actions).reduce((sum: number, count) => sum + (count as number), 0) - (stats.logins || 0),
+    };
+  }, [stats]);
+
+  // Fetch data on mount and when filters change
+  useEffect(() => {
+    fetchData();
+    fetchStats();
+  }, []);
+
+  // Refetch when page or filters change
+  useEffect(() => {
+    fetchData();
+  }, [currentPage, filters.action]);
+
+  async function fetchData() {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const params: Parameters<typeof auditApi.getLogs>[0] = {
+        limit: ITEMS_PER_PAGE,
+        offset: (currentPage - 1) * ITEMS_PER_PAGE,
+      };
+
+      if (filters.action) params.action = filters.action;
+      if (filters.startDate) params.start_date = filters.startDate;
+      if (filters.endDate) params.end_date = filters.endDate;
+
+      const response: PaginatedResponse<AuditLog> = await auditApi.getLogs(params);
+      setLogs(response.data);
+      setTotalItems(response.pagination.total);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch audit logs");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function fetchStats() {
+    try {
+      const statsData = await auditApi.getStats(30);
+      setStats(statsData);
+    } catch (err) {
+      console.error("Failed to fetch stats:", err);
+    }
+  }
+
+  // Filter logs by search term (client-side for quick filtering)
+  const filteredLogs = useMemo(() => {
+    if (!filters.search) return logs;
+    const searchLower = filters.search.toLowerCase();
+    return logs.filter(log =>
+      log.action.toLowerCase().includes(searchLower) ||
+      log.entity_type.toLowerCase().includes(searchLower) ||
+      log.user_profiles?.full_name?.toLowerCase().includes(searchLower) ||
+      log.user_profiles?.email?.toLowerCase().includes(searchLower)
+    );
+  }, [logs, filters.search]);
+
+  // Apply date filter
+  function handleApplyFilters() {
+    setCurrentPage(1);
+    fetchData();
+  }
+
+  // Reset filters
+  function handleResetFilters() {
+    setFilters({ action: "", search: "", startDate: "", endDate: "" });
+    setCurrentPage(1);
+    fetchData();
+  }
+
+  if (loading && logs.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <LuRefreshCw className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (error && logs.length === 0) {
+    return (
+      <div className="bg-negative-200 border border-negative rounded-lg p-4 flex items-center gap-3">
+        <LuCircleAlert className="w-5 h-5 text-negative-950 flex-shrink-0" />
+        <div>
+          <p className="text-sm text-negative-950">{error}</p>
+          <button
+            onClick={fetchData}
+            className="text-sm text-negative-900 hover:underline mt-1"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Summary Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white border border-neutral-200 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary-100 rounded-lg">
+              <LuFileText className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm text-neutral-900">Total Events</p>
+              <p className="text-2xl font-bold text-neutral-950">{summaryStats.total}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white border border-neutral-200 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-positive-100 rounded-lg">
+              <LuLogIn className="w-5 h-5 text-positive" />
+            </div>
+            <div>
+              <p className="text-sm text-neutral-900">Login Events</p>
+              <p className="text-2xl font-bold text-neutral-950">{summaryStats.logins}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white border border-neutral-200 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-negative-100 rounded-lg">
+              <LuActivity className="w-5 h-5 text-negative" />
+            </div>
+            <div>
+              <p className="text-sm text-neutral-900">Other Actions</p>
+              <p className="text-2xl font-bold text-neutral-950">{summaryStats.actions}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Table Section */}
+      <div className="bg-white border border-neutral-200 rounded-xl">
+        {/* Table Header with Search and Filters */}
+        <div className="p-4 border-b border-neutral-200 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="relative flex-1 max-w-md">
+              <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+              <input
+                type="text"
+                placeholder="Search logs..."
+                value={filters.search}
+                onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+                className="pl-9 pr-4 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary w-full"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={filters.action}
+                onChange={(e) => {
+                  setFilters(prev => ({ ...prev, action: e.target.value }));
+                  setCurrentPage(1);
+                }}
+                className="appearance-none px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              >
+                {ACTION_TYPES.map(type => (
+                  <option key={type.value} value={type.value}>{type.label}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm font-medium transition-colors ${
+                  showFilters ? "border-primary bg-primary-50 text-primary" : "border-neutral-300 text-neutral-950 hover:bg-neutral-50"
+                }`}
+              >
+                <LuFilter className="w-4 h-4" />
+                <span className="hidden sm:inline">Filters</span>
+              </button>
+              <button
+                onClick={fetchData}
+                disabled={loading}
+                className="p-2 border border-neutral-300 rounded-lg text-neutral-950 hover:bg-neutral-50 disabled:opacity-50"
+                title="Refresh"
+              >
+                <LuRefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Advanced Filters */}
+          {showFilters && (
+            <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-neutral-100">
+              <div className="flex-1">
+                <label className="block text-xs text-neutral-500 mb-1">Start Date</label>
+                <input
+                  type="date"
+                  value={filters.startDate}
+                  onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
+                  className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-neutral-500 mb-1">End Date</label>
+                <input
+                  type="date"
+                  value={filters.endDate}
+                  onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
+                  className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                />
+              </div>
+              <div className="flex items-end gap-2">
+                <button
+                  onClick={handleApplyFilters}
+                  className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-950 transition-colors"
+                >
+                  Apply
+                </button>
+                <button
+                  onClick={handleResetFilters}
+                  className="px-4 py-2 border border-neutral-300 rounded-lg text-sm font-medium text-neutral-950 hover:bg-neutral-50 transition-colors"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Mobile Card View */}
+        <div className="md:hidden p-4 space-y-4">
+          {filteredLogs.map((log) => (
+            <div
+              key={log.id}
+              className="border border-neutral-200 rounded-xl p-4 space-y-3"
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between">
+                <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getActionColor(log.action)}`}>
+                  {log.action}
+                </span>
+                <span className="text-xs text-neutral-500 flex items-center gap-1">
+                  <LuClock className="w-3 h-3" />
+                  {formatDate(log.created_at)}
+                </span>
+              </div>
+
+              {/* Details */}
+              <div className="space-y-1">
+                <p className="text-sm text-neutral-900">
+                  <span className="text-neutral-500">Entity:</span>{" "}
+                  <span className="font-medium">{log.entity_type || "-"}</span>
+                </p>
+                {log.user_profiles && (
+                  <p className="text-sm text-neutral-900">
+                    <span className="text-neutral-500">User:</span>{" "}
+                    {log.user_profiles.full_name || log.user_profiles.email}
+                  </p>
+                )}
+                {log.branches && (
+                  <p className="text-sm text-neutral-900">
+                    <span className="text-neutral-500">Branch:</span>{" "}
+                    {log.branches.name} ({log.branches.code})
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {filteredLogs.length === 0 && (
+            <div className="text-center py-8 text-neutral-500">
+              No audit logs found.
+            </div>
+          )}
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-neutral-200 bg-neutral-50">
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Date & Time</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Action</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Entity</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">User</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Branch</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredLogs.map((log) => (
+                <tr key={log.id} className="border-b border-neutral-100 hover:bg-neutral-50 transition-colors">
+                  <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap">
+                    {formatDate(log.created_at)}
+                  </td>
+                  <td className="py-3 px-4 whitespace-nowrap">
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getActionColor(log.action)}`}>
+                      {log.action}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-sm text-neutral-900">
+                    {log.entity_type || "-"}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-neutral-900">
+                    {log.user_profiles?.full_name || log.user_profiles?.email || "-"}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-neutral-900">
+                    {log.branches ? `${log.branches.name} (${log.branches.code})` : "-"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {filteredLogs.length === 0 && (
+            <div className="text-center py-12 text-neutral-500">
+              No audit logs found.
+            </div>
+          )}
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border-t border-neutral-200">
+            <p className="text-sm text-neutral-900">
+              {(currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, totalItems)} of {totalItems} logs
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-2 border border-neutral-300 rounded-lg text-neutral-900 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <LuChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm text-neutral-900 px-2">
+                {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 border border-neutral-300 rounded-lg text-neutral-900 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <LuChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

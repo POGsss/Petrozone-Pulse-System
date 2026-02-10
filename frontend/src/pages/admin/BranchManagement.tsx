@@ -183,13 +183,13 @@ export function BranchManagement() {
 
   if (error) {
     return (
-      <div className="bg-neutral-100 rounded-lg p-4 flex items-center gap-3">
-        <LuCircleAlert className="w-5 h-5 text-negative flex-shrink-0" />
+      <div className="bg-negative-200 border border-negative rounded-lg p-4 flex items-center gap-3">
+        <LuCircleAlert className="w-5 h-5 text-negative-950 flex-shrink-0" />
         <div>
           <p className="text-sm text-negative-950">{error}</p>
           <button
             onClick={fetchBranches}
-            className="text-sm text-negative-900 hover:text-negative-950 hover:underline mt-1"
+            className="text-sm text-negative-600 hover:underline mt-1"
           >
             Try again
           </button>
@@ -201,7 +201,7 @@ export function BranchManagement() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between bg-white rounded-xl p-6 border border-neutral-200">
         <div>
           <h3 className="text-lg font-semibold text-neutral-950">Branches</h3>
           <p className="text-sm text-neutral-900">{branches.length} branches total</p>
@@ -220,7 +220,7 @@ export function BranchManagement() {
         {branches.map((branch) => (
           <div
             key={branch.id}
-            className={`bg-white rounded-xl border p-4 border-neutral-100`}
+            className={`bg-white rounded-xl border p-4 border-neutral-200`}
           >
             <div className="flex items-start justify-between mb-3">
               <div>
@@ -249,7 +249,7 @@ export function BranchManagement() {
               {branch.email && <p>{branch.email}</p>}
             </div>
 
-            <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-100">
+            <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
               <button
                 onClick={() => openEditModal(branch)}
                 className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"

@@ -162,6 +162,17 @@ router.post("/users", requireAdmin, async (req: Request, res: Response): Promise
       .eq("id", authUser.user.id)
       .single();
 
+    // Log audit: CREATE user (performed by admin)
+    const adminPrimaryBranch = req.user!.branchIds[0] || null;
+    await supabaseAdmin.rpc("log_admin_action", {
+      p_action: "CREATE",
+      p_entity_type: "user_profile",
+      p_entity_id: authUser.user.id,
+      p_performed_by_user_id: req.user!.id,
+      p_performed_by_branch_id: adminPrimaryBranch,
+      p_new_values: { email, full_name, roles, branch_ids },
+    });
+
     res.status(201).json({
       ...user,
       roles: user?.user_roles?.map((r: { role: UserRole }) => r.role) ?? [],
@@ -356,6 +367,17 @@ router.put("/users/:userId", requireAdmin, async (req: Request, res: Response): 
       return;
     }
 
+    // Log audit: UPDATE user (performed by admin)
+    const adminPrimaryBranch = req.user!.branchIds[0] || null;
+    await supabaseAdmin.rpc("log_admin_action", {
+      p_action: "UPDATE",
+      p_entity_type: "user_profile",
+      p_entity_id: userId,
+      p_performed_by_user_id: req.user!.id,
+      p_performed_by_branch_id: adminPrimaryBranch,
+      p_new_values: updateData,
+    });
+
     res.json(user);
   } catch (error) {
     console.error("Update user error:", error);
@@ -385,6 +407,16 @@ router.delete("/users/:userId", requireAdmin, async (req: Request, res: Response
       res.status(500).json({ error: authError.message });
       return;
     }
+
+    // Log audit: DELETE user (performed by admin)
+    const adminPrimaryBranch = req.user!.branchIds[0] || null;
+    await supabaseAdmin.rpc("log_admin_action", {
+      p_action: "DELETE",
+      p_entity_type: "user_profile",
+      p_entity_id: userId,
+      p_performed_by_user_id: req.user!.id,
+      p_performed_by_branch_id: adminPrimaryBranch,
+    });
 
     res.json({ message: "User deleted successfully" });
   } catch (error) {

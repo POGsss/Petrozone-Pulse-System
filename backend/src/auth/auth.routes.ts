@@ -211,9 +211,13 @@ router.post("/change-password", requireAuth, async (req: Request, res: Response)
     }
 
     // Log the password change event
-    await supabaseAdmin.rpc("log_auth_event", {
-      p_event_type: "PASSWORD_CHANGE",
-      p_user_id: req.user!.id,
+    const userPrimaryBranch = req.user!.branchIds[0] || null;
+    await supabaseAdmin.rpc("log_admin_action", {
+      p_action: "UPDATE",
+      p_entity_type: "password",
+      p_entity_id: req.user!.id,
+      p_performed_by_user_id: req.user!.id,
+      p_performed_by_branch_id: userPrimaryBranch,
     });
 
     res.json({ message: "Password changed successfully" });
@@ -276,9 +280,14 @@ router.put("/profile", requireAuth, async (req: Request, res: Response): Promise
     }
 
     // Log the profile update event
-    await supabaseAdmin.rpc("log_auth_event", {
-      p_event_type: "PROFILE_UPDATE",
-      p_user_id: req.user!.id,
+    const userPrimaryBranch = req.user!.branchIds[0] || null;
+    await supabaseAdmin.rpc("log_admin_action", {
+      p_action: "UPDATE",
+      p_entity_type: "user_profile",
+      p_entity_id: req.user!.id,
+      p_performed_by_user_id: req.user!.id,
+      p_performed_by_branch_id: userPrimaryBranch,
+      p_new_values: { full_name, phone, email },
     });
 
     res.json({ 

@@ -8,6 +8,7 @@ import type { NavItem } from "../components";
 import { UserManagement } from "./admin/UserManagement";
 import { BranchManagement } from "./admin/BranchManagement";
 import { ProfileSettings } from "./admin/ProfileSettings";
+import { AuditLogs } from "./admin/AuditLogs";
 
 // Page content data
 const pageData: Record<string, { title: string; description: string }> = {
@@ -193,6 +194,11 @@ export function DashboardPage() {
           <ProfileSettings />
       )}
 
+      {/* Audit Logs - HM only */}
+      {activeNav === "audit" && isHM && (
+          <AuditLogs />
+      )}
+
       {/* Settings page placeholder */}
       {activeNav === "settings" && (
         <div className="bg-white rounded-xl p-6 border border-neutral-100">
@@ -201,7 +207,7 @@ export function DashboardPage() {
       )}
 
       {/* Empty state for other pages */}
-      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && (
+      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && (
         <div className="bg-white rounded-xl p-6 border border-neutral-100">
           <p className="text-neutral-900">This feature is coming in the next phase.</p>
         </div>

@@ -132,6 +132,17 @@ router.post("/", requireAdmin, async (req: Request, res: Response): Promise<void
       return;
     }
 
+    // Log audit: CREATE branch (performed by admin)
+    const adminPrimaryBranch = req.user!.branchIds[0] || null;
+    await supabaseAdmin.rpc("log_admin_action", {
+      p_action: "CREATE",
+      p_entity_type: "branch",
+      p_entity_id: branch.id,
+      p_performed_by_user_id: req.user!.id,
+      p_performed_by_branch_id: adminPrimaryBranch,
+      p_new_values: { name, code, address, phone, email },
+    });
+
     res.status(201).json(branch);
   } catch (error) {
     console.error("Create branch error:", error);
@@ -195,6 +206,17 @@ router.put("/:branchId", requireAdmin, async (req: Request, res: Response): Prom
       res.status(500).json({ error: error.message });
       return;
     }
+
+    // Log audit: UPDATE branch (performed by admin)
+    const adminPrimaryBranch = req.user!.branchIds[0] || null;
+    await supabaseAdmin.rpc("log_admin_action", {
+      p_action: "UPDATE",
+      p_entity_type: "branch",
+      p_entity_id: branchId,
+      p_performed_by_user_id: req.user!.id,
+      p_performed_by_branch_id: adminPrimaryBranch,
+      p_new_values: updateData,
+    });
 
     res.json(branch);
   } catch (error) {

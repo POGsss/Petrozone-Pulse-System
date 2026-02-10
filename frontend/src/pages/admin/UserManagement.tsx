@@ -276,10 +276,10 @@ export function UserManagement() {
 
   if (error) {
     return (
-      <div className="bg-negative-50 border border-negative-200 rounded-lg p-4 flex items-center gap-3">
-        <LuCircleAlert className="w-5 h-5 text-negative flex-shrink-0" />
+      <div className="bg-negative-200 border border-negative rounded-lg p-4 flex items-center gap-3">
+        <LuCircleAlert className="w-5 h-5 text-negative-950 flex-shrink-0" />
         <div>
-          <p className="text-sm text-negative-700">{error}</p>
+          <p className="text-sm text-negative-950">{error}</p>
           <button
             onClick={fetchData}
             className="text-sm text-negative-600 hover:underline mt-1"
@@ -294,14 +294,14 @@ export function UserManagement() {
   return (
     <div className="space-y-6">
       {/* Header with title and add button */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex items-center justify-between bg-white rounded-xl p-6 border border-neutral-200">
         <div>
           <h3 className="text-lg font-semibold text-neutral-950">Users</h3>
           <p className="text-sm text-neutral-900">Summary of users</p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors w-full sm:w-auto"
+          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
         >
           <LuPlus className="w-4 h-4" />
           Add a New User
@@ -426,7 +426,7 @@ export function UserManagement() {
               )}
 
               {/* Actions */}
-              <div className="flex items-center gap-2 pt-2 border-t border-neutral-100">
+              <div className="flex items-center gap-2 pt-2 border-t border-neutral-200">
                 <button
                   onClick={() => openEditModal(user)}
                   className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-primary-950 bg-primary-50 hover:bg-primary-100 rounded-lg transition-colors"
@@ -468,7 +468,7 @@ export function UserManagement() {
             </thead>
             <tbody>
               {paginatedUsers.map((user) => (
-                <tr key={user.id} className="border-b border-neutral-100 hover:bg-neutral-50 transition-colors">
+                <tr key={user.id} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors">
                   <td className="py-3 px-4 whitespace-nowrap">
                     <span className="font-medium text-neutral-900">{user.full_name}</span>
                   </td>
@@ -630,7 +630,7 @@ export function UserManagement() {
                   onClick={() => toggleRole(role.code)}
                   className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
                     addUserForm.roles.includes(role.code)
-                      ? "bg-primary text-white shadow-md"
+                      ? "bg-primary text-white"
                       : "bg-neutral-100 text-neutral hover:bg-neutral-200"
                   }`}
                 >
@@ -649,7 +649,7 @@ export function UserManagement() {
                   onClick={() => toggleBranchInForm(branch.id)}
                   className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
                     addUserForm.branch_ids.includes(branch.id)
-                      ? "bg-primary text-white shadow-md"
+                      ? "bg-primary text-white"
                       : "bg-neutral-100 text-neutral hover:bg-neutral-200"
                   }`}
                 >
@@ -727,7 +727,7 @@ export function UserManagement() {
                   onClick={() => toggleEditRole(role.code)}
                   className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
                     editUserForm.roles.includes(role.code)
-                      ? "bg-primary text-white shadow-md"
+                      ? "bg-primary text-white"
                       : "bg-neutral-100 text-neutral hover:bg-neutral-200"
                   }`}
                 >
@@ -746,7 +746,7 @@ export function UserManagement() {
                   onClick={() => toggleEditBranch(branch.id)}
                   className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
                     editUserForm.branch_ids.includes(branch.id)
-                      ? "bg-primary text-white shadow-md"
+                      ? "bg-primary text-white"
                       : "bg-neutral-100 text-neutral hover:bg-neutral-200"
                   }`}
                 >

@@ -21,7 +21,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = "md" }: Mod
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className={`bg-white rounded-2xl w-full ${maxWidthClasses[maxWidth]} max-h-[90vh] overflow-y-auto shadow-xl`}>
+      <div className={`bg-white rounded-2xl w-full ${maxWidthClasses[maxWidth]} max-h-[90vh] overflow-y-auto`}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-2">
           <h3 className="text-xl font-bold text-neutral-950">{title}</h3>
