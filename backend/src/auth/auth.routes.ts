@@ -5,6 +5,97 @@ import { requireAuth } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
+// Frontend URL for password reset redirect
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+
+/**
+ * POST /api/auth/forgot-password
+ * Request a password reset email
+ */
+router.post("/forgot-password", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      res.status(400).json({ error: "Email is required" });
+      return;
+    }
+
+    // Check if user exists in our system
+    const { data: userExists } = await supabaseAdmin
+      .from("user_profiles")
+      .select("id")
+      .eq("email", email)
+      .single();
+
+    if (!userExists) {
+      // Return success even if user doesn't exist (security - don't reveal if email exists)
+      res.json({ message: "If an account exists with this email, a reset link will be sent." });
+      return;
+    }
+
+    // Send password reset email via Supabase
+    const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
+      redirectTo: `${FRONTEND_URL}/reset-password`,
+    });
+
+    if (error) {
+      console.error("Password reset error:", error);
+      res.status(500).json({ error: "Failed to send reset email" });
+      return;
+    }
+
+    res.json({ message: "If an account exists with this email, a reset link will be sent." });
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    res.status(500).json({ error: "Failed to process request" });
+  }
+});
+
+/**
+ * POST /api/auth/reset-password
+ * Reset password using the token from the email link
+ */
+router.post("/reset-password", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { access_token, new_password } = req.body;
+
+    if (!access_token || !new_password) {
+      res.status(400).json({ error: "Access token and new password are required" });
+      return;
+    }
+
+    if (new_password.length < 8) {
+      res.status(400).json({ error: "Password must be at least 8 characters" });
+      return;
+    }
+
+    // Get user from the access token
+    const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(access_token);
+
+    if (userError || !userData.user) {
+      res.status(401).json({ error: "Invalid or expired reset link" });
+      return;
+    }
+
+    // Update the user's password
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+      userData.user.id,
+      { password: new_password }
+    );
+
+    if (updateError) {
+      res.status(500).json({ error: "Failed to reset password" });
+      return;
+    }
+
+    res.json({ message: "Password has been reset successfully. You can now log in." });
+  } catch (error) {
+    console.error("Reset password error:", error);
+    res.status(500).json({ error: "Failed to reset password" });
+  }
+});
+
 /**
  * POST /api/auth/login
  * Authenticate user with email and password

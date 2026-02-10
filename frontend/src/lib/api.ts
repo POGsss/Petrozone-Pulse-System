@@ -85,6 +85,20 @@ export const authApi = {
     });
   },
 
+  forgotPassword: async (email: string) => {
+    return fetchWithAuth<{ message: string }>("/api/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  resetPassword: async (accessToken: string, newPassword: string) => {
+    return fetchWithAuth<{ message: string }>("/api/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ access_token: accessToken, new_password: newPassword }),
+    });
+  },
+
   updateProfile: async (data: { full_name: string; phone?: string; email?: string }) => {
     return fetchWithAuth<{ message: string; profile: import("../types").UserProfile }>("/api/auth/profile", {
       method: "PUT",

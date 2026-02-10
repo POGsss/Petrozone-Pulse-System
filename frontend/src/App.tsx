@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, ProtectedRoute, PublicRoute } from "./auth";
-import { LoginPage, DashboardPage, UnauthorizedPage } from "./pages";
+import { LoginPage, DashboardPage, UnauthorizedPage, ResetPasswordPage } from "./pages";
 
 function App() {
   return (
@@ -13,6 +13,14 @@ function App() {
             element={
               <PublicRoute>
                 <LoginPage />
+              </PublicRoute>
+            }
+          />
+          <Route
+            path="/reset-password"
+            element={
+              <PublicRoute>
+                <ResetPasswordPage />
               </PublicRoute>
             }
           />
