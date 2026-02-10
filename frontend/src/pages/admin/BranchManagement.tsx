@@ -201,7 +201,7 @@ export function BranchManagement() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between bg-white rounded-xl p-6 border border-neutral-200">
+      <div className="flex items-center justify-between bg-white rounded-xl p-4 border border-neutral-200">
         <div>
           <h3 className="text-lg font-semibold text-neutral-950">Branches</h3>
           <p className="text-sm text-neutral-900">{branches.length} branches total</p>
