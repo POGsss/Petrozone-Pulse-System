@@ -104,9 +104,9 @@ export function ProfileSettings() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col md:flex-row items-stretch justify-stretch gap-6">
       {/* Profile Information Section */}
-      <div className="bg-white border border-neutral-200 rounded-xl p-6">
+      <div className="flex-1 bg-white border border-neutral-200 rounded-xl p-6">
         <div className="flex items-center gap-3 mb-6">
           <div className="p-2 bg-primary-100 rounded-lg">
             <LuUser className="w-5 h-5 text-primary" />
@@ -192,7 +192,7 @@ export function ProfileSettings() {
       </div>
 
       {/* Change Password Section */}
-      <div className="bg-white border border-neutral-200 rounded-xl p-6">
+      <div className="flex-1 bg-white border border-neutral-200 rounded-xl p-6">
         <div className="flex items-center gap-3 mb-6">
           <div className="p-2 bg-primary-100 rounded-lg">
             <LuKey className="w-5 h-5 text-primary" />

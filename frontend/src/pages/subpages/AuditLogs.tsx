@@ -261,7 +261,7 @@ export function AuditLogs() {
 
           {/* Advanced Filters */}
           {showFilters && (
-            <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-neutral-100">
+            <div className="flex flex-col sm:flex-row gap-4">
               <div className="flex-1">
                 <label className="block text-xs text-neutral-900 mb-1">Start Date</label>
                 <input
@@ -391,7 +391,7 @@ export function AuditLogs() {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border-t border-neutral-200">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4">
             <p className="text-sm text-neutral-900">
               {(currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, totalItems)} of {totalItems} logs
             </p>

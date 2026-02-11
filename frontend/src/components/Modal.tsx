@@ -240,7 +240,7 @@ export function ModalError({ message }: ModalErrorProps) {
   if (!message) return null;
   
   return (
-    <div className="bg-negative-200 border border-negative-950 rounded-xl p-4 flex items-center gap-3">
+    <div className="bg-negative-200 border border-negative-950 rounded-xl p-4 flex items-center gap-3 mt-4">
       <div className="w-5 h-5 rounded-full bg-negative flex items-center justify-center flex-shrink-0">
         <span className="text-white text-xs font-bold">!</span>
       </div>

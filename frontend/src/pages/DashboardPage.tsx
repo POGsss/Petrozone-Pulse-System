@@ -132,9 +132,9 @@ export function DashboardPage() {
   
   // Permission helpers based on user stories
   const hasAnyRole = (...roles: string[]) => roles.some(r => userRoles.includes(r));
-  const canManageUsers = hasAnyRole("HM", "POC", "JS");     // US10-13
-  const canManageBranches = hasAnyRole("HM", "POC", "JS", "R"); // US1-4
-  const canViewAuditLogs = hasAnyRole("HM", "POC");         // US18
+  const canManageUsers = hasAnyRole("HM", "POC", "JS");
+  const canManageBranches = hasAnyRole("HM", "POC", "JS", "R");
+  const canViewAuditLogs = hasAnyRole("HM", "POC");
   const canAccessSettings = hasAnyRole("HM");
 
   // Get page data

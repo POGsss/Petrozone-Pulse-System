@@ -430,7 +430,7 @@ export function UserManagement() {
               placeholder="Search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 pr-4 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:border-primary w-full"
+              className="pl-9 pr-4 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-primary w-full sm:w-64"
             />
           </div>
         </div>
@@ -530,7 +530,7 @@ export function UserManagement() {
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-neutral-200 bg-neutral-50">
+              <tr className="border-b border-neutral-200 bg-neutral-100">
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Name</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Email</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Phone</th>
@@ -671,8 +671,6 @@ export function UserManagement() {
         maxWidth="lg"
       >
         <form onSubmit={handleAddUser}>
-          <ModalError message={addUserError} />
-          
           <ModalSection title="User Information">
             <ModalInput
               type="text"
@@ -753,6 +751,8 @@ export function UserManagement() {
             )}
           </ModalSection>
 
+          <ModalError message={addUserError} />
+
           <ModalButtons
             onCancel={() => setShowAddModal(false)}
             submitText={addingUser ? "Creating..." : "Create User"}
@@ -769,8 +769,6 @@ export function UserManagement() {
         maxWidth="lg"
       >
         <form onSubmit={handleEditUser}>
-          <ModalError message={editUserError} />
-          
           <ModalSection title="User Information">
             <ModalInput
               type="text"
@@ -792,7 +790,7 @@ export function UserManagement() {
               disabled={!isEditingEditable}
             />
 
-            <div className="flex items-center gap-3 mt-4">
+            <div className="flex items-center gap-3 mt-2">
               <button
                 type="button"
                 onClick={() => isEditingEditable && setEditUserForm(prev => ({ ...prev, is_active: !prev.is_active }))}
@@ -869,19 +867,15 @@ export function UserManagement() {
             )}
           </ModalSection>
 
+          <ModalError message={editUserError} />
+
           {isEditingEditable ? (
             <ModalButtons
               onCancel={() => setShowEditModal(false)}
               submitText={editingUser ? "Saving..." : "Save Changes"}
               loading={editingUser}
             />
-          ) : (
-            <ModalButtons
-              onCancel={() => setShowEditModal(false)}
-              submitText={editingUser ? "Saving..." : "Save Changes"}
-              loading={editingUser}
-            />
-          )}
+          ) : null}
         </form>
       </Modal>
 

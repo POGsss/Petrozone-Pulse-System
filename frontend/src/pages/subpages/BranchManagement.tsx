@@ -326,8 +326,6 @@ export function BranchManagement() {
         title="Add a New Branch"
       >
         <form onSubmit={handleAddBranch}>
-          <ModalError message={addBranchError} />
-          
           <ModalSection title="Branch Information">
             <ModalInput
               type="text"
@@ -379,6 +377,8 @@ export function BranchManagement() {
             />
           </ModalSection>
 
+          <ModalError message={addBranchError} />
+
           <ModalButtons
             onCancel={() => setShowAddModal(false)}
             submitText={addingBranch ? "Creating..." : "Create Branch"}
@@ -395,8 +395,6 @@ export function BranchManagement() {
       >
         {selectedBranch && (
           <form onSubmit={handleEditBranch}>
-            <ModalError message={editBranchError} />
-            
             <ModalSection title="Branch Information">
               <ModalInput
                 type="text"
@@ -444,7 +442,7 @@ export function BranchManagement() {
                 required
               />
               
-              <div className="flex items-center gap-3 mt-4">
+              <div className="flex items-center gap-3 mt-2">
                 <button
                   type="button"
                   onClick={() => setEditBranchForm(prev => ({ ...prev, is_active: !prev.is_active }))}
@@ -463,6 +461,8 @@ export function BranchManagement() {
                 </span>
               </div>
             </ModalSection>
+
+            <ModalError message={editBranchError} />
 
             <ModalButtons
               onCancel={() => setShowEditModal(false)}
