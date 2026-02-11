@@ -4,11 +4,11 @@ import { DashboardLayout, NavIcons } from "../components";
 import type { NavItem } from "../components";
 
 
-// Admin components (lazy loaded for HM role)
-import { UserManagement } from "./admin/UserManagement";
-import { BranchManagement } from "./admin/BranchManagement";
-import { ProfileSettings } from "./admin/ProfileSettings";
-import { AuditLogs } from "./admin/AuditLogs";
+// Subpage components (shared across roles based on permissions)
+import { UserManagement } from "./subpages/UserManagement";
+import { BranchManagement } from "./subpages/BranchManagement";
+import { ProfileSettings } from "./subpages/ProfileSettings";
+import { AuditLogs } from "./subpages/AuditLogs";
 
 // Page content data
 const pageData: Record<string, { title: string; description: string }> = {
@@ -63,77 +63,62 @@ const pageData: Record<string, { title: string; description: string }> = {
 };
 
 // Get navigation items based on user role
+// Based on user stories:
+// - US1-4: Branch Management: HM, POC, JS, R
+// - US5-9: Login/Logout/Profile: All (HM, POC, JS, R, T)
+// - US10-13: User Management: HM, POC, JS
+// - US18: Audit Logs: HM, POC
 function getNavItemsForRole(roles: string[]): NavItem[] {
   const hasRole = (role: string) => roles.includes(role);
+  const hasAnyRole = (...checkRoles: string[]) => checkRoles.some(r => roles.includes(r));
   
-  // Higher Management (HM) - full access
-  if (hasRole("HM")) {
-    return [
-      { id: "dashboard", label: "Dashboard", icon: <NavIcons.Dashboard /> },
-      { id: "users", label: "User Management", icon: <NavIcons.Users /> },
-      { id: "branches", label: "Branch Management", icon: <NavIcons.Branch /> },
-      { id: "inventory", label: "Inventory", icon: <NavIcons.Inventory /> },
-      { id: "pricing", label: "Pricing Config", icon: <NavIcons.Pricing /> },
-      { id: "orders", label: "Order & Sales", icon: <NavIcons.Sales /> },
-      { id: "reports", label: "Reports", icon: <NavIcons.Reports /> },
-      { id: "audit", label: "Audit Logs", icon: <NavIcons.Audit /> },
-      { id: "messages", label: "Messages", icon: <NavIcons.Messages />, badge: 0 },
-      { id: "settings", label: "Settings", icon: <NavIcons.Settings /> },
-    ];
-  }
-
-  // POC Supervisor
-  if (hasRole("POC")) {
-    return [
-      { id: "dashboard", label: "Dashboard", icon: <NavIcons.Dashboard /> },
-      { id: "inventory", label: "Inventory", icon: <NavIcons.Inventory /> },
-      { id: "pricing", label: "Pricing Config", icon: <NavIcons.Pricing /> },
-      { id: "orders", label: "Orders", icon: <NavIcons.Orders /> },
-      { id: "reports", label: "Reports", icon: <NavIcons.Reports /> },
-      { id: "customers", label: "Customers", icon: <NavIcons.Customers /> },
-      { id: "messages", label: "Messages", icon: <NavIcons.Messages />, badge: 0 },
-    ];
-  }
-
-  // Junior Supervisor (JS)
-  if (hasRole("JS")) {
-    return [
-      { id: "dashboard", label: "Dashboard", icon: <NavIcons.Dashboard /> },
-      { id: "inventory", label: "Inventory", icon: <NavIcons.Inventory /> },
-      { id: "pricing", label: "Pricing Config", icon: <NavIcons.Pricing /> },
-      { id: "orders", label: "Orders", icon: <NavIcons.Orders /> },
-      { id: "reports", label: "Reports", icon: <NavIcons.Reports /> },
-      { id: "customers", label: "Customers", icon: <NavIcons.Customers /> },
-      { id: "messages", label: "Messages", icon: <NavIcons.Messages />, badge: 0 },
-    ];
-  }
-
-  // Receptionist (R)
-  if (hasRole("R")) {
-    return [
-      { id: "dashboard", label: "Dashboard", icon: <NavIcons.Dashboard /> },
-      { id: "orders", label: "Orders", icon: <NavIcons.Orders /> },
-      { id: "reports", label: "Reports", icon: <NavIcons.Reports /> },
-      { id: "customers", label: "Customers", icon: <NavIcons.Customers /> },
-      { id: "messages", label: "Messages", icon: <NavIcons.Messages />, badge: 0 },
-    ];
-  }
-
-  // Technician (T)
-  if (hasRole("T")) {
-    return [
-      { id: "dashboard", label: "Dashboard", icon: <NavIcons.Dashboard /> },
-      { id: "orders", label: "Orders", icon: <NavIcons.Orders /> },
-      { id: "reports", label: "Reports", icon: <NavIcons.Reports /> },
-      { id: "customers", label: "Customers", icon: <NavIcons.Customers /> },
-      { id: "messages", label: "Messages", icon: <NavIcons.Messages />, badge: 0 },
-    ];
-  }
-
-  // Default (fallback)
-  return [
+  const items: NavItem[] = [
     { id: "dashboard", label: "Dashboard", icon: <NavIcons.Dashboard /> },
   ];
+
+  // User Management: HM, POC, JS (US10-13)
+  if (hasAnyRole("HM", "POC", "JS")) {
+    items.push({ id: "users", label: "User Management", icon: <NavIcons.Users /> });
+  }
+
+  // Branch Management: HM, POC, JS, R (US1-4)
+  if (hasAnyRole("HM", "POC", "JS", "R")) {
+    items.push({ id: "branches", label: "Branch Management", icon: <NavIcons.Branch /> });
+  }
+
+  // Inventory: HM, POC, JS (future)
+  if (hasAnyRole("HM", "POC", "JS")) {
+    items.push({ id: "inventory", label: "Inventory", icon: <NavIcons.Inventory /> });
+  }
+
+  // Pricing Config: HM, POC, JS (future)
+  if (hasAnyRole("HM", "POC", "JS")) {
+    items.push({ id: "pricing", label: "Pricing Config", icon: <NavIcons.Pricing /> });
+  }
+
+  // Orders: All roles
+  items.push({ id: "orders", label: "Order & Sales", icon: <NavIcons.Sales /> });
+
+  // Reports: All roles
+  items.push({ id: "reports", label: "Reports", icon: <NavIcons.Reports /> });
+
+  // Audit Logs: HM, POC (US18)
+  if (hasAnyRole("HM", "POC")) {
+    items.push({ id: "audit", label: "Audit Logs", icon: <NavIcons.Audit /> });
+  }
+
+  // Customers: All roles
+  items.push({ id: "customers", label: "Customers", icon: <NavIcons.Customers /> });
+
+  // Messages: All roles
+  items.push({ id: "messages", label: "Messages", icon: <NavIcons.Messages />, badge: 0 });
+
+  // Settings: HM only (system-wide settings)
+  if (hasRole("HM")) {
+    items.push({ id: "settings", label: "Settings", icon: <NavIcons.Settings /> });
+  }
+
+  return items;
 }
 
 export function DashboardPage() {
@@ -144,7 +129,13 @@ export function DashboardPage() {
 
   const userRoles = user.roles || [];
   const navItems = getNavItemsForRole(userRoles);
-  const isHM = userRoles.includes("HM");
+  
+  // Permission helpers based on user stories
+  const hasAnyRole = (...roles: string[]) => roles.some(r => userRoles.includes(r));
+  const canManageUsers = hasAnyRole("HM", "POC", "JS");     // US10-13
+  const canManageBranches = hasAnyRole("HM", "POC", "JS", "R"); // US1-4
+  const canViewAuditLogs = hasAnyRole("HM", "POC");         // US18
+  const canAccessSettings = hasAnyRole("HM");
 
   // Get page data
   const currentPage = pageData[activeNav] || { title: "Page", description: "" };
@@ -179,34 +170,34 @@ export function DashboardPage() {
         </div>
       )}
 
-      {/* User Management - HM only */}
-      {activeNav === "users" && isHM && (
+      {/* User Management - HM, POC, JS (US10-13) */}
+      {activeNav === "users" && canManageUsers && (
           <UserManagement />
       )}
 
-      {/* Branch Management - HM only */}
-      {activeNav === "branches" && isHM && (
+      {/* Branch Management - HM, POC, JS, R (US1-4) */}
+      {activeNav === "branches" && canManageBranches && (
           <BranchManagement />
       )}
 
-      {/* Profile Settings - all users */}
+      {/* Profile Settings - all users (US7, US9) */}
       {activeNav === "profile" && (
           <ProfileSettings />
       )}
 
-      {/* Audit Logs - HM only */}
-      {activeNav === "audit" && isHM && (
+      {/* Audit Logs - HM, POC (US18) */}
+      {activeNav === "audit" && canViewAuditLogs && (
           <AuditLogs />
       )}
 
-      {/* Settings page placeholder */}
-      {activeNav === "settings" && (
+      {/* Settings page placeholder - HM only */}
+      {activeNav === "settings" && canAccessSettings && (
         <div className="bg-white rounded-xl p-6 border border-neutral-100">
           <p className="text-neutral-900">System settings and preferences will be available here.</p>
         </div>
       )}
 
-      {/* Empty state for other pages */}
+      {/* Empty state for other pages (future modules) */}
       {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && (
         <div className="bg-white rounded-xl p-6 border border-neutral-100">
           <p className="text-neutral-900">This feature is coming in the next phase.</p>

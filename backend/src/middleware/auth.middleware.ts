@@ -132,8 +132,24 @@ export const requireManagement = requireRoles("HM");
 
 /**
  * Middleware to require supervisor roles (HM, POC, or JS)
+ * Used for User Management (US10-13)
  */
 export const requireSupervisor = requireRoles("HM", "POC", "JS");
+
+/**
+ * Middleware for User Management access (HM, POC, JS) - US10-13
+ */
+export const requireUserManager = requireRoles("HM", "POC", "JS");
+
+/**
+ * Middleware for Branch Management access (HM, POC, JS, R) - US1-4
+ */
+export const requireBranchManager = requireRoles("HM", "POC", "JS", "R");
+
+/**
+ * Middleware for Audit Log access (HM, POC) - US18
+ */
+export const requireAuditViewer = requireRoles("HM", "POC");
 
 /**
  * Factory function to check if user has access to a specific branch

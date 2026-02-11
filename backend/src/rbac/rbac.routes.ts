@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
-import { requireAuth, requireAdmin, requireManagement } from "../middleware/auth.middleware.js";
+import { requireAuth, requireAdmin, requireUserManager } from "../middleware/auth.middleware.js";
 import type { UserRole } from "../types/database.types.js";
 
 const router = Router();
@@ -12,8 +12,9 @@ router.use(requireAuth);
 /**
  * GET /api/rbac/roles
  * Get all available roles (for management UI)
+ * HM, POC, JS can view (US10-13)
  */
-router.get("/roles", requireManagement, async (_req: Request, res: Response): Promise<void> => {
+router.get("/roles", requireUserManager, async (_req: Request, res: Response): Promise<void> => {
   // Return the list of available roles with descriptions
   // Note: ADMIN role has been merged into HM
   const roles = [
@@ -30,9 +31,9 @@ router.get("/roles", requireManagement, async (_req: Request, res: Response): Pr
 /**
  * GET /api/rbac/users
  * Get all users with their roles and branch assignments
- * HM only
+ * HM, POC, JS can view (US10-13)
  */
-router.get("/users", requireManagement, async (req: Request, res: Response): Promise<void> => {
+router.get("/users", requireUserManager, async (req: Request, res: Response): Promise<void> => {
   try {
     const { data: users, error } = await supabaseAdmin
       .from("user_profiles")
@@ -71,9 +72,9 @@ router.get("/users", requireManagement, async (req: Request, res: Response): Pro
 /**
  * POST /api/rbac/users
  * Create a new user with roles and branch assignments
- * Admin only
+ * HM, POC, JS can create (US10)
  */
-router.post("/users", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/users", requireUserManager, async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password, full_name, phone, roles, branch_ids } = req.body;
 
@@ -187,9 +188,9 @@ router.post("/users", requireAdmin, async (req: Request, res: Response): Promise
 /**
  * PUT /api/rbac/users/:userId/roles
  * Update a user's roles
- * HM only - uses atomic RPC function to avoid permission issues
+ * HM, POC, JS can update (US12)
  */
-router.put("/users/:userId/roles", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.put("/users/:userId/roles", requireUserManager, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.params.userId as string;
     const { roles } = req.body;
@@ -229,9 +230,9 @@ router.put("/users/:userId/roles", requireAdmin, async (req: Request, res: Respo
 /**
  * PUT /api/rbac/users/:userId/branches
  * Update a user's branch assignments
- * HM only - uses atomic RPC function to avoid permission issues
+ * HM, POC, JS can update (US12)
  */
-router.put("/users/:userId/branches", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.put("/users/:userId/branches", requireUserManager, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.params.userId as string;
     const { branch_ids, primary_branch_id } = req.body;
@@ -265,9 +266,9 @@ router.put("/users/:userId/branches", requireAdmin, async (req: Request, res: Re
 /**
  * PUT /api/rbac/users/:userId/status
  * Activate or deactivate a user
- * Admin only
+ * HM, POC, JS can update (US12)
  */
-router.put("/users/:userId/status", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.put("/users/:userId/status", requireUserManager, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.params.userId as string;
     const { is_active } = req.body;
@@ -303,9 +304,9 @@ router.put("/users/:userId/status", requireAdmin, async (req: Request, res: Resp
 /**
  * PUT /api/rbac/users/:userId
  * Update a user's profile (full_name, phone, is_active)
- * Admin only
+ * HM, POC, JS can update (US12)
  */
-router.put("/users/:userId", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.put("/users/:userId", requireUserManager, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.params.userId as string;
     const { full_name, phone, is_active } = req.body;
@@ -361,9 +362,9 @@ router.put("/users/:userId", requireAdmin, async (req: Request, res: Response): 
 /**
  * DELETE /api/rbac/users/:userId
  * Delete a user (removes auth user and cascades to profile/roles/branches)
- * Admin only
+ * HM, POC, JS can delete (US13)
  */
-router.delete("/users/:userId", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/users/:userId", requireUserManager, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.params.userId as string;
 

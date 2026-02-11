@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
-import { requireAuth, requireAdmin, requireBranchAccess } from "../middleware/auth.middleware.js";
+import { requireAuth, requireBranchManager, requireBranchAccess } from "../middleware/auth.middleware.js";
 import type { BranchInsert, BranchUpdate } from "../types/database.types.js";
 
 const router = Router();
@@ -89,9 +89,9 @@ router.get(
 /**
  * POST /api/branches
  * Create a new branch
- * Admin only
+ * HM, POC, JS, R can create (US1)
  */
-router.post("/", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/", requireBranchManager, async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, code, address, phone, email } = req.body;
 
@@ -153,9 +153,9 @@ router.post("/", requireAdmin, async (req: Request, res: Response): Promise<void
 /**
  * PUT /api/branches/:branchId
  * Update a branch
- * Admin only
+ * HM, POC, JS, R can update (US2)
  */
-router.put("/:branchId", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.put("/:branchId", requireBranchManager, async (req: Request, res: Response): Promise<void> => {
   try {
     const branchId = req.params.branchId as string;
     const { name, code, address, phone, email, is_active } = req.body;
@@ -228,9 +228,9 @@ router.put("/:branchId", requireAdmin, async (req: Request, res: Response): Prom
 /**
  * DELETE /api/branches/:branchId
  * Soft delete a branch (set is_active to false)
- * Admin only
+ * HM, POC, JS, R can delete (US3)
  */
-router.delete("/:branchId", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/:branchId", requireBranchManager, async (req: Request, res: Response): Promise<void> => {
   try {
     const branchId = req.params.branchId as string;
 
