@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { useAuth } from "../auth";
-import { LuMail, LuLock, LuEye, LuEyeOff, LuLoader, LuX, LuCheck } from "react-icons/lu";
+import { LuMail, LuLock, LuEye, LuEyeOff, LuLoader, LuCheck } from "react-icons/lu";
 import { authApi } from "../lib/api";
+import { Modal, ModalSection, ModalInput, ModalButtons, ModalError } from "../components";
 
 export function LoginPage() {
     const { login } = useAuth();
@@ -83,7 +84,7 @@ export function LoginPage() {
                                 required
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
-                                className="w-full pl-12 pr-4 py-3 bg-neutral-100 border border-neutral-200/50 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary focus:bg-white outline-none transition text-neutral-950 placeholder-neutral-400"
+                                className="w-full pl-12 pr-4 py-3 bg-neutral-100 border border-neutral-100 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary focus:bg-white outline-none transition text-neutral-950 placeholder-neutral-400"
                                 placeholder="Email Address"
                                 disabled={isLoading}
                             />
@@ -99,7 +100,7 @@ export function LoginPage() {
                                 required
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="w-full pl-12 pr-12 py-3 bg-neutral-100 border border-neutral-200/50 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary focus:bg-white outline-none transition text-neutral-950 placeholder-neutral-400"
+                                className="w-full pl-12 pr-12 py-3 bg-neutral-100 border border-neutral-100 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary focus:bg-white outline-none transition text-neutral-950 placeholder-neutral-400"
                                 placeholder="Password"
                                 disabled={isLoading}
                             />
@@ -148,94 +149,56 @@ export function LoginPage() {
             </div>
 
             {/* Forgot Password Modal */}
-            {showForgotModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                    <div className="fixed inset-0 bg-black/50" onClick={closeForgotModal} />
-                    <div className="relative bg-white rounded-2xl w-full max-w-md p-6">
-                        {/* Close button */}
+            <Modal
+                isOpen={showForgotModal}
+                onClose={closeForgotModal}
+                title="Forgot Password"
+            >
+                {forgotSuccess ? (
+                    /* Success state */
+                    <div className="text-center py-4">
+                        <div className="w-16 h-16 bg-positive-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <LuCheck className="w-8 h-8 text-positive-950" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-neutral-950 mb-2">Check your email</h3>
+                        <p className="text-neutral-600 mb-6">
+                            If an account exists with <strong className="text-neutral-950">{forgotEmail}</strong>, you will receive a password reset link shortly.
+                        </p>
                         <button
                             onClick={closeForgotModal}
-                            className="absolute right-4 top-4 p-1 text-neutral-400 hover:text-neutral-600 rounded-lg"
+                            className="w-full bg-primary text-white py-3.5 px-4 rounded-xl font-semibold hover:bg-primary-950 transition"
                         >
-                            <LuX className="w-5 h-5" />
+                            Back to Login
                         </button>
-
-                        {forgotSuccess ? (
-                            /* Success state */
-                            <div className="text-center py-4">
-                                <div className="w-16 h-16 bg-positive-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <LuCheck className="w-8 h-8 text-positive-600" />
-                                </div>
-                                <h2 className="text-xl font-semibold text-neutral-950 mb-2">Check your email</h2>
-                                <p className="text-neutral-500 mb-6">
-                                    If an account exists with <strong>{forgotEmail}</strong>, you will receive a password reset link shortly.
-                                </p>
-                                <button
-                                    onClick={closeForgotModal}
-                                    className="w-full bg-primary text-white py-3 px-4 rounded-xl font-semibold hover:bg-primary-950 transition"
-                                >
-                                    Back to Login
-                                </button>
-                            </div>
-                        ) : (
-                            /* Form state */
-                            <>
-                                <h2 className="text-xl font-semibold text-neutral-950 mb-2">Forgot Password</h2>
-                                <p className="text-neutral-500 mb-6">
-                                    Enter your email address and we'll send you a link to reset your password.
-                                </p>
-
-                                {forgotError && (
-                                    <div className="bg-negative-50 border border-negative-200 text-negative-700 px-4 py-3 rounded-lg text-sm mb-4">
-                                        {forgotError}
-                                    </div>
-                                )}
-
-                                <form onSubmit={handleForgotPassword} className="space-y-4">
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                            <LuMail className="w-5 h-5 text-neutral-900" />
-                                        </div>
-                                        <input
-                                            type="email"
-                                            required
-                                            value={forgotEmail}
-                                            onChange={(e) => setForgotEmail(e.target.value)}
-                                            className="w-full pl-12 pr-4 py-3 bg-neutral-100 border border-neutral-200/50 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary focus:bg-white outline-none transition text-neutral-950 placeholder-neutral-400"
-                                            placeholder="Email Address"
-                                            disabled={forgotLoading}
-                                        />
-                                    </div>
-
-                                    <div className="flex gap-3">
-                                        <button
-                                            type="button"
-                                            onClick={closeForgotModal}
-                                            className="flex-1 py-3 px-4 border border-neutral-300 rounded-xl font-semibold text-neutral-700 hover:bg-neutral-50 transition"
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            type="submit"
-                                            disabled={forgotLoading}
-                                            className="flex-1 bg-primary text-white py-3 px-4 rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                                        >
-                                            {forgotLoading ? (
-                                                <span className="flex items-center justify-center">
-                                                    <LuLoader className="animate-spin -ml-1 mr-2 h-5 w-5" />
-                                                    Sending...
-                                                </span>
-                                            ) : (
-                                                "Send Reset Link"
-                                            )}
-                                        </button>
-                                    </div>
-                                </form>
-                            </>
-                        )}
                     </div>
-                </div>
-            )}
+                ) : (
+                    /* Form state */
+                    <form onSubmit={handleForgotPassword}>
+                        <ModalError message={forgotError} />
+                        
+                        <ModalSection>
+                            <p className="text-neutral-600 mb-4">
+                                Enter your email address and we'll send you a link to reset your password.
+                            </p>
+                            <ModalInput
+                                type="email"
+                                value={forgotEmail}
+                                onChange={setForgotEmail}
+                                placeholder="Email Address"
+                                required
+                                disabled={forgotLoading}
+                            />
+                        </ModalSection>
+
+                        <ModalButtons
+                            onCancel={closeForgotModal}
+                            cancelText="Cancel"
+                            submitText={forgotLoading ? "Sending..." : "Send Reset Link"}
+                            loading={forgotLoading}
+                        />
+                    </form>
+                )}
+            </Modal>
         </div>
     );
 }

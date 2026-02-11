@@ -831,7 +831,7 @@ export function UserManagement() {
               <button
                 type="button"
                 onClick={() => setShowDeleteModal(false)}
-                className="flex-1 px-4 py-3.5 border-2 border-negative text-negative rounded-xl font-semibold hover:bg-negative-50 transition-colors"
+                className="flex-1 px-4 py-3.5 border-2 border-negative text-negative rounded-xl font-semibold hover:bg-negative-200 transition-colors"
               >
                 Cancel
               </button>
