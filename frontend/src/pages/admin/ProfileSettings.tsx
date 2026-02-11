@@ -37,11 +37,23 @@ export function ProfileSettings() {
       return;
     }
 
+    if (!profileForm.phone.trim()) {
+      setProfileError("Phone number is required");
+      return;
+    }
+
+    // Validate phone number format (at least 7 digits)
+    const phoneDigits = profileForm.phone.replace(/[^0-9]/g, "");
+    if (phoneDigits.length < 7 || phoneDigits.length > 20) {
+      setProfileError("Phone number must be between 7 and 20 digits");
+      return;
+    }
+
     try {
       setProfileSaving(true);
       await authApi.updateProfile({
         full_name: profileForm.full_name.trim(),
-        phone: profileForm.phone.trim() || undefined,
+        phone: profileForm.phone.trim(),
         email: profileForm.email.trim() || undefined,
       });
       setProfileSuccess("Profile updated successfully");
@@ -148,14 +160,21 @@ export function ProfileSettings() {
 
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1.5">
-              Phone Number
+              Phone Number <span className="text-negative">*</span>
             </label>
             <input
               type="tel"
               value={profileForm.phone}
-              onChange={(e) => setProfileForm(prev => ({ ...prev, phone: e.target.value }))}
+              onChange={(e) => {
+                // Only allow digits, plus sign, and common phone characters
+                const value = e.target.value.replace(/[^0-9+\-()\s]/g, "");
+                setProfileForm(prev => ({ ...prev, phone: value }));
+              }}
               className="w-full px-4 py-2.5 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              placeholder="Enter your phone number"
+              placeholder="Enter your phone number (e.g., +63 912 345 6789)"
+              required
+              pattern="[0-9+\-()\s]{7,20}"
+              inputMode="tel"
             />
           </div>
 

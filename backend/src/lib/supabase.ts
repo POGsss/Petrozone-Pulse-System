@@ -9,8 +9,8 @@ if (!supabaseUrl || !supabaseServiceKey) {
   throw new Error("Missing Supabase environment variables");
 }
 
-console.log("Supabase URL:", supabaseUrl);
-console.log("Service key loaded:", supabaseServiceKey ? "YES (length: " + supabaseServiceKey.length + ")" : "NO");
+// console.log("Supabase URL:", supabaseUrl);
+// console.log("Service key loaded:", supabaseServiceKey ? "YES (length: " + supabaseServiceKey.length + ")" : "NO");
 
 // Service role client for admin operations (bypasses RLS)
 // Using global headers to ensure service role is properly set

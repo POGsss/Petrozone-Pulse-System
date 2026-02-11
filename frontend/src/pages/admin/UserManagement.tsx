@@ -114,15 +114,32 @@ export function UserManagement() {
       return;
     }
 
+    if (!addUserForm.phone) {
+      setAddUserError("Phone number is required");
+      return;
+    }
+
+    // Validate phone number format (at least 7 digits)
+    const phoneDigits = addUserForm.phone.replace(/[^0-9]/g, "");
+    if (phoneDigits.length < 7 || phoneDigits.length > 20) {
+      setAddUserError("Phone number must be between 7 and 20 digits");
+      return;
+    }
+
+    if (addUserForm.branch_ids.length === 0) {
+      setAddUserError("Please assign at least one branch");
+      return;
+    }
+
     try {
       setAddingUser(true);
       await rbacApi.createUser({
         email: addUserForm.email,
         password: addUserForm.password,
         full_name: addUserForm.full_name,
-        phone: addUserForm.phone || undefined,
+        phone: addUserForm.phone,
         roles: addUserForm.roles,
-        branch_ids: addUserForm.branch_ids.length > 0 ? addUserForm.branch_ids : undefined,
+        branch_ids: addUserForm.branch_ids,
       });
       
       // Reset form and close modal
@@ -170,13 +187,30 @@ export function UserManagement() {
       return;
     }
 
+    if (!editUserForm.phone) {
+      setEditUserError("Phone number is required");
+      return;
+    }
+
+    // Validate phone number format (at least 7 digits)
+    const phoneDigits = editUserForm.phone.replace(/[^0-9]/g, "");
+    if (phoneDigits.length < 7 || phoneDigits.length > 20) {
+      setEditUserError("Phone number must be between 7 and 20 digits");
+      return;
+    }
+
+    if (editUserForm.branch_ids.length === 0) {
+      setEditUserError("Please assign at least one branch");
+      return;
+    }
+
     try {
       setEditingUser(true);
       
       // Update user profile
       await rbacApi.updateUser(editUserForm.id, {
         full_name: editUserForm.full_name,
-        phone: editUserForm.phone || undefined,
+        phone: editUserForm.phone,
         is_active: editUserForm.is_active,
       });
 
@@ -356,7 +390,7 @@ export function UserManagement() {
               placeholder="Search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 pr-4 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary w-full sm:w-64"
+              className="pl-9 pr-4 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:border-primary w-full"
             />
           </div>
         </div>
@@ -618,6 +652,9 @@ export function UserManagement() {
               value={addUserForm.phone}
               onChange={(v) => setAddUserForm(prev => ({ ...prev, phone: v }))}
               placeholder="Phone Number"
+              required
+              pattern="[0-9+\-()\s]{7,20}"
+              title="Please enter a valid phone number (7-20 digits)"
             />
           </ModalSection>
 
@@ -696,6 +733,9 @@ export function UserManagement() {
               value={editUserForm.phone}
               onChange={(v) => setEditUserForm(prev => ({ ...prev, phone: v }))}
               placeholder="Phone Number"
+              required
+              pattern="[0-9+\-()\s]{7,20}"
+              title="Please enter a valid phone number (7-20 digits)"
             />
 
             <div className="flex items-center gap-3 mt-4">

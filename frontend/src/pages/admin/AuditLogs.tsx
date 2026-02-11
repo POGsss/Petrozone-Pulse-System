@@ -217,13 +217,13 @@ export function AuditLogs() {
         <div className="p-4 border-b border-neutral-200 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="relative flex-1 max-w-md">
-              <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+              <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-900" />
               <input
                 type="text"
                 placeholder="Search logs..."
                 value={filters.search}
                 onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-                className="pl-9 pr-4 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary w-full"
+                className="pl-9 pr-4 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-primary w-full sm:w-64"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -233,7 +233,7 @@ export function AuditLogs() {
                   setFilters(prev => ({ ...prev, action: e.target.value }));
                   setCurrentPage(1);
                 }}
-                className="appearance-none px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="appearance-none px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               >
                 {ACTION_TYPES.map(type => (
                   <option key={type.value} value={type.value}>{type.label}</option>
@@ -242,7 +242,7 @@ export function AuditLogs() {
               <button
                 onClick={() => setShowFilters(!showFilters)}
                 className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm font-medium transition-colors ${
-                  showFilters ? "border-primary bg-primary-50 text-primary" : "border-neutral-300 text-neutral-950 hover:bg-neutral-50"
+                  showFilters ? "border-primary bg-primary-100 text-primary" : "border-neutral-200 text-neutral-950 hover:bg-neutral-100"
                 }`}
               >
                 <LuFilter className="w-4 h-4" />
@@ -251,7 +251,7 @@ export function AuditLogs() {
               <button
                 onClick={fetchData}
                 disabled={loading}
-                className="p-2 border border-neutral-300 rounded-lg text-neutral-950 hover:bg-neutral-50 disabled:opacity-50"
+                className="p-2 border border-neutral-200 rounded-lg text-neutral-950 hover:bg-neutral-100 disabled:opacity-100"
                 title="Refresh"
               >
                 <LuRefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
@@ -263,21 +263,21 @@ export function AuditLogs() {
           {showFilters && (
             <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-neutral-100">
               <div className="flex-1">
-                <label className="block text-xs text-neutral-500 mb-1">Start Date</label>
+                <label className="block text-xs text-neutral-900 mb-1">Start Date</label>
                 <input
                   type="date"
                   value={filters.startDate}
                   onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
-                  className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
               </div>
               <div className="flex-1">
-                <label className="block text-xs text-neutral-500 mb-1">End Date</label>
+                <label className="block text-xs text-neutral-900 mb-1">End Date</label>
                 <input
                   type="date"
                   value={filters.endDate}
                   onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
-                  className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
               </div>
               <div className="flex items-end gap-2">
@@ -289,7 +289,7 @@ export function AuditLogs() {
                 </button>
                 <button
                   onClick={handleResetFilters}
-                  className="px-4 py-2 border border-neutral-300 rounded-lg text-sm font-medium text-neutral-950 hover:bg-neutral-50 transition-colors"
+                  className="px-4 py-2 border border-neutral-200 rounded-lg text-sm font-medium text-neutral-950 hover:bg-neutral-100 transition-colors"
                 >
                   Reset
                 </button>
@@ -310,7 +310,7 @@ export function AuditLogs() {
                 <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getActionColor(log.action)}`}>
                   {log.action}
                 </span>
-                <span className="text-xs text-neutral-500 flex items-center gap-1">
+                <span className="text-xs text-neutral-900 flex items-center gap-1">
                   <LuClock className="w-3 h-3" />
                   {formatDate(log.created_at)}
                 </span>
@@ -319,18 +319,18 @@ export function AuditLogs() {
               {/* Details */}
               <div className="space-y-1">
                 <p className="text-sm text-neutral-900">
-                  <span className="text-neutral-500">Entity:</span>{" "}
+                  <span className="text-neutral-900">Entity:</span>{" "}
                   <span className="font-medium">{log.entity_type || "-"}</span>
                 </p>
                 {log.user_profiles && (
                   <p className="text-sm text-neutral-900">
-                    <span className="text-neutral-500">User:</span>{" "}
+                    <span className="text-neutral-900">User:</span>{" "}
                     {log.user_profiles.full_name || log.user_profiles.email}
                   </p>
                 )}
                 {log.branches && (
                   <p className="text-sm text-neutral-900">
-                    <span className="text-neutral-500">Branch:</span>{" "}
+                    <span className="text-neutral-900">Branch:</span>{" "}
                     {log.branches.name} ({log.branches.code})
                   </p>
                 )}
@@ -339,7 +339,7 @@ export function AuditLogs() {
           ))}
 
           {filteredLogs.length === 0 && (
-            <div className="text-center py-8 text-neutral-500">
+            <div className="text-center py-8 text-neutral-900">
               No audit logs found.
             </div>
           )}
@@ -349,7 +349,7 @@ export function AuditLogs() {
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-neutral-200 bg-neutral-50">
+              <tr className="border-b border-neutral-200 bg-neutral-100">
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Date & Time</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Action</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Entity</th>
@@ -359,7 +359,7 @@ export function AuditLogs() {
             </thead>
             <tbody>
               {filteredLogs.map((log) => (
-                <tr key={log.id} className="border-b border-neutral-100 hover:bg-neutral-50 transition-colors">
+                <tr key={log.id} className="border-b border-neutral-100 hover:bg-neutral-100 transition-colors">
                   <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap">
                     {formatDate(log.created_at)}
                   </td>
@@ -383,7 +383,7 @@ export function AuditLogs() {
           </table>
 
           {filteredLogs.length === 0 && (
-            <div className="text-center py-12 text-neutral-500">
+            <div className="text-center py-12 text-neutral-900">
               No audit logs found.
             </div>
           )}
@@ -399,7 +399,7 @@ export function AuditLogs() {
               <button
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                className="p-2 border border-neutral-300 rounded-lg text-neutral-900 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-2 border border-neutral-200 rounded-lg text-neutral-900 hover:bg-neutral-100 disabled:opacity-100 disabled:cursor-not-allowed"
               >
                 <LuChevronLeft className="w-4 h-4" />
               </button>
@@ -409,7 +409,7 @@ export function AuditLogs() {
               <button
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
-                className="p-2 border border-neutral-300 rounded-lg text-neutral-900 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-2 border border-neutral-200 rounded-lg text-neutral-900 hover:bg-neutral-100 disabled:opacity-100 disabled:cursor-not-allowed"
               >
                 <LuChevronRight className="w-4 h-4" />
               </button>

@@ -68,14 +68,36 @@ export function BranchManagement() {
       return;
     }
 
+    if (!addBranchForm.address) {
+      setAddBranchError("Address is required");
+      return;
+    }
+
+    if (!addBranchForm.phone) {
+      setAddBranchError("Phone number is required");
+      return;
+    }
+
+    // Validate phone number format (at least 7 digits)
+    const phoneDigits = addBranchForm.phone.replace(/[^0-9]/g, "");
+    if (phoneDigits.length < 7 || phoneDigits.length > 20) {
+      setAddBranchError("Phone number must be between 7 and 20 digits");
+      return;
+    }
+
+    if (!addBranchForm.email) {
+      setAddBranchError("Email address is required");
+      return;
+    }
+
     try {
       setAddingBranch(true);
       await branchesApi.create({
         name: addBranchForm.name,
         code: addBranchForm.code.toUpperCase(),
-        address: addBranchForm.address || undefined,
-        phone: addBranchForm.phone || undefined,
-        email: addBranchForm.email || undefined,
+        address: addBranchForm.address,
+        phone: addBranchForm.phone,
+        email: addBranchForm.email,
       });
       
       // Reset form and close modal
@@ -124,14 +146,36 @@ export function BranchManagement() {
       return;
     }
 
+    if (!editBranchForm.address) {
+      setEditBranchError("Address is required");
+      return;
+    }
+
+    if (!editBranchForm.phone) {
+      setEditBranchError("Phone number is required");
+      return;
+    }
+
+    // Validate phone number format (at least 7 digits)
+    const phoneDigits = editBranchForm.phone.replace(/[^0-9]/g, "");
+    if (phoneDigits.length < 7 || phoneDigits.length > 20) {
+      setEditBranchError("Phone number must be between 7 and 20 digits");
+      return;
+    }
+
+    if (!editBranchForm.email) {
+      setEditBranchError("Email address is required");
+      return;
+    }
+
     try {
       setEditingBranch(true);
       await branchesApi.update(selectedBranch.id, {
         name: editBranchForm.name,
         code: editBranchForm.code.toUpperCase(),
-        address: editBranchForm.address || undefined,
-        phone: editBranchForm.phone || undefined,
-        email: editBranchForm.email || undefined,
+        address: editBranchForm.address,
+        phone: editBranchForm.phone,
+        email: editBranchForm.email,
         is_active: editBranchForm.is_active,
       });
       
@@ -313,6 +357,7 @@ export function BranchManagement() {
               value={addBranchForm.address}
               onChange={(v) => setAddBranchForm(prev => ({ ...prev, address: v }))}
               placeholder="Building No., Street Address"
+              required
             />
             
             <ModalInput
@@ -320,6 +365,9 @@ export function BranchManagement() {
               value={addBranchForm.phone}
               onChange={(v) => setAddBranchForm(prev => ({ ...prev, phone: v }))}
               placeholder="Phone Number"
+              required
+              pattern="[0-9+\-()\s]{7,20}"
+              title="Please enter a valid phone number (7-20 digits)"
             />
             
             <ModalInput
@@ -327,6 +375,7 @@ export function BranchManagement() {
               value={addBranchForm.email}
               onChange={(v) => setAddBranchForm(prev => ({ ...prev, email: v }))}
               placeholder="Email Address"
+              required
             />
           </ModalSection>
 
@@ -374,6 +423,7 @@ export function BranchManagement() {
                 value={editBranchForm.address}
                 onChange={(v) => setEditBranchForm(prev => ({ ...prev, address: v }))}
                 placeholder="Building No., Street Address"
+                required
               />
               
               <ModalInput
@@ -381,6 +431,9 @@ export function BranchManagement() {
                 value={editBranchForm.phone}
                 onChange={(v) => setEditBranchForm(prev => ({ ...prev, phone: v }))}
                 placeholder="Phone Number"
+                required
+                pattern="[0-9+\-()\s]{7,20}"
+                title="Please enter a valid phone number (7-20 digits)"
               />
               
               <ModalInput
@@ -388,6 +441,7 @@ export function BranchManagement() {
                 value={editBranchForm.email}
                 onChange={(v) => setEditBranchForm(prev => ({ ...prev, email: v }))}
                 placeholder="Email Address"
+                required
               />
               
               <div className="flex items-center gap-3 mt-4">
@@ -441,7 +495,7 @@ export function BranchManagement() {
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 px-4 py-3.5 border-2 border-negative text-negative rounded-xl font-semibold hover:bg-negative-50 transition-colors"
+                className="flex-1 px-4 py-3.5 border-2 border-negative text-negative rounded-xl font-semibold hover:bg-negative-200 transition-colors"
               >
                 Cancel
               </button>

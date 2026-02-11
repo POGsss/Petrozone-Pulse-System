@@ -187,7 +187,7 @@ router.post("/users", requireAdmin, async (req: Request, res: Response): Promise
 /**
  * PUT /api/rbac/users/:userId/roles
  * Update a user's roles
- * Admin only
+ * HM only - uses atomic RPC function to avoid permission issues
  */
 router.put("/users/:userId/roles", requireAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -205,29 +205,17 @@ router.put("/users/:userId/roles", requireAdmin, async (req: Request, res: Respo
       return;
     }
 
-    // Delete existing roles
-    const { error: deleteError } = await supabaseAdmin
-      .from("user_roles")
-      .delete()
-      .eq("user_id", userId);
+    // Use atomic RPC function that checks permissions BEFORE deleting
+    // Pass the calling user ID explicitly for permission check
+    const { data, error } = await supabaseAdmin.rpc("update_user_roles", {
+      p_user_id: userId,
+      p_roles: roles,
+      p_calling_user_id: req.user!.id,
+    });
 
-    if (deleteError) {
-      res.status(500).json({ error: deleteError.message });
-      return;
-    }
-
-    // Insert new roles
-    const roleInserts = roles.map((role: UserRole) => ({
-      user_id: userId,
-      role,
-    }));
-
-    const { error: insertError } = await supabaseAdmin
-      .from("user_roles")
-      .insert(roleInserts);
-
-    if (insertError) {
-      res.status(500).json({ error: insertError.message });
+    if (error) {
+      console.error("Update roles error:", error);
+      res.status(500).json({ error: error.message });
       return;
     }
 
@@ -241,7 +229,7 @@ router.put("/users/:userId/roles", requireAdmin, async (req: Request, res: Respo
 /**
  * PUT /api/rbac/users/:userId/branches
  * Update a user's branch assignments
- * Admin only
+ * HM only - uses atomic RPC function to avoid permission issues
  */
 router.put("/users/:userId/branches", requireAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -253,33 +241,18 @@ router.put("/users/:userId/branches", requireAdmin, async (req: Request, res: Re
       return;
     }
 
-    // Delete existing assignments
-    const { error: deleteError } = await supabaseAdmin
-      .from("user_branch_assignments")
-      .delete()
-      .eq("user_id", userId);
+    // Use atomic RPC function that checks permissions BEFORE deleting
+    const { data, error } = await supabaseAdmin.rpc("update_user_branches", {
+      p_user_id: userId,
+      p_branch_ids: branch_ids,
+      p_primary_branch_id: primary_branch_id || null,
+      p_calling_user_id: req.user!.id,
+    });
 
-    if (deleteError) {
-      res.status(500).json({ error: deleteError.message });
+    if (error) {
+      console.error("Update branches error:", error);
+      res.status(500).json({ error: error.message });
       return;
-    }
-
-    // Insert new assignments
-    if (branch_ids.length > 0) {
-      const branchInserts = branch_ids.map((branch_id: string) => ({
-        user_id: userId,
-        branch_id,
-        is_primary: branch_id === primary_branch_id || (branch_ids.indexOf(branch_id) === 0 && !primary_branch_id),
-      }));
-
-      const { error: insertError } = await supabaseAdmin
-        .from("user_branch_assignments")
-        .insert(branchInserts);
-
-      if (insertError) {
-        res.status(500).json({ error: insertError.message });
-        return;
-      }
     }
 
     res.json({ message: "Branch assignments updated successfully", branch_ids });

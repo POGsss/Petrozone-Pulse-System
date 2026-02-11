@@ -68,6 +68,9 @@ interface ModalInputProps {
   maxLength?: number;
   disabled?: boolean;
   className?: string;
+  pattern?: string;
+  title?: string;
+  inputMode?: "text" | "decimal" | "numeric" | "tel" | "email";
 }
 
 export function ModalInput({
@@ -80,17 +83,34 @@ export function ModalInput({
   maxLength,
   disabled,
   className = "",
+  pattern,
+  title,
+  inputMode,
 }: ModalInputProps) {
+  // For phone fields, only allow numbers
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (type === "tel") {
+      // Only allow digits, plus sign, and common phone characters
+      const value = e.target.value.replace(/[^0-9+\-()\s]/g, "");
+      onChange(value);
+    } else {
+      onChange(e.target.value);
+    }
+  };
+
   return (
     <input
       type={type}
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={handleChange}
       placeholder={placeholder}
       required={required}
       minLength={minLength}
       maxLength={maxLength}
       disabled={disabled}
+      pattern={pattern}
+      title={title}
+      inputMode={type === "tel" ? "tel" : inputMode}
       className={`w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all ${disabled ? "opacity-50 cursor-not-allowed" : ""} ${className}`}
     />
   );
