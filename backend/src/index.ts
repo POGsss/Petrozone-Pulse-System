@@ -20,6 +20,11 @@ app.use(cors({
 
 app.use(express.json());
 
+// Root endpoint
+app.get("/", (_req, res) => {
+  res.send("Backend Working");
+});
+
 // Health check endpoint
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
