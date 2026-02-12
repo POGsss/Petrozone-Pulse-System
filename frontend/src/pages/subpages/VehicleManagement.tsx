@@ -513,7 +513,7 @@ export function VehicleManagement() {
             </div>
 
             {/* Actions */}
-            <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
+            <div className={`flex items-center justify-end ${canUpdate || canDelete ? "gap-4 pt-3 border-t border-neutral-200" : ""}`}>
               {canUpdate && (
                 <button
                   onClick={(e) => {
