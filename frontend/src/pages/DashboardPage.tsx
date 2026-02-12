@@ -14,11 +14,11 @@ import { AuditLogs } from "./subpages/AuditLogs";
 const pageData: Record<string, { title: string; description: string }> = {
   dashboard: {
     title: "Dashboard",
-    description: "Welcome to Petrozone Pulse System. View your overview and quick stats here.",
+    description: "View your overview and quick stats here.",
   },
   users: {
     title: "User Management",
-    description: "Manage system users, assign roles, and configure permissions.",
+    description: "Manage users, roles, and configure permissions.",
   },
   branches: {
     title: "Branch Management",
@@ -26,15 +26,15 @@ const pageData: Record<string, { title: string; description: string }> = {
   },
   inventory: {
     title: "Inventory",
-    description: "Manage parts, supplies, and stock levels across branches.",
+    description: "Manage parts, supplies, and stocks across branches.",
   },
   pricing: {
     title: "Pricing Config",
-    description: "Configure pricing rules, discounts, and service rates.",
+    description: "Configure pricing, discounts, and service rates.",
   },
   orders: {
     title: "Order & Sales",
-    description: "Manage orders, track sales, and process transactions.",
+    description: "Manage orders, sales, and process transactions.",
   },
   reports: {
     title: "Reports",
@@ -42,7 +42,7 @@ const pageData: Record<string, { title: string; description: string }> = {
   },
   audit: {
     title: "Audit Logs",
-    description: "Track and review all system activities and changes.",
+    description: "Track and review all system activities.",
   },
   messages: {
     title: "Messages",
@@ -54,11 +54,11 @@ const pageData: Record<string, { title: string; description: string }> = {
   },
   customers: {
     title: "Customers",
-    description: "View and manage customer information and history.",
+    description: "View and manage customer information.",
   },
   profile: {
     title: "Profile Settings",
-    description: "Manage your account information and change your password.",
+    description: "Manage your account and change your password.",
   },
 };
 

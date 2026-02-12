@@ -500,17 +500,17 @@ export function UserManagement() {
               )}
 
               {/* Actions */}
-              <div className="flex items-center gap-2 pt-2 border-t border-neutral-200">
+              <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
                 <button
                   onClick={() => openEditModal(user)}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-primary-950 rounded-lg transition-colors"
+                  className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
                 >
                   <LuPencil className="w-4 h-4" />
                   Edit
                 </button>
                 <button
                   onClick={() => openDeleteModal(user)}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-negative-950 rounded-lg transition-colors"
+                  className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
                 >
                   <LuTrash2 className="w-4 h-4" />
                   Delete
@@ -533,7 +533,6 @@ export function UserManagement() {
               <tr className="border-b border-neutral-200 bg-neutral-100">
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Name</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Email</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Phone</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Roles</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Branches</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Status</th>
@@ -547,7 +546,6 @@ export function UserManagement() {
                     <span className="font-medium text-neutral-900">{user.full_name}</span>
                   </td>
                   <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap">{user.email}</td>
-                  <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap">{user.phone || "-"}</td>
                   <td className="py-3 px-4">
                     <div className="flex flex-wrap gap-1">
                       {user.roles.map((role) => (
