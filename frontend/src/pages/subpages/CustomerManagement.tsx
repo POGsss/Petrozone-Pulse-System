@@ -535,11 +535,6 @@ export function CustomerManagement() {
                           <span className="truncate">{customer.contact_number}</span>
                         </p>
                       )}
-                      {customer.email && (
-                        <p className="text-sm text-neutral-900 flex items-center gap-1.5 truncate">
-                          <span className="truncate">{customer.email}</span>
-                        </p>
-                      )}
                     </div>
                   </td>
                   <td className="py-3 px-4 whitespace-nowrap">
