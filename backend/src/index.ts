@@ -42,8 +42,13 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   res.status(500).json({ error: "Internal server error" });
 });
 
-const PORT = process.env.PORT || 4000;
+// Export app for Vercel serverless deployment
+export default app;
 
-app.listen(PORT, () => {
-  console.log(`Backend running on port ${PORT}`);
-});
+// Only start listening when not in Vercel (local dev)
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 4000;
+  app.listen(PORT, () => {
+    console.log(`Backend running on port ${PORT}`);
+  });
+}
