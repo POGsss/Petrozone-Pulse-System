@@ -131,7 +131,7 @@ export function DashboardPage() {
   const navItems = getNavItemsForRole(userRoles);
   
   // Permission helpers based on user stories
-  const hasAnyRole = (...roles: string[]) => roles.some(r => userRoles.includes(r));
+  const hasAnyRole = (...roles: string[]) => roles.some(r => userRoles.includes(r as typeof userRoles[number]));
   const canManageUsers = hasAnyRole("HM", "POC", "JS");
   const canManageBranches = hasAnyRole("HM", "POC", "JS", "R");
   const canViewAuditLogs = hasAnyRole("HM", "POC");
