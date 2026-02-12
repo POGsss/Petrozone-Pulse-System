@@ -56,7 +56,6 @@ export function DashboardLayout({
   const primaryBranch = user?.branches?.find(b => b.is_primary) || user?.branches?.[0];
   const branchName = primaryBranch?.branches?.name || "All Branches";
   const userName = user?.profile?.full_name || user?.email?.split("@")[0] || "User";
-  const userRoles = user?.roles || [];
 
   const SidebarContent = ({ collapsed = false, mobile = false }: { collapsed?: boolean; mobile?: boolean }) => (
     <div className="flex flex-col h-full">

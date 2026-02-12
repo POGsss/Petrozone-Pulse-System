@@ -166,18 +166,26 @@ router.get(
 /**
  * GET /api/audit/stats
  * Get audit log statistics (for dashboard)
+ * HM can view all stats, POC can view stats for their branches only
  */
-router.get("/stats", requireManagement, async (req: Request, res: Response): Promise<void> => {
+router.get("/stats", requireRoles("HM", "POC"), async (req: Request, res: Response): Promise<void> => {
   try {
     const { days = "7" } = req.query;
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - parseInt(days as string));
 
     // Get counts by action type
-    const { data: actionCounts, error: actionError } = await supabaseAdmin
+    let query = supabaseAdmin
       .from("audit_logs")
       .select("action")
       .gte("created_at", startDate.toISOString());
+
+    // For POC users, filter by their branch assignments (same as logs endpoint)
+    if (!req.user!.roles.includes("HM")) {
+      query = query.in("branch_id", req.user!.branchIds);
+    }
+
+    const { data: actionCounts, error: actionError } = await query;
 
     if (actionError) {
       res.status(500).json({ error: actionError.message });
@@ -192,12 +200,6 @@ router.get("/stats", requireManagement, async (req: Request, res: Response): Pro
 
     // Get recent login count
     const loginCount = actionStats["LOGIN"] || 0;
-
-    // Get counts by entity type
-    const entityStats = actionCounts?.reduce((acc, log) => {
-      // We'd need entity_type here but it's not in the current query
-      return acc;
-    }, {} as Record<string, number>) ?? {};
 
     res.json({
       period_days: parseInt(days as string),
