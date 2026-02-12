@@ -343,3 +343,80 @@ export const customersApi = {
     });
   },
 };
+
+export const vehiclesApi = {
+  getAll: async (params?: {
+    branch_id?: string;
+    status?: string;
+    vehicle_type?: string;
+    customer_id?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
+    const query = searchParams.toString();
+    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").Vehicle>>(
+      `/api/vehicles${query ? `?${query}` : ""}`
+    );
+  },
+
+  getById: async (id: string) => {
+    return fetchWithAuth<import("../types").Vehicle>(`/api/vehicles/${id}`);
+  },
+
+  create: async (data: {
+    plate_number: string;
+    vehicle_type: string;
+    orcr: string;
+    model: string;
+    customer_id: string;
+    branch_id: string;
+    status?: string;
+    color?: string;
+    year?: number;
+    engine_number?: string;
+    chassis_number?: string;
+    notes?: string;
+  }) => {
+    return fetchWithAuth<import("../types").Vehicle>("/api/vehicles", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (
+    id: string,
+    data: {
+      plate_number?: string;
+      vehicle_type?: string;
+      orcr?: string;
+      model?: string;
+      customer_id?: string;
+      status?: string;
+      color?: string | null;
+      year?: number | null;
+      engine_number?: string | null;
+      chassis_number?: string | null;
+      notes?: string | null;
+    }
+  ) => {
+    return fetchWithAuth<import("../types").Vehicle>(`/api/vehicles/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: string) => {
+    return fetchWithAuth<{ message: string }>(`/api/vehicles/${id}`, {
+      method: "DELETE",
+    });
+  },
+};

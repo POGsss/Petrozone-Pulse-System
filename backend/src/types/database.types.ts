@@ -167,6 +167,85 @@ export type Database = {
           },
         ]
       }
+      vehicles: {
+        Row: {
+          id: string
+          plate_number: string
+          vehicle_type: "sedan" | "suv" | "truck" | "van" | "motorcycle" | "hatchback" | "coupe" | "wagon" | "bus" | "other"
+          orcr: string
+          model: string
+          customer_id: string
+          branch_id: string
+          status: "active" | "inactive"
+          color: string | null
+          year: number | null
+          engine_number: string | null
+          chassis_number: string | null
+          notes: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          plate_number: string
+          vehicle_type?: "sedan" | "suv" | "truck" | "van" | "motorcycle" | "hatchback" | "coupe" | "wagon" | "bus" | "other"
+          orcr: string
+          model: string
+          customer_id: string
+          branch_id: string
+          status?: "active" | "inactive"
+          color?: string | null
+          year?: number | null
+          engine_number?: string | null
+          chassis_number?: string | null
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          plate_number?: string
+          vehicle_type?: "sedan" | "suv" | "truck" | "van" | "motorcycle" | "hatchback" | "coupe" | "wagon" | "bus" | "other"
+          orcr?: string
+          model?: string
+          customer_id?: string
+          branch_id?: string
+          status?: "active" | "inactive"
+          color?: string | null
+          year?: number | null
+          engine_number?: string | null
+          chassis_number?: string | null
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicles_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicles_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicles_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_branch_assignments: {
         Row: {
           branch_id: string

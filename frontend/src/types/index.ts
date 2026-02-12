@@ -115,3 +115,33 @@ export interface Customer {
   updated_at: string;
   branches?: Branch;
 }
+
+// Vehicle types
+export type VehicleType = "sedan" | "suv" | "truck" | "van" | "motorcycle" | "hatchback" | "coupe" | "wagon" | "bus" | "other";
+export type VehicleStatus = "active" | "inactive";
+
+export interface Vehicle {
+  id: string;
+  plate_number: string;
+  vehicle_type: VehicleType;
+  orcr: string;
+  model: string;
+  customer_id: string;
+  branch_id: string;
+  status: VehicleStatus;
+  color: string | null;
+  year: number | null;
+  engine_number: string | null;
+  chassis_number: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  branches?: Branch;
+  customers?: {
+    id: string;
+    full_name: string;
+    contact_number: string | null;
+    email: string | null;
+  };
+}

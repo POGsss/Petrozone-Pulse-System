@@ -1,8 +1,17 @@
-import { useState, useEffect } from "react";
-import { LuPlus, LuCircleAlert, LuRefreshCw, LuPencil, LuTrash2 } from "react-icons/lu";
+import { useState, useEffect, useMemo } from "react";
+import { LuPlus, LuCircleAlert, LuRefreshCw, LuPencil, LuTrash2, LuBuilding } from "react-icons/lu";
 import { branchesApi } from "../../lib/api";
-import { Modal, ModalSection, ModalInput, ModalButtons, ModalError } from "../../components";
+import { Modal, ModalSection, ModalInput, ModalButtons, ModalError, SearchFilter } from "../../components";
+import type { FilterGroup } from "../../components";
 import type { Branch } from "../../types";
+
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
 
 export function BranchManagement() {
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -40,6 +49,14 @@ export function BranchManagement() {
   const [deletingBranch, setDeletingBranch] = useState(false);
   const [branchToDelete, setBranchToDelete] = useState<Branch | null>(null);
 
+  // View modal
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [viewBranch, setViewBranch] = useState<Branch | null>(null);
+
+  // Search & filters
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
+
   // Fetch data on mount
   useEffect(() => {
     fetchBranches();
@@ -57,6 +74,41 @@ export function BranchManagement() {
       setLoading(false);
     }
   }
+
+  // Filter groups
+  const filterGroups: FilterGroup[] = [
+    {
+      key: "status",
+      label: "Status",
+      options: [
+        { value: "active", label: "Active" },
+        { value: "inactive", label: "Inactive" },
+      ],
+    },
+  ];
+
+  // Filtered branches
+  const filteredBranches = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return branches.filter((b) => {
+      const matchSearch =
+        !q ||
+        b.name.toLowerCase().includes(q) ||
+        b.code.toLowerCase().includes(q) ||
+        b.address?.toLowerCase().includes(q) ||
+        b.phone?.toLowerCase().includes(q) ||
+        b.email?.toLowerCase().includes(q);
+
+      const statusFilter = activeFilters.status;
+      const matchStatus =
+        !statusFilter ||
+        statusFilter === "all" ||
+        (statusFilter === "active" && b.is_active) ||
+        (statusFilter === "inactive" && !b.is_active);
+
+      return matchSearch && matchStatus;
+    });
+  }, [branches, searchQuery, activeFilters]);
 
   // Add branch handler
   async function handleAddBranch(e: React.FormEvent) {
@@ -259,19 +311,42 @@ export function BranchManagement() {
         </button>
       </div>
 
+      {/* Search & Filter bar */}
+      {branches.length > 0 && (
+        <SearchFilter
+          searchValue={searchQuery}
+          onSearchChange={setSearchQuery}
+          searchPlaceholder="Search"
+          filters={filterGroups}
+          activeFilters={activeFilters}
+          onFilterChange={(key, value) =>
+            setActiveFilters((prev) => ({ ...prev, [key]: value }))
+          }
+        />
+      )}
+
       {/* Branches grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {branches.map((branch) => (
+        {filteredBranches.map((branch) => (
           <div
             key={branch.id}
-            className={`bg-white rounded-xl border p-4 border-neutral-200`}
+            onClick={() => {
+              setViewBranch(branch);
+              setShowViewModal(true);
+            }}
+            className="bg-white rounded-xl border p-4 border-neutral-200 cursor-pointer hover:bg-neutral-50 transition-colors"
           >
             <div className="flex items-start justify-between mb-3">
-              <div>
-                <h4 className="font-semibold text-neutral-950">{branch.name}</h4>
-                <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
-                  {branch.code}
-                </span>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-primary-100 rounded-lg">
+                  <LuBuilding className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <h4 className="font-semibold text-neutral-950">{branch.name}</h4>
+                  <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
+                    {branch.code}
+                  </span>
+                </div>
               </div>
               <span
                 className={`px-2 py-1 rounded text-xs font-medium ${
@@ -295,14 +370,20 @@ export function BranchManagement() {
 
             <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
               <button
-                onClick={() => openEditModal(branch)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openEditModal(branch);
+                }}
                 className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
               >
                 <LuPencil className="w-4 h-4" />
                 Edit
               </button>
               <button
-                onClick={() => openDeleteConfirm(branch)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openDeleteConfirm(branch);
+                }}
                 className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
               >
                 <LuTrash2 className="w-4 h-4" />
@@ -312,9 +393,11 @@ export function BranchManagement() {
           </div>
         ))}
 
-        {branches.length === 0 && (
+        {filteredBranches.length === 0 && (
           <div className="col-span-full text-center py-12 text-neutral-900">
-            No branches found. Click "Add Branch" to create one.
+            {searchQuery || Object.values(activeFilters).some((v) => v && v !== "all")
+              ? "No branches match your search or filters."
+              : 'No branches found. Click "Add Branch" to create one.'}
           </div>
         )}
       </div>
@@ -508,6 +591,85 @@ export function BranchManagement() {
                 {deletingBranch ? "Deleting..." : "Delete"}
               </button>
             </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* View Branch Modal */}
+      <Modal
+        isOpen={showViewModal && !!viewBranch}
+        onClose={() => setShowViewModal(false)}
+        title="Branch Details"
+      >
+        {viewBranch && (
+          <div>
+            <ModalSection title="Branch Information">
+              <ModalInput
+                type="text"
+                value={viewBranch.name}
+                onChange={() => {}}
+                placeholder="Branch Name"
+                disabled
+              />
+              <ModalInput
+                type="text"
+                value={viewBranch.code}
+                onChange={() => {}}
+                placeholder="Branch Code"
+                disabled
+                className="font-mono"
+              />
+              <ModalInput
+                type="text"
+                value={viewBranch.is_active ? "Active" : "Inactive"}
+                onChange={() => {}}
+                placeholder="Status"
+                disabled
+              />
+            </ModalSection>
+
+            <ModalSection title="Contact Details">
+              <ModalInput
+                type="text"
+                value={viewBranch.address || "-"}
+                onChange={() => {}}
+                placeholder="Address"
+                disabled
+              />
+              <ModalInput
+                type="text"
+                value={viewBranch.phone || "-"}
+                onChange={() => {}}
+                placeholder="Phone"
+                disabled
+              />
+              <ModalInput
+                type="text"
+                value={viewBranch.email || "-"}
+                onChange={() => {}}
+                placeholder="Email"
+                disabled
+              />
+            </ModalSection>
+
+            <ModalSection title="Timestamps">
+              <div className="grid grid-cols-2 gap-4">
+                <ModalInput
+                  type="text"
+                  value={formatDate(viewBranch.created_at)}
+                  onChange={() => {}}
+                  placeholder="Created"
+                  disabled
+                />
+                <ModalInput
+                  type="text"
+                  value={formatDate(viewBranch.updated_at)}
+                  onChange={() => {}}
+                  placeholder="Updated"
+                  disabled
+                />
+              </div>
+            </ModalSection>
           </div>
         )}
       </Modal>

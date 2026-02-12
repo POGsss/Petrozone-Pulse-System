@@ -10,6 +10,7 @@ import { BranchManagement } from "./subpages/BranchManagement";
 import { ProfileSettings } from "./subpages/ProfileSettings";
 import { AuditLogs } from "./subpages/AuditLogs";
 import { CustomerManagement } from "./subpages/CustomerManagement";
+import { VehicleManagement } from "./subpages/VehicleManagement";
 
 // Page content data
 const pageData: Record<string, { title: string; description: string }> = {
@@ -25,37 +26,21 @@ const pageData: Record<string, { title: string; description: string }> = {
     title: "Branch Management",
     description: "View and manage all branches in the system.",
   },
-  inventory: {
-    title: "Inventory",
-    description: "Manage parts, supplies, and stocks across branches.",
+  customers: {
+    title: "Customers",
+    description: "View and manage customer information.",
   },
-  pricing: {
-    title: "Pricing Config",
-    description: "Configure pricing, discounts, and service rates.",
-  },
-  orders: {
-    title: "Order & Sales",
-    description: "Manage orders, sales, and process transactions.",
-  },
-  reports: {
-    title: "Reports",
-    description: "Generate and view system reports and analytics.",
+  vehicles: {
+    title: "Vehicles",
+    description: "Manage vehicle records and service history.",
   },
   audit: {
     title: "Audit Logs",
     description: "Track and review all system activities.",
   },
-  messages: {
-    title: "Messages",
-    description: "View and send messages within the system.",
-  },
   settings: {
     title: "Settings",
     description: "Configure system settings and preferences.",
-  },
-  customers: {
-    title: "Customers",
-    description: "View and manage customer information.",
   },
   profile: {
     title: "Profile Settings",
@@ -87,32 +72,16 @@ function getNavItemsForRole(roles: string[]): NavItem[] {
     items.push({ id: "branches", label: "Branch Management", icon: <NavIcons.Branch /> });
   }
 
-  // Inventory: HM, POC, JS (future)
-  if (hasAnyRole("HM", "POC", "JS")) {
-    items.push({ id: "inventory", label: "Inventory", icon: <NavIcons.Inventory /> });
-  }
+  // Customers: HM, POC, JS, R, T (all roles can view, permissions differ per action)
+  items.push({ id: "customers", label: "Customers", icon: <NavIcons.Customers /> });
 
-  // Pricing Config: HM, POC, JS (future)
-  if (hasAnyRole("HM", "POC", "JS")) {
-    items.push({ id: "pricing", label: "Pricing Config", icon: <NavIcons.Pricing /> });
-  }
-
-  // Orders: All roles
-  items.push({ id: "orders", label: "Order & Sales", icon: <NavIcons.Sales /> });
-
-  // Reports: All roles
-  items.push({ id: "reports", label: "Reports", icon: <NavIcons.Reports /> });
+  // Vehicles: All roles (upcoming module)
+  items.push({ id: "vehicles", label: "Vehicles", icon: <NavIcons.Vehicle /> });
 
   // Audit Logs: HM, POC (US18)
   if (hasAnyRole("HM", "POC")) {
     items.push({ id: "audit", label: "Audit Logs", icon: <NavIcons.Audit /> });
   }
-
-  // Customers: HM, POC, JS, R, T (all roles can view, permissions differ per action)
-  items.push({ id: "customers", label: "Customers", icon: <NavIcons.Customers /> });
-
-  // Messages: All roles
-  items.push({ id: "messages", label: "Messages", icon: <NavIcons.Messages />, badge: 0 });
 
   // Settings: HM only (system-wide settings)
   if (hasRole("HM")) {
@@ -182,32 +151,37 @@ export function DashboardPage() {
           <BranchManagement />
       )}
 
-      {/* Profile Settings - all users (US7, US9) */}
-      {activeNav === "profile" && (
-          <ProfileSettings />
-      )}
-
-      {/* Audit Logs - HM, POC (US18) */}
-      {activeNav === "audit" && canViewAuditLogs && (
-          <AuditLogs />
-      )}
-
       {/* Customer Management - All roles */}
       {activeNav === "customers" && canViewCustomers && (
           <CustomerManagement />
       )}
 
+      {/* Vehicle Management - All roles */}
+      {activeNav === "vehicles" && (
+          <VehicleManagement />
+      )}
+
+      {/* Empty state for upcoming pages (Settings) */}
+      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && activeNav !== "vehicles" && (
+        <div className="bg-white rounded-xl p-6 border border-neutral-100">
+          <p className="text-neutral-900">This feature is coming in the next phase.</p>
+        </div>
+      )}
+      
+      {/* Audit Logs - HM, POC (US18) */}
+      {activeNav === "audit" && canViewAuditLogs && (
+          <AuditLogs />
+      )}
+      
+      {/* Profile Settings - all users (US7, US9) */}
+      {activeNav === "profile" && (
+          <ProfileSettings />
+      )}
+      
       {/* Settings page placeholder - HM only */}
       {activeNav === "settings" && canAccessSettings && (
         <div className="bg-white rounded-xl p-6 border border-neutral-100">
           <p className="text-neutral-900">System settings and preferences will be available here.</p>
-        </div>
-      )}
-
-      {/* Empty state for other pages (future modules) */}
-      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && (
-        <div className="bg-white rounded-xl p-6 border border-neutral-100">
-          <p className="text-neutral-900">This feature is coming in the next phase.</p>
         </div>
       )}
     </DashboardLayout>

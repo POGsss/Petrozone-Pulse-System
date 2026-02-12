@@ -72,9 +72,9 @@ Scope:
 Mandatory fields:
 - plate_number
 - vehicle_type
-- make
+- orcr
 - model
-- branch_id
+- customer (dropdown)
 - status
 
 Rules:
@@ -83,12 +83,19 @@ Rules:
 - Plate number uniqueness must be enforced
 - Soft delete only
 
+User Stories:
+As a HM, POC, JS, or R, I want to create vehicle profiles to record customer vehicle details and service history
+As a HM, POC, JS, or R, I want to view vehicle profiles for reference and service tracking
+As a HM, POC, JS, or R, I want to update vehicle profiles to keep vehicle information current
+As a HM, POC, JS, or R, I want to delete vehicle profiles for decommissioned or invalid records
+
 Tasks:
 1. Design vehicle schema and constraints
 2. Implement customer-vehicle relationship
 3. Backend CRUD with validation
-4. Frontend vehicle forms and lists
+4. Frontend vehicle forms and lists same as Branch management exact copy of style
 5. Audit logging for all changes
+6. Maintain consistent styling of component and use available modal component for every actions
 
 No service history, reminders, or fulfillment logic yet.
 ```
