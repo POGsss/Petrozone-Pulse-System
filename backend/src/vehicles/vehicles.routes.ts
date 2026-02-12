@@ -66,7 +66,7 @@ router.get(
         query = query.eq("status", status as "active" | "inactive");
       }
       if (vehicle_type) {
-        query = query.eq("vehicle_type", vehicle_type as string);
+        query = query.eq("vehicle_type", vehicle_type as "sedan" | "suv" | "truck" | "van" | "motorcycle" | "hatchback" | "coupe" | "wagon" | "bus" | "other");
       }
       if (customer_id) {
         query = query.eq("customer_id", customer_id as string);
