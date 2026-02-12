@@ -274,3 +274,72 @@ export const auditApi = {
     }>(`/api/audit/stats${query}`);
   },
 };
+
+// Customers API
+export const customersApi = {
+  getAll: async (params?: {
+    branch_id?: string;
+    status?: string;
+    customer_type?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
+    const query = searchParams.toString();
+    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").Customer>>(
+      `/api/customers${query ? `?${query}` : ""}`
+    );
+  },
+
+  getById: async (id: string) => {
+    return fetchWithAuth<import("../types").Customer>(`/api/customers/${id}`);
+  },
+
+  create: async (data: {
+    full_name: string;
+    contact_number?: string;
+    email?: string;
+    customer_type: string;
+    branch_id: string;
+    status?: string;
+    address?: string;
+    notes?: string;
+  }) => {
+    return fetchWithAuth<import("../types").Customer>("/api/customers", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (
+    id: string,
+    data: {
+      full_name?: string;
+      contact_number?: string | null;
+      email?: string | null;
+      customer_type?: string;
+      status?: string;
+      address?: string | null;
+      notes?: string | null;
+    }
+  ) => {
+    return fetchWithAuth<import("../types").Customer>(`/api/customers/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: string) => {
+    return fetchWithAuth<{ message: string }>(`/api/customers/${id}`, {
+      method: "DELETE",
+    });
+  },
+};

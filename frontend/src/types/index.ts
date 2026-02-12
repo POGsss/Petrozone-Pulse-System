@@ -95,3 +95,23 @@ export interface PaginatedResponse<T> {
     offset: number;
   };
 }
+
+// Customer types
+export type CustomerType = "individual" | "company";
+export type CustomerStatus = "active" | "inactive";
+
+export interface Customer {
+  id: string;
+  full_name: string;
+  contact_number: string | null;
+  email: string | null;
+  customer_type: CustomerType;
+  branch_id: string;
+  status: CustomerStatus;
+  address: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  branches?: Branch;
+}

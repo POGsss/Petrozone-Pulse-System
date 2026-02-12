@@ -9,6 +9,7 @@ import authRoutes from "./auth/auth.routes.js";
 import rbacRoutes from "./rbac/rbac.routes.js";
 import branchRoutes from "./routes/branches.routes.js";
 import auditRoutes from "./audit/audit.routes.js";
+import customerRoutes from "./customers/customers.routes.js";
 
 const app = express();
 
@@ -47,6 +48,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/rbac", rbacRoutes);
 app.use("/api/branches", branchRoutes);
 app.use("/api/audit", auditRoutes);
+app.use("/api/customers", customerRoutes);
 
 // 404 handler
 app.use((_req, res) => {

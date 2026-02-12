@@ -107,6 +107,66 @@ export type Database = {
         }
         Relationships: []
       }
+      customers: {
+        Row: {
+          id: string
+          full_name: string
+          contact_number: string | null
+          email: string | null
+          customer_type: "individual" | "company"
+          branch_id: string
+          status: "active" | "inactive"
+          address: string | null
+          notes: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          full_name: string
+          contact_number?: string | null
+          email?: string | null
+          customer_type?: "individual" | "company"
+          branch_id: string
+          status?: "active" | "inactive"
+          address?: string | null
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          full_name?: string
+          contact_number?: string | null
+          email?: string | null
+          customer_type?: "individual" | "company"
+          branch_id?: string
+          status?: "active" | "inactive"
+          address?: string | null
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customers_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customers_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_branch_assignments: {
         Row: {
           branch_id: string

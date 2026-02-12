@@ -9,6 +9,7 @@ import { UserManagement } from "./subpages/UserManagement";
 import { BranchManagement } from "./subpages/BranchManagement";
 import { ProfileSettings } from "./subpages/ProfileSettings";
 import { AuditLogs } from "./subpages/AuditLogs";
+import { CustomerManagement } from "./subpages/CustomerManagement";
 
 // Page content data
 const pageData: Record<string, { title: string; description: string }> = {
@@ -107,7 +108,7 @@ function getNavItemsForRole(roles: string[]): NavItem[] {
     items.push({ id: "audit", label: "Audit Logs", icon: <NavIcons.Audit /> });
   }
 
-  // Customers: All roles
+  // Customers: HM, POC, JS, R, T (all roles can view, permissions differ per action)
   items.push({ id: "customers", label: "Customers", icon: <NavIcons.Customers /> });
 
   // Messages: All roles
@@ -135,6 +136,7 @@ export function DashboardPage() {
   const canManageUsers = hasAnyRole("HM", "POC", "JS");
   const canManageBranches = hasAnyRole("HM", "POC", "JS", "R");
   const canViewAuditLogs = hasAnyRole("HM", "POC");
+  const canViewCustomers = hasAnyRole("HM", "POC", "JS", "R", "T");
   const canAccessSettings = hasAnyRole("HM");
 
   // Get page data
@@ -190,6 +192,11 @@ export function DashboardPage() {
           <AuditLogs />
       )}
 
+      {/* Customer Management - All roles */}
+      {activeNav === "customers" && canViewCustomers && (
+          <CustomerManagement />
+      )}
+
       {/* Settings page placeholder - HM only */}
       {activeNav === "settings" && canAccessSettings && (
         <div className="bg-white rounded-xl p-6 border border-neutral-100">
@@ -198,7 +205,7 @@ export function DashboardPage() {
       )}
 
       {/* Empty state for other pages (future modules) */}
-      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && (
+      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && (
         <div className="bg-white rounded-xl p-6 border border-neutral-100">
           <p className="text-neutral-900">This feature is coming in the next phase.</p>
         </div>
