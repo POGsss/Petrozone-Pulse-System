@@ -345,7 +345,7 @@ export function CatalogManagement() {
       setItemToDelete(null);
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to deactivate catalog item");
+      setError(err instanceof Error ? err.message : "Failed to delete catalog item");
     } finally {
       setDeletingItem(false);
     }
@@ -775,14 +775,14 @@ export function CatalogManagement() {
       <Modal
         isOpen={showDeleteConfirm && !!itemToDelete}
         onClose={() => setShowDeleteConfirm(false)}
-        title="Deactivate Catalog Item"
+        title="Delete Catalog Item"
         maxWidth="sm"
       >
         {itemToDelete && (
           <div>
             <div className="bg-neutral-100 rounded-xl p-4 my-4">
               <p className="text-neutral-900">
-                Are you sure you want to deactivate{" "}
+                Are you sure you want to delete{" "}
                 <strong className="text-neutral-950">
                   {itemToDelete.name}
                 </strong>{" "}
@@ -790,7 +790,7 @@ export function CatalogManagement() {
               </p>
             </div>
             <p className="text-sm text-neutral-900 mb-2">
-              The item will be marked as inactive and hidden from active lists.
+              This item will be permanently removed. If it is referenced by other records, it will be deactivated instead.
             </p>
 
             <div className="flex gap-3 mt-6">
@@ -807,7 +807,7 @@ export function CatalogManagement() {
                 disabled={deletingItem}
                 className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {deletingItem ? "Deactivating..." : "Deactivate"}
+                {deletingItem ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>

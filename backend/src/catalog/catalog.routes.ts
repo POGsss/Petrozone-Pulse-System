@@ -477,8 +477,8 @@ router.put(
 
 /**
  * DELETE /api/catalog/:itemId
- * Soft-delete a catalog item (set status to inactive)
- * HM, POC, JS can soft-delete
+ * Delete a catalog item permanently, or deactivate if referenced by other records
+ * HM, POC, JS can delete
  */
 router.delete(
   "/:itemId",
@@ -514,40 +514,70 @@ router.delete(
         return;
       }
 
-      // Only HM can deactivate global items
+      // Only HM can delete global items
       if (existing.is_global && !req.user!.roles.includes("HM")) {
         res.status(403).json({
-          error: "Only Higher Management can deactivate global catalog items",
+          error: "Only Higher Management can delete global catalog items",
         });
         return;
       }
 
-      // Soft delete: set status to inactive
-      const { error } = await supabaseAdmin
+      // Try hard delete first
+      const { error: deleteError } = await supabaseAdmin
         .from("catalog_items")
-        .update({ status: "inactive" as "active" | "inactive" })
+        .delete()
         .eq("id", itemId);
 
-      if (error) {
-        res.status(500).json({ error: error.message });
+      if (deleteError) {
+        // If FK constraint violation, fall back to soft delete (deactivate)
+        if (deleteError.code === "23503") {
+          const { error: updateError } = await supabaseAdmin
+            .from("catalog_items")
+            .update({ status: "inactive" as "active" | "inactive" })
+            .eq("id", itemId);
+
+          if (updateError) {
+            res.status(500).json({ error: updateError.message });
+            return;
+          }
+
+          // Update audit log with user_id
+          await supabaseAdmin
+            .from("audit_logs")
+            .update({ user_id: req.user!.id })
+            .eq("entity_type", "CATALOG_ITEM")
+            .eq("entity_id", itemId)
+            .eq("action", "UPDATE")
+            .is("user_id", null)
+            .order("created_at", { ascending: false })
+            .limit(1);
+
+          res.json({
+            message: "Catalog item is referenced by other records and has been deactivated instead",
+            deactivated: true,
+          });
+          return;
+        }
+
+        res.status(500).json({ error: deleteError.message });
         return;
       }
 
-      // Update audit log with user_id
+      // Update audit log with user_id for the DELETE action
       await supabaseAdmin
         .from("audit_logs")
         .update({ user_id: req.user!.id })
         .eq("entity_type", "CATALOG_ITEM")
         .eq("entity_id", itemId)
-        .eq("action", "UPDATE")
+        .eq("action", "DELETE")
         .is("user_id", null)
         .order("created_at", { ascending: false })
         .limit(1);
 
-      res.json({ message: "Catalog item deactivated successfully" });
+      res.json({ message: "Catalog item deleted successfully" });
     } catch (error) {
       console.error("Delete catalog item error:", error);
-      res.status(500).json({ error: "Failed to deactivate catalog item" });
+      res.status(500).json({ error: "Failed to delete catalog item" });
     }
   }
 );
