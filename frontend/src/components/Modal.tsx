@@ -182,7 +182,7 @@ export function ModalToggle({ label, checked, onChange, description }: ModalTogg
       >
         <span
           className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-            checked ? "translate-x-1" : "translate-x-[-1.25rem]"
+            checked ? "translate-x-1" : "-translate-x-5"
           }`}
         />
       </button>
@@ -241,7 +241,7 @@ export function ModalError({ message }: ModalErrorProps) {
   
   return (
     <div className="bg-negative-200 border border-negative-950 rounded-xl p-4 flex items-center gap-3 mt-4">
-      <div className="w-5 h-5 rounded-full bg-negative flex items-center justify-center flex-shrink-0">
+      <div className="w-5 h-5 rounded-full bg-negative flex items-center justify-center shrink-0">
         <span className="text-white text-xs font-bold">!</span>
       </div>
       <p className="text-sm text-negative-950">{message}</p>

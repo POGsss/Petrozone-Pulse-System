@@ -420,3 +420,72 @@ export const vehiclesApi = {
     });
   },
 };
+
+// Catalog API
+export const catalogApi = {
+  getAll: async (params?: {
+    branch_id?: string;
+    status?: string;
+    type?: string;
+    search?: string;
+    is_global?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
+    const query = searchParams.toString();
+    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").CatalogItem>>(
+      `/api/catalog${query ? `?${query}` : ""}`
+    );
+  },
+
+  getById: async (id: string) => {
+    return fetchWithAuth<import("../types").CatalogItem>(`/api/catalog/${id}`);
+  },
+
+  create: async (data: {
+    name: string;
+    type: string;
+    description?: string;
+    base_price: number;
+    status?: string;
+    branch_id?: string;
+    is_global?: boolean;
+  }) => {
+    return fetchWithAuth<import("../types").CatalogItem>("/api/catalog", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (
+    id: string,
+    data: {
+      name?: string;
+      type?: string;
+      description?: string | null;
+      base_price?: number;
+      status?: string;
+      branch_id?: string | null;
+      is_global?: boolean;
+    }
+  ) => {
+    return fetchWithAuth<import("../types").CatalogItem>(`/api/catalog/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: string) => {
+    return fetchWithAuth<{ message: string }>(`/api/catalog/${id}`, {
+      method: "DELETE",
+    });
+  },
+};

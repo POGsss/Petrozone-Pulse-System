@@ -145,3 +145,22 @@ export interface Vehicle {
     email: string | null;
   };
 }
+
+// Catalog types
+export type CatalogItemType = "service" | "product" | "package";
+export type CatalogItemStatus = "active" | "inactive";
+
+export interface CatalogItem {
+  id: string;
+  name: string;
+  type: CatalogItemType;
+  description: string | null;
+  base_price: number;
+  status: CatalogItemStatus;
+  branch_id: string | null;
+  is_global: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  branches?: Branch;
+}

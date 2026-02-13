@@ -129,11 +129,18 @@ Rules:
 - No discounts or promotions
 - Used later by job orders
 
+User Stories:
+As a HM, POC, or JS, I want to create services, products, and packages so they can be selected during quotations and job orders
+As a HM, POC, JS, or R, I want to view services, products, and packages for reference and selection
+As a HM, POC, or JS, I want to update services, products, and packages to reflect pricing or scope changes
+As a HM, POC, or JS, I want to delete services, products, and packages that are no longer offered
+
 Tasks:
 1. Design catalog schema (single or separated tables)
 2. Backend CRUD APIs with validation
 3. Frontend management pages
 4. Audit all changes
+5. Maintain consistent styling of component and use available modal component for every actions
 
 Do not link to job orders yet.
 ```
@@ -166,6 +173,12 @@ Rules:
 - Pricing is resolved at job order creation
 - No dynamic formulas or promotions
 - Prevent conflicting active rules
+
+User Stories:
+As an HM, POC, JS, or R, I want to create labor and packaging pricing matrices to define standardized costs.
+As an HM, POC, JS, R, or T, I want to view labor and packaging pricing matrices for cost reference.
+As an HM, POC, JS, or R, I want to update pricing matrices to reflect cost changes.
+As an HM, POC, JS, or R, I want to delete pricing matrices that are no longer applicable.
 
 Tasks:
 1. Design pricing_matrix schema

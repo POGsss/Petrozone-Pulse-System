@@ -11,6 +11,7 @@ import branchRoutes from "./routes/branches.routes.js";
 import auditRoutes from "./audit/audit.routes.js";
 import customerRoutes from "./customers/customers.routes.js";
 import vehicleRoutes from "./vehicles/vehicles.routes.js";
+import catalogRoutes from "./catalog/catalog.routes.js";
 
 const app = express();
 
@@ -51,6 +52,7 @@ app.use("/api/branches", branchRoutes);
 app.use("/api/audit", auditRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/vehicles", vehicleRoutes);
+app.use("/api/catalog", catalogRoutes);
 
 // 404 handler
 app.use((_req, res) => {

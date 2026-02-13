@@ -247,4 +247,5 @@ export const NavIcons = {
   Pricing: () => <LuDollarSign className="w-5 h-5" />,
   Sales: () => <LuPackage className="w-5 h-5" />,
   Vehicle: () => <LuCar className="w-5 h-5" />,
+  Catalog: () => <LuPackage className="w-5 h-5" />,
 };

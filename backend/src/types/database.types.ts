@@ -246,6 +246,63 @@ export type Database = {
           },
         ]
       }
+      catalog_items: {
+        Row: {
+          id: string
+          name: string
+          type: "service" | "product" | "package"
+          description: string | null
+          base_price: number
+          status: "active" | "inactive"
+          branch_id: string | null
+          is_global: boolean
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          type: "service" | "product" | "package"
+          description?: string | null
+          base_price: number
+          status?: "active" | "inactive"
+          branch_id?: string | null
+          is_global?: boolean
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          type?: "service" | "product" | "package"
+          description?: string | null
+          base_price?: number
+          status?: "active" | "inactive"
+          branch_id?: string | null
+          is_global?: boolean
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_items_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "catalog_items_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_branch_assignments: {
         Row: {
           branch_id: string
