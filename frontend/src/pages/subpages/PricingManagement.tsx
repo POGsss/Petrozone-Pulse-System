@@ -377,7 +377,7 @@ export function PricingManagement() {
   return (
     <div className="space-y-6">
       {/* Header with title and add button */}
-      <div className="flex items-center justify-between bg-white rounded-xl p-4 border border-neutral-200">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 justify-between bg-white rounded-xl p-4 border border-neutral-200">
         <div>
           <h3 className="text-lg font-semibold text-neutral-950">Pricing Matrices</h3>
           <p className="text-sm text-neutral-900">Summary of pricing rules</p>
@@ -452,7 +452,7 @@ export function PricingManagement() {
                   setFilterStatus(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="appearance-none px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="appearance-none px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
               >
                 <option value="all">All Status</option>
                 {STATUS_OPTIONS.map((o) => (
@@ -490,7 +490,7 @@ export function PricingManagement() {
                     setFilterType(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
                 >
                   <option value="all">All Types</option>
                   {PRICING_TYPE_OPTIONS.map((o) => (
@@ -506,7 +506,7 @@ export function PricingManagement() {
                     setFilterBranch(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
                 >
                   <option value="all">All Branches</option>
                   {branches.map((b) => (
@@ -548,7 +548,7 @@ export function PricingManagement() {
                   </h4>
                   <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
                     item.pricing_type === "labor"
-                      ? "bg-blue-100 text-blue-800"
+                      ? "bg-primary-100 text-primary-800"
                       : "bg-amber-100 text-amber-800"
                   }`}>
                     {pricingTypeLabel(item.pricing_type)}
@@ -647,8 +647,8 @@ export function PricingManagement() {
                   <td className="py-3 px-4 whitespace-nowrap">
                     <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
                       item.pricing_type === "labor"
-                        ? "bg-blue-100 text-blue-800"
-                        : "bg-amber-100 text-amber-800"
+                        ? "bg-primary-100 text-primary-950"
+                        : "bg-positive-100 text-positive-950"
                     }`}>
                       {pricingTypeLabel(item.pricing_type)}
                     </span>

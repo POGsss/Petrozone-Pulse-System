@@ -352,7 +352,7 @@ export function CustomerManagement() {
   return (
     <div className="space-y-6">
       {/* Header with title and add button */}
-      <div className="flex items-center justify-between bg-white rounded-xl p-4 border border-neutral-200">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 justify-between bg-white rounded-xl p-4 border border-neutral-200">
         <div>
           <h3 className="text-lg font-semibold text-neutral-950">Customers</h3>
           <p className="text-sm text-neutral-900">Summary of customers</p>

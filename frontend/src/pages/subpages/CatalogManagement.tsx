@@ -379,7 +379,7 @@ export function CatalogManagement() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between bg-white rounded-xl p-4 border border-neutral-200">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 justify-between bg-white rounded-xl p-4 border border-neutral-200">
         <div>
           <h3 className="text-lg font-semibold text-neutral-950">Catalog</h3>
           <p className="text-sm text-neutral-900">{allItems.length} items total</p>
