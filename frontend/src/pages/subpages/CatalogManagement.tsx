@@ -449,11 +449,9 @@ export function CatalogManagement() {
 
             {/* Item details */}
             <div className="space-y-1 text-sm text-neutral-900 mb-3">
-              <p className="font-semibold text-neutral-900">{formatPrice(item.base_price)}</p>
-              <p>{typeLabel(item.type)}</p>
-              {item.description && (
-                <p className="line-clamp-2">{item.description}</p>
-              )}
+              <p className="text-neutral-900">{formatPrice(item.base_price)}</p>
+              <p className="text-neutral-900">{typeLabel(item.type)}</p>
+              {item.description && <p className="text-neutral-900 line-clamp-2">{item.description}</p>}
             </div>
 
             {/* Actions */}

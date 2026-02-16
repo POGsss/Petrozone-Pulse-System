@@ -224,6 +224,127 @@ export type Database = {
           },
         ]
       }
+      job_order_items: {
+        Row: {
+          base_price: number
+          catalog_item_id: string
+          catalog_item_name: string
+          catalog_item_type: string
+          created_at: string
+          id: string
+          job_order_id: string
+          labor_price: number | null
+          line_total: number
+          packaging_price: number | null
+          quantity: number
+        }
+        Insert: {
+          base_price: number
+          catalog_item_id: string
+          catalog_item_name: string
+          catalog_item_type: string
+          created_at?: string
+          id?: string
+          job_order_id: string
+          labor_price?: number | null
+          line_total: number
+          packaging_price?: number | null
+          quantity?: number
+        }
+        Update: {
+          base_price?: number
+          catalog_item_id?: string
+          catalog_item_name?: string
+          catalog_item_type?: string
+          created_at?: string
+          id?: string
+          job_order_id?: string
+          labor_price?: number | null
+          line_total?: number
+          packaging_price?: number | null
+          quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_order_items_catalog_item_id_fkey"
+            columns: ["catalog_item_id"]
+            isOneToOne: false
+            referencedRelation: "catalog_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_order_items_job_order_id_fkey"
+            columns: ["job_order_id"]
+            isOneToOne: false
+            referencedRelation: "job_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_orders: {
+        Row: {
+          branch_id: string
+          created_at: string
+          created_by: string | null
+          customer_id: string
+          id: string
+          notes: string | null
+          order_number: string
+          status: Database["public"]["Enums"]["job_order_status"]
+          total_amount: number
+          updated_at: string
+          vehicle_id: string
+        }
+        Insert: {
+          branch_id: string
+          created_at?: string
+          created_by?: string | null
+          customer_id: string
+          id?: string
+          notes?: string | null
+          order_number: string
+          status?: Database["public"]["Enums"]["job_order_status"]
+          total_amount?: number
+          updated_at?: string
+          vehicle_id: string
+        }
+        Update: {
+          branch_id?: string
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string
+          id?: string
+          notes?: string | null
+          order_number?: string
+          status?: Database["public"]["Enums"]["job_order_status"]
+          total_amount?: number
+          updated_at?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_orders_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_orders_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pricing_matrices: {
         Row: {
           branch_id: string
@@ -577,6 +698,7 @@ export type Database = {
     Enums: {
       customer_status: "active" | "inactive"
       customer_type: "individual" | "company"
+      job_order_status: "created"
       pricing_matrix_status: "active" | "inactive"
       pricing_type: "labor" | "packaging"
       user_role: "HM" | "POC" | "JS" | "R" | "T" | "ADMIN"
@@ -721,6 +843,7 @@ export const Constants = {
     Enums: {
       customer_status: ["active", "inactive"],
       customer_type: ["individual", "company"],
+      job_order_status: ["created"],
       pricing_matrix_status: ["active", "inactive"],
       pricing_type: ["labor", "packaging"],
       user_role: ["HM", "POC", "JS", "R", "T", "ADMIN"],

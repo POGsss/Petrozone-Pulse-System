@@ -563,6 +563,65 @@ export const pricingApi = {
   },
 };
 
+// Job Orders API
+export const jobOrdersApi = {
+  getAll: async (params?: {
+    branch_id?: string;
+    customer_id?: string;
+    vehicle_id?: string;
+    status?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
+    const query = searchParams.toString();
+    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").JobOrder>>(
+      `/api/job-orders${query ? `?${query}` : ""}`
+    );
+  },
+
+  getById: async (id: string) => {
+    return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}`);
+  },
+
+  create: async (data: {
+    customer_id: string;
+    vehicle_id: string;
+    branch_id: string;
+    notes?: string;
+    items: Array<{
+      catalog_item_id: string;
+      quantity: number;
+    }>;
+  }) => {
+    return fetchWithAuth<import("../types").JobOrder>("/api/job-orders", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (id: string, data: { notes?: string | null }) => {
+    return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: string) => {
+    return fetchWithAuth<{ message: string }>(`/api/job-orders/${id}`, {
+      method: "DELETE",
+    });
+  },
+};
+
 // Settings API
 export const settingsApi = {
   get: async () => {

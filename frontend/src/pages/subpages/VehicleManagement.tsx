@@ -501,15 +501,13 @@ export function VehicleManagement() {
               </span>
             </div>
 
-            {/* Vehicle details - no labels, info shown directly */}
+            {/* Vehicle details */}
             <div className="space-y-1 text-sm text-neutral-900 mb-3">
-              <p>{vehicleTypeLabel(vehicle.vehicle_type)}</p>
-              <p>{vehicle.model}</p>
-              <p>{vehicle.orcr}</p>
-              {vehicle.color && (
-                <p>{vehicle.color}{vehicle.year ? ` · ${vehicle.year}` : ""}</p>
-              )}
-              {vehicle.customers && <p>{vehicle.customers.full_name}</p>}
+              <p className="text-neutral-900">{vehicleTypeLabel(vehicle.vehicle_type)}</p>
+              <p className="text-neutral-900">{vehicle.model}</p>
+              <p className="text-neutral-900">{vehicle.orcr}</p>
+              {vehicle.color && <p className="text-neutral-900">{vehicle.color}{vehicle.year ? ` · ${vehicle.year}` : ""}</p>}
+              {vehicle.customers && <p className="text-neutral-900">{vehicle.customers.full_name}</p>}
             </div>
 
             {/* Actions */}

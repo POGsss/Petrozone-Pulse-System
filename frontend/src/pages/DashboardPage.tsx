@@ -13,6 +13,7 @@ import { CustomerManagement } from "./subpages/CustomerManagement";
 import { VehicleManagement } from "./subpages/VehicleManagement";
 import { CatalogManagement } from "./subpages/CatalogManagement";
 import { PricingManagement } from "./subpages/PricingManagement";
+import { JobOrderManagement } from "./subpages/JobOrderManagement";
 import { SystemSettings } from "./subpages/SystemSettings";
 
 // Page content data
@@ -40,6 +41,10 @@ const pageData: Record<string, { title: string; description: string }> = {
   catalog: {
     title: "Catalog",
     description: "Manage services, products, and packages.",
+  },
+  "job-orders": {
+    title: "Job Orders",
+    description: "Create and manage job orders for customers.",
   },
   pricing: {
     title: "Pricing Matrices",
@@ -94,6 +99,9 @@ function getNavItemsForRole(roles: string[]): NavItem[] {
 
   // Catalog: HM, POC, JS, R, T (all roles can view; HM/POC/JS can manage)
   items.push({ id: "catalog", label: "Catalog", icon: <NavIcons.Catalog /> });
+
+  // Job Orders: All roles can view; HM, POC, JS, R can create
+  items.push({ id: "job-orders", label: "Job Orders", icon: <NavIcons.Jobs /> });
 
   // Audit Logs: HM, POC (US18)
   if (hasAnyRole("HM", "POC")) {
@@ -183,13 +191,18 @@ export function DashboardPage() {
           <CatalogManagement />
       )}
 
+      {/* Job Orders - All roles */}
+      {activeNav === "job-orders" && (
+          <JobOrderManagement />
+      )}
+
       {/* Pricing Matrices - All roles can view */}
       {activeNav === "pricing" && (
           <PricingManagement />
       )}
 
       {/* Empty state for upcoming pages (Settings) */}
-      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && activeNav !== "vehicles" && activeNav !== "catalog" && activeNav !== "pricing" && (
+      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && activeNav !== "vehicles" && activeNav !== "catalog" && activeNav !== "job-orders" && activeNav !== "pricing" && (
         <div className="bg-white rounded-xl p-6 border border-neutral-100">
           <p className="text-neutral-900">This feature is coming in the next phase.</p>
         </div>

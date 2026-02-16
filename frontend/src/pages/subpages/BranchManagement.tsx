@@ -359,13 +359,11 @@ export function BranchManagement() {
               </span>
             </div>
 
-            {branch.address && (
-              <p className="text-sm text-neutral-900 mb-2">{branch.address}</p>
-            )}
-
-            <div className="space-y-1 text-sm text-neutral-900 mb-4">
-              {branch.phone && <p>{branch.phone}</p>}
-              {branch.email && <p>{branch.email}</p>}
+            {/* Branch details */}
+            <div className="space-y-1 text-sm text-neutral-900 mb-3">
+              {branch.address && <p className="text-neutral-900">{branch.address}</p>}
+              {branch.phone && <p className="text-neutral-900">{branch.phone}</p>}
+              {branch.email && <p className="text-neutral-900">{branch.email}</p>}
             </div>
 
             <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">

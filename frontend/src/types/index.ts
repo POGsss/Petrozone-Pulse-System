@@ -203,3 +203,48 @@ export interface ResolvedPricing {
     packaging: number | null;
   };
 }
+
+// Job Order types
+export type JobOrderStatus = "created";
+
+export interface JobOrderItem {
+  id: string;
+  job_order_id: string;
+  catalog_item_id: string;
+  catalog_item_name: string;
+  catalog_item_type: string;
+  quantity: number;
+  base_price: number;
+  labor_price: number | null;
+  packaging_price: number | null;
+  line_total: number;
+  created_at: string;
+}
+
+export interface JobOrder {
+  id: string;
+  order_number: string;
+  customer_id: string;
+  vehicle_id: string;
+  branch_id: string;
+  status: JobOrderStatus;
+  total_amount: number;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  customers?: {
+    id: string;
+    full_name: string;
+    contact_number: string | null;
+    email: string | null;
+  };
+  vehicles?: {
+    id: string;
+    plate_number: string;
+    model: string;
+    vehicle_type: string;
+  };
+  branches?: Branch;
+  job_order_items?: JobOrderItem[];
+}
