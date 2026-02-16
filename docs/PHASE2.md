@@ -265,6 +265,12 @@ Rules:
 - Third-party repairs cannot exist without a job order
 - No approval or billing workflows yet
 
+User Stories:
+As a HM, POC, JS, R, or T, I want to add third-party repair details for outsourced services
+As a HM, POC, JS, R, or T, I want to view third-party repair information for tracking
+As a HM, POC, JS, R, or T, I want to update third-party repair details as needed
+As a HM, POC, JS, R, or T, I want to delete third-party repair records when no longer applicable
+
 Tasks:
 1. Design third_party_repairs schema
 2. Backend APIs for create/view
