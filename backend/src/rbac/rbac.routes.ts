@@ -164,7 +164,7 @@ router.post("/users", requireUserManager, async (req: Request, res: Response): P
       .single();
 
     // Log audit: CREATE user (performed by admin)
-    const adminPrimaryBranch = req.user!.branchIds[0] || null;
+    const adminPrimaryBranch = req.user!.branchIds[0] || "";
     await supabaseAdmin.rpc("log_admin_action", {
       p_action: "CREATE",
       p_entity_type: "user_profile",
@@ -342,7 +342,7 @@ router.put("/users/:userId", requireUserManager, async (req: Request, res: Respo
     }
 
     // Log audit: UPDATE user (performed by admin)
-    const adminPrimaryBranch = req.user!.branchIds[0] || null;
+    const adminPrimaryBranch = req.user!.branchIds[0] || "";
     await supabaseAdmin.rpc("log_admin_action", {
       p_action: "UPDATE",
       p_entity_type: "user_profile",
@@ -383,7 +383,7 @@ router.delete("/users/:userId", requireUserManager, async (req: Request, res: Re
     }
 
     // Log audit: DELETE user (performed by admin)
-    const adminPrimaryBranch = req.user!.branchIds[0] || null;
+    const adminPrimaryBranch = req.user!.branchIds[0] || "";
     await supabaseAdmin.rpc("log_admin_action", {
       p_action: "DELETE",
       p_entity_type: "user_profile",

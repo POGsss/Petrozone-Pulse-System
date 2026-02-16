@@ -267,7 +267,7 @@ router.post(
  */
 router.put(
   "/:customerId",
-  requireRoles("HM", "POC", "JS", "R", "T"),
+  requireRoles("POC", "JS", "R", "T"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const customerId = req.params.customerId as string;

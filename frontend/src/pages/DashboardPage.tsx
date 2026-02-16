@@ -91,14 +91,18 @@ function getNavItemsForRole(roles: string[]): NavItem[] {
   // Customers: HM, POC, JS, R, T (all roles can view, permissions differ per action)
   items.push({ id: "customers", label: "Customers", icon: <NavIcons.Customers /> });
 
-  // Vehicles: All roles (upcoming module)
-  items.push({ id: "vehicles", label: "Vehicles", icon: <NavIcons.Vehicle /> });
+  // Vehicles: HM, POC, JS, R
+  if (hasAnyRole("HM", "POC", "JS", "R")) {
+    items.push({ id: "vehicles", label: "Vehicles", icon: <NavIcons.Vehicle /> });
+  }
 
   // Pricing Matrices: All roles can view; HM, POC, JS, R can manage
   items.push({ id: "pricing", label: "Pricing Matrices", icon: <NavIcons.Pricing /> });
 
-  // Catalog: HM, POC, JS, R, T (all roles can view; HM/POC/JS can manage)
-  items.push({ id: "catalog", label: "Catalog", icon: <NavIcons.Catalog /> });
+  // Catalog: HM, POC, JS, R (view); HM/POC/JS can manage
+  if (hasAnyRole("HM", "POC", "JS", "R")) {
+    items.push({ id: "catalog", label: "Catalog", icon: <NavIcons.Catalog /> });
+  }
 
   // Job Orders: All roles can view; HM, POC, JS, R can create
   items.push({ id: "job-orders", label: "Job Orders", icon: <NavIcons.Jobs /> });
@@ -131,6 +135,8 @@ export function DashboardPage() {
   const canManageBranches = hasAnyRole("HM", "POC", "JS", "R");
   const canViewAuditLogs = hasAnyRole("HM", "POC");
   const canViewCustomers = hasAnyRole("HM", "POC", "JS", "R", "T");
+  const canViewVehicles = hasAnyRole("HM", "POC", "JS", "R");
+  const canViewCatalog = hasAnyRole("HM", "POC", "JS", "R");
   const canAccessSettings = hasAnyRole("HM");
 
   // Get page data
@@ -181,13 +187,13 @@ export function DashboardPage() {
           <CustomerManagement />
       )}
 
-      {/* Vehicle Management - All roles */}
-      {activeNav === "vehicles" && (
+      {/* Vehicle Management - HM, POC, JS, R */}
+      {activeNav === "vehicles" && canViewVehicles && (
           <VehicleManagement />
       )}
 
-      {/* Catalog Management - All roles */}
-      {activeNav === "catalog" && (
+      {/* Catalog Management - HM, POC, JS, R */}
+      {activeNav === "catalog" && canViewCatalog && (
           <CatalogManagement />
       )}
 

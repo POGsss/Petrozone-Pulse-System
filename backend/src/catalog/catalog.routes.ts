@@ -18,7 +18,7 @@ const VALID_STATUSES = ["active", "inactive"];
  */
 router.get(
   "/",
-  requireRoles("HM", "POC", "JS", "R", "T"),
+  requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const {
@@ -108,7 +108,7 @@ router.get(
  */
 router.get(
   "/:itemId",
-  requireRoles("HM", "POC", "JS", "R", "T"),
+  requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const itemId = req.params.itemId as string;

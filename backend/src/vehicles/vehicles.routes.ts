@@ -28,7 +28,7 @@ const VALID_VEHICLE_TYPES = [
  */
 router.get(
   "/",
-  requireRoles("HM", "POC", "JS", "R", "T"),
+  requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const {
@@ -112,7 +112,7 @@ router.get(
  */
 router.get(
   "/:vehicleId",
-  requireRoles("HM", "POC", "JS", "R", "T"),
+  requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const vehicleId = req.params.vehicleId as string;
