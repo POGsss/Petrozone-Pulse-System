@@ -221,12 +221,19 @@ Rules:
 - No fulfillment, technician assignment, or completion
 - Pricing must be read-only once generated
 
+User Stories:
+As a POC, JS, or R, I want to create order cards to track active service work
+As a HM, POC, JS, R, or T, I want to view order cards to monitor service progress.
+As a POC, JS, R, or T, I want to update order cards as work progresses
+As a POC, JS, or R, I want to delete order cards for canceled jobs
+
 Tasks:
 1. Design job_order and job_order_items schemas
 2. Implement backend creation logic
 3. Integrate pricing resolution
-4. Frontend job order creation page
-5. Audit logging
+4. Frontend job order creation page (Same layout as catalog layout)
+5. Put it under Catalog item
+6. Audit logging
 
 No status transitions beyond CREATED.
 ```
