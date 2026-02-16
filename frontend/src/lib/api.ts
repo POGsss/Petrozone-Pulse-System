@@ -489,3 +489,111 @@ export const catalogApi = {
     });
   },
 };
+
+// Pricing API
+export const pricingApi = {
+  getAll: async (params?: {
+    branch_id?: string;
+    status?: string;
+    pricing_type?: string;
+    catalog_item_id?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
+    const query = searchParams.toString();
+    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").PricingMatrix>>(
+      `/api/pricing${query ? `?${query}` : ""}`
+    );
+  },
+
+  getById: async (id: string) => {
+    return fetchWithAuth<import("../types").PricingMatrix>(`/api/pricing/${id}`);
+  },
+
+  resolve: async (catalogItemId: string, branchId: string) => {
+    return fetchWithAuth<import("../types").ResolvedPricing>(
+      `/api/pricing/resolve/${catalogItemId}?branch_id=${branchId}`
+    );
+  },
+
+  create: async (data: {
+    catalog_item_id: string;
+    pricing_type: string;
+    price: number;
+    status?: string;
+    branch_id: string;
+    description?: string;
+  }) => {
+    return fetchWithAuth<import("../types").PricingMatrix>("/api/pricing", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (
+    id: string,
+    data: {
+      catalog_item_id?: string;
+      pricing_type?: string;
+      price?: number;
+      status?: string;
+      branch_id?: string;
+      description?: string | null;
+    }
+  ) => {
+    return fetchWithAuth<import("../types").PricingMatrix>(`/api/pricing/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: string) => {
+    return fetchWithAuth<{ message: string }>(`/api/pricing/${id}`, {
+      method: "DELETE",
+    });
+  },
+};
+
+// Settings API
+export const settingsApi = {
+  get: async () => {
+    return fetchWithAuth<{
+      id: string;
+      dark_mode: boolean;
+      primary_color: string;
+      sidebar_collapsed: boolean;
+      font_size: string;
+      updated_at: string;
+      updated_by: string | null;
+    }>("/api/settings");
+  },
+
+  update: async (data: {
+    dark_mode?: boolean;
+    primary_color?: string;
+    sidebar_collapsed?: boolean;
+    font_size?: string;
+  }) => {
+    return fetchWithAuth<{
+      id: string;
+      dark_mode: boolean;
+      primary_color: string;
+      sidebar_collapsed: boolean;
+      font_size: string;
+      updated_at: string;
+      updated_by: string | null;
+    }>("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+};

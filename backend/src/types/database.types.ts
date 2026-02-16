@@ -107,47 +107,104 @@ export type Database = {
         }
         Relationships: []
       }
-      customers: {
+      catalog_items: {
         Row: {
-          id: string
-          full_name: string
-          contact_number: string | null
-          email: string | null
-          customer_type: "individual" | "company"
-          branch_id: string
-          status: "active" | "inactive"
-          address: string | null
-          notes: string | null
-          created_by: string | null
+          base_price: number
+          branch_id: string | null
           created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_global: boolean
+          name: string
+          status: string
+          type: string
           updated_at: string
         }
         Insert: {
-          id?: string
-          full_name: string
-          contact_number?: string | null
-          email?: string | null
-          customer_type?: "individual" | "company"
-          branch_id: string
-          status?: "active" | "inactive"
-          address?: string | null
-          notes?: string | null
-          created_by?: string | null
+          base_price: number
+          branch_id?: string | null
           created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_global?: boolean
+          name: string
+          status?: string
+          type: string
           updated_at?: string
         }
         Update: {
-          id?: string
-          full_name?: string
-          contact_number?: string | null
-          email?: string | null
-          customer_type?: "individual" | "company"
-          branch_id?: string
-          status?: "active" | "inactive"
-          address?: string | null
-          notes?: string | null
-          created_by?: string | null
+          base_price?: number
+          branch_id?: string | null
           created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_global?: boolean
+          name?: string
+          status?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_items_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "catalog_items_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customers: {
+        Row: {
+          address: string | null
+          branch_id: string
+          contact_number: string | null
+          created_at: string
+          created_by: string | null
+          customer_type: Database["public"]["Enums"]["customer_type"]
+          email: string | null
+          full_name: string
+          id: string
+          notes: string | null
+          status: Database["public"]["Enums"]["customer_status"]
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          branch_id: string
+          contact_number?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_type?: Database["public"]["Enums"]["customer_type"]
+          email?: string | null
+          full_name: string
+          id?: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["customer_status"]
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          branch_id?: string
+          contact_number?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_type?: Database["public"]["Enums"]["customer_type"]
+          email?: string | null
+          full_name?: string
+          id?: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["customer_status"]
           updated_at?: string
         }
         Relationships: [
@@ -167,78 +224,60 @@ export type Database = {
           },
         ]
       }
-      vehicles: {
+      pricing_matrices: {
         Row: {
-          id: string
-          plate_number: string
-          vehicle_type: "sedan" | "suv" | "truck" | "van" | "motorcycle" | "hatchback" | "coupe" | "wagon" | "bus" | "other"
-          orcr: string
-          model: string
-          customer_id: string
           branch_id: string
-          status: "active" | "inactive"
-          color: string | null
-          year: number | null
-          engine_number: string | null
-          chassis_number: string | null
-          notes: string | null
-          created_by: string | null
+          catalog_item_id: string
           created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          price: number
+          pricing_type: Database["public"]["Enums"]["pricing_type"]
+          status: Database["public"]["Enums"]["pricing_matrix_status"]
           updated_at: string
         }
         Insert: {
-          id?: string
-          plate_number: string
-          vehicle_type?: "sedan" | "suv" | "truck" | "van" | "motorcycle" | "hatchback" | "coupe" | "wagon" | "bus" | "other"
-          orcr: string
-          model: string
-          customer_id: string
           branch_id: string
-          status?: "active" | "inactive"
-          color?: string | null
-          year?: number | null
-          engine_number?: string | null
-          chassis_number?: string | null
-          notes?: string | null
-          created_by?: string | null
+          catalog_item_id: string
           created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          price: number
+          pricing_type: Database["public"]["Enums"]["pricing_type"]
+          status?: Database["public"]["Enums"]["pricing_matrix_status"]
           updated_at?: string
         }
         Update: {
-          id?: string
-          plate_number?: string
-          vehicle_type?: "sedan" | "suv" | "truck" | "van" | "motorcycle" | "hatchback" | "coupe" | "wagon" | "bus" | "other"
-          orcr?: string
-          model?: string
-          customer_id?: string
           branch_id?: string
-          status?: "active" | "inactive"
-          color?: string | null
-          year?: number | null
-          engine_number?: string | null
-          chassis_number?: string | null
-          notes?: string | null
-          created_by?: string | null
+          catalog_item_id?: string
           created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          price?: number
+          pricing_type?: Database["public"]["Enums"]["pricing_type"]
+          status?: Database["public"]["Enums"]["pricing_matrix_status"]
           updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "vehicles_customer_id_fkey"
-            columns: ["customer_id"]
-            isOneToOne: false
-            referencedRelation: "customers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "vehicles_branch_id_fkey"
+            foreignKeyName: "pricing_matrices_branch_id_fkey"
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "vehicles_created_by_fkey"
+            foreignKeyName: "pricing_matrices_catalog_item_id_fkey"
+            columns: ["catalog_item_id"]
+            isOneToOne: false
+            referencedRelation: "catalog_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pricing_matrices_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "user_profiles"
@@ -246,62 +285,35 @@ export type Database = {
           },
         ]
       }
-      catalog_items: {
+      system_settings: {
         Row: {
+          dark_mode: boolean
+          font_size: string
           id: string
-          name: string
-          type: "service" | "product" | "package"
-          description: string | null
-          base_price: number
-          status: "active" | "inactive"
-          branch_id: string | null
-          is_global: boolean
-          created_by: string | null
-          created_at: string
+          primary_color: string
+          sidebar_collapsed: boolean
           updated_at: string
+          updated_by: string | null
         }
         Insert: {
+          dark_mode?: boolean
+          font_size?: string
           id?: string
-          name: string
-          type: "service" | "product" | "package"
-          description?: string | null
-          base_price: number
-          status?: "active" | "inactive"
-          branch_id?: string | null
-          is_global?: boolean
-          created_by?: string | null
-          created_at?: string
+          primary_color?: string
+          sidebar_collapsed?: boolean
           updated_at?: string
+          updated_by?: string | null
         }
         Update: {
+          dark_mode?: boolean
+          font_size?: string
           id?: string
-          name?: string
-          type?: "service" | "product" | "package"
-          description?: string | null
-          base_price?: number
-          status?: "active" | "inactive"
-          branch_id?: string | null
-          is_global?: boolean
-          created_by?: string | null
-          created_at?: string
+          primary_color?: string
+          sidebar_collapsed?: boolean
           updated_at?: string
+          updated_by?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "catalog_items_branch_id_fkey"
-            columns: ["branch_id"]
-            isOneToOne: false
-            referencedRelation: "branches"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "catalog_items_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "user_profiles"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       user_branch_assignments: {
         Row: {
@@ -401,6 +413,85 @@ export type Database = {
           },
         ]
       }
+      vehicles: {
+        Row: {
+          branch_id: string
+          chassis_number: string | null
+          color: string | null
+          created_at: string
+          created_by: string | null
+          customer_id: string
+          engine_number: string | null
+          id: string
+          model: string
+          notes: string | null
+          orcr: string
+          plate_number: string
+          status: Database["public"]["Enums"]["vehicle_status"]
+          updated_at: string
+          vehicle_type: Database["public"]["Enums"]["vehicle_type"]
+          year: number | null
+        }
+        Insert: {
+          branch_id: string
+          chassis_number?: string | null
+          color?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_id: string
+          engine_number?: string | null
+          id?: string
+          model: string
+          notes?: string | null
+          orcr: string
+          plate_number: string
+          status?: Database["public"]["Enums"]["vehicle_status"]
+          updated_at?: string
+          vehicle_type?: Database["public"]["Enums"]["vehicle_type"]
+          year?: number | null
+        }
+        Update: {
+          branch_id?: string
+          chassis_number?: string | null
+          color?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string
+          engine_number?: string | null
+          id?: string
+          model?: string
+          notes?: string | null
+          orcr?: string
+          plate_number?: string
+          status?: Database["public"]["Enums"]["vehicle_status"]
+          updated_at?: string
+          vehicle_type?: Database["public"]["Enums"]["vehicle_type"]
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicles_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicles_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicles_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -410,7 +501,7 @@ export type Database = {
         Args: {
           p_action: string
           p_branch_id?: string
-          p_entity_id?: string
+          p_entity_id: string
           p_entity_type: string
           p_new_values?: Json
           p_old_values?: Json
@@ -422,18 +513,54 @@ export type Database = {
         Returns: boolean
       }
       get_current_user_id: { Args: never; Returns: string }
+      get_role_level: {
+        Args: { role: Database["public"]["Enums"]["user_role"] }
+        Returns: number
+      }
       get_user_branch_ids: {
         Args: { check_user_id: string }
         Returns: string[]
       }
-      get_user_full_data: { 
-        Args: { p_user_id: string }
-        Returns: Json 
-      }
+      get_user_full_data: { Args: { p_user_id: string }; Returns: Json }
+      get_user_max_role_level: { Args: { p_user_id: string }; Returns: number }
+      get_user_roles: { Args: { user_uuid: string }; Returns: string[] }
       is_admin_or_hm: { Args: { check_user_id: string }; Returns: boolean }
-      log_auth_event: {
-        Args: { p_event_type: string; p_user_id?: string }
+      is_audit_viewer: { Args: { user_id: string }; Returns: boolean }
+      is_branch_manager: { Args: { user_id: string }; Returns: boolean }
+      is_user_manager: { Args: { user_id: string }; Returns: boolean }
+      is_vehicle_manager: { Args: { user_id: string }; Returns: boolean }
+      log_admin_action: {
+        Args: {
+          p_action: string
+          p_entity_id: string
+          p_entity_type: string
+          p_new_values?: Json
+          p_old_values?: Json
+          p_performed_by_branch_id: string
+          p_performed_by_user_id: string
+        }
         Returns: string
+      }
+      log_auth_event: {
+        Args: { p_branch_id?: string; p_event_type: string; p_user_id: string }
+        Returns: string
+      }
+      update_user_branches: {
+        Args: {
+          p_branch_ids: string[]
+          p_calling_user_id?: string
+          p_primary_branch_id?: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      update_user_roles: {
+        Args: {
+          p_calling_user_id?: string
+          p_roles: Database["public"]["Enums"]["user_role"][]
+          p_user_id: string
+        }
+        Returns: Json
       }
       user_has_branch_access: {
         Args: { check_branch_id: string; check_user_id: string }
@@ -448,8 +575,23 @@ export type Database = {
       }
     }
     Enums: {
-      // Note: ADMIN role has been merged into HM
-      user_role: "HM" | "POC" | "JS" | "R" | "T"
+      customer_status: "active" | "inactive"
+      customer_type: "individual" | "company"
+      pricing_matrix_status: "active" | "inactive"
+      pricing_type: "labor" | "packaging"
+      user_role: "HM" | "POC" | "JS" | "R" | "T" | "ADMIN"
+      vehicle_status: "active" | "inactive"
+      vehicle_type:
+        | "sedan"
+        | "suv"
+        | "truck"
+        | "van"
+        | "motorcycle"
+        | "hatchback"
+        | "coupe"
+        | "wagon"
+        | "bus"
+        | "other"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -574,22 +716,40 @@ export type CompositeTypes<
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
 
-// Role type for easier usage
-export type UserRole = Database["public"]["Enums"]["user_role"];
+export const Constants = {
+  public: {
+    Enums: {
+      customer_status: ["active", "inactive"],
+      customer_type: ["individual", "company"],
+      pricing_matrix_status: ["active", "inactive"],
+      pricing_type: ["labor", "packaging"],
+      user_role: ["HM", "POC", "JS", "R", "T", "ADMIN"],
+      vehicle_status: ["active", "inactive"],
+      vehicle_type: [
+        "sedan",
+        "suv",
+        "truck",
+        "van",
+        "motorcycle",
+        "hatchback",
+        "coupe",
+        "wagon",
+        "bus",
+        "other",
+      ],
+    },
+  },
+} as const
 
-// Table row types
-export type Branch = Tables<"branches">;
-export type UserProfile = Tables<"user_profiles">;
-export type UserRoleRecord = Tables<"user_roles">;
-export type UserBranchAssignment = Tables<"user_branch_assignments">;
-export type AuditLog = Tables<"audit_logs">;
+// Custom types used across the application
+export interface UserProfile {
+  id: string;
+  email: string;
+  full_name: string;
+  phone: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
 
-// Insert types
-export type BranchInsert = TablesInsert<"branches">;
-export type UserProfileInsert = TablesInsert<"user_profiles">;
-export type UserRoleInsert = TablesInsert<"user_roles">;
-export type UserBranchAssignmentInsert = TablesInsert<"user_branch_assignments">;
-
-// Update types
-export type BranchUpdate = TablesUpdate<"branches">;
-export type UserProfileUpdate = TablesUpdate<"user_profiles">;
+export type UserRole = "HM" | "POC" | "JS" | "R" | "T" | "ADMIN";

@@ -1,9 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, ProtectedRoute, PublicRoute } from "./auth";
 import { LoginPage, DashboardPage, UnauthorizedPage, ResetPasswordPage } from "./pages";
+import { ThemeProvider } from "./lib/ThemeContext";
 
 function App() {
   return (
+    <ThemeProvider>
     <BrowserRouter>
       <AuthProvider>
         <Routes>
@@ -59,6 +61,7 @@ function App() {
         </Routes>
       </AuthProvider>
     </BrowserRouter>
+    </ThemeProvider>
   );
 }
 

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { useAuth } from "../auth";
+import { useTheme } from "../lib/ThemeContext";
 import {
   LuLayoutDashboard,
   LuBell,
@@ -49,10 +50,11 @@ export function DashboardLayout({
   description
 }: DashboardLayoutProps) {
   const { user, logout } = useAuth();
+  const { settings } = useTheme();
   const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(settings.sidebarCollapsed);
   
   const primaryBranch = user?.branches?.find(b => b.is_primary) || user?.branches?.[0];
   const branchName = primaryBranch?.branches?.name || "All Branches";

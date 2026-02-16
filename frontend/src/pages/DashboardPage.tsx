@@ -12,6 +12,8 @@ import { AuditLogs } from "./subpages/AuditLogs";
 import { CustomerManagement } from "./subpages/CustomerManagement";
 import { VehicleManagement } from "./subpages/VehicleManagement";
 import { CatalogManagement } from "./subpages/CatalogManagement";
+import { PricingManagement } from "./subpages/PricingManagement";
+import { SystemSettings } from "./subpages/SystemSettings";
 
 // Page content data
 const pageData: Record<string, { title: string; description: string }> = {
@@ -38,6 +40,10 @@ const pageData: Record<string, { title: string; description: string }> = {
   catalog: {
     title: "Catalog",
     description: "Manage services, products, and packages.",
+  },
+  pricing: {
+    title: "Pricing Matrices",
+    description: "Define and manage pricing rules for catalog items.",
   },
   audit: {
     title: "Audit Logs",
@@ -82,6 +88,9 @@ function getNavItemsForRole(roles: string[]): NavItem[] {
 
   // Vehicles: All roles (upcoming module)
   items.push({ id: "vehicles", label: "Vehicles", icon: <NavIcons.Vehicle /> });
+
+  // Pricing Matrices: All roles can view; HM, POC, JS, R can manage
+  items.push({ id: "pricing", label: "Pricing Matrices", icon: <NavIcons.Pricing /> });
 
   // Catalog: HM, POC, JS, R, T (all roles can view; HM/POC/JS can manage)
   items.push({ id: "catalog", label: "Catalog", icon: <NavIcons.Catalog /> });
@@ -174,8 +183,13 @@ export function DashboardPage() {
           <CatalogManagement />
       )}
 
+      {/* Pricing Matrices - All roles can view */}
+      {activeNav === "pricing" && (
+          <PricingManagement />
+      )}
+
       {/* Empty state for upcoming pages (Settings) */}
-      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && activeNav !== "vehicles" && activeNav !== "catalog" && (
+      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && activeNav !== "vehicles" && activeNav !== "catalog" && activeNav !== "pricing" && (
         <div className="bg-white rounded-xl p-6 border border-neutral-100">
           <p className="text-neutral-900">This feature is coming in the next phase.</p>
         </div>
@@ -191,11 +205,9 @@ export function DashboardPage() {
           <ProfileSettings />
       )}
       
-      {/* Settings page placeholder - HM only */}
+      {/* Settings - HM only */}
       {activeNav === "settings" && canAccessSettings && (
-        <div className="bg-white rounded-xl p-6 border border-neutral-100">
-          <p className="text-neutral-900">System settings and preferences will be available here.</p>
-        </div>
+        <SystemSettings />
       )}
     </DashboardLayout>
   );

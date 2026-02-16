@@ -75,6 +75,60 @@ html {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Dark mode overrides */
+html.dark {
+  color-scheme: dark;
+  --color-neutral: #e6e6e7;
+  --color-neutral-950: #f4f4f4;
+  --color-neutral-900: #a7a7a9;
+  --color-neutral-800: #9a9a9d;
+  --color-neutral-700: #8e8e91;
+  --color-neutral-600: #6b6b6e;
+  --color-neutral-500: #52525a;
+  --color-neutral-400: #3f3f46;
+  --color-neutral-300: #35353b;
+  --color-neutral-200: #2a2a30;
+  --color-neutral-100: #1e1e24;
+}
+
+/* Dark mode background overrides for white surfaces */
+html.dark .bg-white {
+  background-color: #1e1e24 !important;
+}
+
+html.dark .bg-neutral-100 {
+  background-color: #16161b !important;
+}
+
+html.dark .border-neutral-200 {
+  border-color: #2a2a30 !important;
+}
+
+html.dark .border-neutral-100 {
+  border-color: #22222a !important;
+}
+
+html.dark .text-neutral-950 {
+  color: #f4f4f4 !important;
+}
+
+html.dark .text-neutral-900 {
+  color: #a7a7a9 !important;
+}
+
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: #2a2a30;
+  border-color: #3f3f46;
+  color: #e6e6e7;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #6b6b6e;
+}
+
 .color {
   color: #f3f5fb;
 }

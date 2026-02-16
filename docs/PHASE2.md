@@ -184,8 +184,10 @@ Tasks:
 1. Design pricing_matrix schema
 2. Backend validation and conflict detection
 3. Frontend pricing matrix CRUD
-4. Integrate with job order price resolution
-5. Audit logging
+4. Make the layout same as the User Management/Table style
+5. Add the Pricing Matrix sidebar item after Vehicle item
+6. Integrate with job order price resolution
+7. Audit logging
 
 No discounts, campaigns, or historical pricing yet.
 ```

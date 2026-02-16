@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { LuPlus, LuCircleAlert, LuRefreshCw, LuSearch, LuPencil, LuTrash2, LuUsers, LuUserCheck, LuUserX, LuChevronLeft, LuChevronRight, LuEye } from "react-icons/lu";
 import { rbacApi, branchesApi } from "../../lib/api";
-import { Modal, ModalSection, ModalInput, ModalButtons, ModalError } from "../../components";
+import { Modal, ModalSection, ModalInput, ModalSelect, ModalButtons, ModalError } from "../../components";
 import { useAuth } from "../../auth";
 import type { Branch, UserProfile, BranchAssignment, RoleInfo } from "../../types";
 
@@ -69,6 +69,10 @@ export function UserManagement() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingUser, setDeletingUser] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
+
+  // View detail modal state
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [viewUser, setViewUser] = useState<User | null>(null);
 
   // Current user's role level for permission filtering
   const currentUserRoleLevel = useMemo(() => {
@@ -193,6 +197,12 @@ export function UserManagement() {
     } finally {
       setAddingUser(false);
     }
+  }
+
+  // Open view detail modal
+  function openViewModal(user: User) {
+    setViewUser(user);
+    setShowViewModal(true);
   }
 
   // Open edit user modal
@@ -440,7 +450,8 @@ export function UserManagement() {
           {paginatedUsers.map((user) => (
             <div
               key={user.id}
-              className="border border-neutral-200 rounded-xl p-4 space-y-3"
+              onClick={() => openViewModal(user)}
+              className="border border-neutral-200 rounded-xl p-4 space-y-3 cursor-pointer hover:bg-neutral-50 transition-colors"
             >
               {/* User Header */}
               <div className="flex items-start justify-between">
@@ -502,14 +513,14 @@ export function UserManagement() {
               {/* Actions */}
               <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
                 <button
-                  onClick={() => openEditModal(user)}
+                  onClick={(e) => { e.stopPropagation(); openEditModal(user); }}
                   className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
                 >
                   <LuPencil className="w-4 h-4" />
                   Edit
                 </button>
                 <button
-                  onClick={() => openDeleteModal(user)}
+                  onClick={(e) => { e.stopPropagation(); openDeleteModal(user); }}
                   className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
                 >
                   <LuTrash2 className="w-4 h-4" />
@@ -541,7 +552,7 @@ export function UserManagement() {
             </thead>
             <tbody>
               {paginatedUsers.map((user) => (
-                <tr key={user.id} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors">
+                <tr key={user.id} onClick={() => openViewModal(user)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer">
                   <td className="py-3 px-4 whitespace-nowrap">
                     <span className="font-medium text-neutral-900">{user.full_name}</span>
                   </td>
@@ -595,14 +606,14 @@ export function UserManagement() {
                       {canEditUser(user) ? (
                         <>
                           <button
-                            onClick={() => openEditModal(user)}
+                            onClick={(e) => { e.stopPropagation(); openEditModal(user); }}
                             className="p-2 text-primary-950 hover:text-primary-900 hover:bg-primary-50 rounded-lg transition-colors"
                             title="Edit user"
                           >
                             <LuPencil className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => openDeleteModal(user)}
+                            onClick={(e) => { e.stopPropagation(); openDeleteModal(user); }}
                             className="p-2 text-negative-950 hover:text-negative-900 hover:bg-negative-50 rounded-lg transition-colors"
                             title="Delete user"
                           >
@@ -611,7 +622,7 @@ export function UserManagement() {
                         </>
                       ) : (
                         <button
-                          onClick={() => openEditModal(user)}
+                          onClick={(e) => { e.stopPropagation(); openEditModal(user); }}
                           className="p-2 text-positive-950 hover:text-positive-900 rounded-lg transition-colors"
                           title="View user (read-only)"
                         >
@@ -660,6 +671,86 @@ export function UserManagement() {
           </div>
         )}
       </div>
+
+      {/* View User Detail Modal */}
+      <Modal
+        isOpen={showViewModal && !!viewUser}
+        onClose={() => setShowViewModal(false)}
+        title="User Details"
+        maxWidth="lg"
+      >
+        {viewUser && (
+          <div>
+            <ModalSection title="User Information">
+              <ModalInput
+                type="text"
+                value={viewUser.full_name}
+                onChange={() => {}}
+                placeholder="Full Name"
+                disabled
+              />
+              <ModalInput
+                type="email"
+                value={viewUser.email}
+                onChange={() => {}}
+                placeholder="Email Address"
+                disabled
+              />
+              <ModalInput
+                type="tel"
+                value={viewUser.phone || "-"}
+                onChange={() => {}}
+                placeholder="Phone"
+                disabled
+              />
+              <ModalSelect
+                value={viewUser.is_active ? "active" : "inactive"}
+                onChange={() => {}}
+                options={[
+                  { value: "active", label: "Active" },
+                  { value: "inactive", label: "Inactive" },
+                ]}
+                disabled
+              />
+            </ModalSection>
+
+            <ModalSection title="Roles">
+              <div className="flex flex-wrap gap-2">
+                {viewUser.roles.map((role) => (
+                  <span
+                    key={role}
+                    className="px-3 py-1.5 bg-neutral-100 text-neutral-900 rounded-lg text-sm font-medium"
+                  >
+                    {role}
+                  </span>
+                ))}
+              </div>
+            </ModalSection>
+
+            <ModalSection title="Branch Assignments">
+              {viewUser.branches.length === 0 ? (
+                <p className="text-sm text-neutral-400">No branches assigned</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {viewUser.branches.map((ba) => (
+                    <span
+                      key={ba.branch_id}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
+                        ba.is_primary
+                          ? "bg-primary-100 text-positive-950"
+                          : "bg-neutral-100 text-neutral-950"
+                      }`}
+                    >
+                      {ba.branches?.name || ba.branches?.code || ba.branch_id.slice(0, 8)}
+                      {ba.is_primary && " (Primary)"}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </ModalSection>
+          </div>
+        )}
+      </Modal>
 
       {/* Add User Modal */}
       <Modal

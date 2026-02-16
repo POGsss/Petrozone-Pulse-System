@@ -164,3 +164,42 @@ export interface CatalogItem {
   updated_at: string;
   branches?: Branch;
 }
+
+// Pricing Matrix types
+export type PricingType = "labor" | "packaging";
+export type PricingMatrixStatus = "active" | "inactive";
+
+export interface PricingMatrix {
+  id: string;
+  catalog_item_id: string;
+  pricing_type: PricingType;
+  price: number;
+  status: PricingMatrixStatus;
+  branch_id: string;
+  description: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  catalog_items?: {
+    id: string;
+    name: string;
+    type: CatalogItemType;
+    base_price: number;
+  };
+  branches?: Branch;
+}
+
+export interface ResolvedPricing {
+  catalog_item: {
+    id: string;
+    name: string;
+    type: CatalogItemType;
+    base_price: number;
+  };
+  pricing_rules: PricingMatrix[];
+  resolved_prices: {
+    base_price: number;
+    labor: number | null;
+    packaging: number | null;
+  };
+}

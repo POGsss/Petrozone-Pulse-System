@@ -12,6 +12,8 @@ import auditRoutes from "./audit/audit.routes.js";
 import customerRoutes from "./customers/customers.routes.js";
 import vehicleRoutes from "./vehicles/vehicles.routes.js";
 import catalogRoutes from "./catalog/catalog.routes.js";
+import pricingRoutes from "./pricing/pricing.routes.js";
+import settingsRoutes from "./settings/settings.routes.js";
 
 const app = express();
 
@@ -53,6 +55,8 @@ app.use("/api/audit", auditRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/vehicles", vehicleRoutes);
 app.use("/api/catalog", catalogRoutes);
+app.use("/api/pricing", pricingRoutes);
+app.use("/api/settings", settingsRoutes);
 
 // 404 handler
 app.use((_req, res) => {
