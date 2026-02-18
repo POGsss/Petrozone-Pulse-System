@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useAuth } from "../auth";
 import { LuMail, LuLock, LuEye, LuEyeOff, LuLoader, LuCheck } from "react-icons/lu";
 import { authApi } from "../lib/api";
+import { showToast } from "../lib/toast";
 import { Modal, ModalSection, ModalInput, ModalButtons, ModalError } from "../components";
 
 export function LoginPage() {
@@ -28,6 +29,7 @@ export function LoginPage() {
             await login(email, password);
         } catch (err) {
             setError(err instanceof Error ? err.message : "Login failed");
+            showToast.error(err instanceof Error ? err.message : "Login failed");
         } finally {
             setIsLoading(false);
         }
@@ -41,8 +43,10 @@ export function LoginPage() {
         try {
             await authApi.forgotPassword(forgotEmail);
             setForgotSuccess(true);
+            showToast.success("Password reset email sent successfully");
         } catch (err) {
             setForgotError(err instanceof Error ? err.message : "Failed to send reset email");
+            showToast.error(err instanceof Error ? err.message : "Failed to send reset email");
         } finally {
             setForgotLoading(false);
         }

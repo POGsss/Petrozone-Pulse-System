@@ -12,9 +12,9 @@ import {
   LuCheck,
   LuX,
   LuFilter,
-  LuClock,
 } from "react-icons/lu";
 import { pricingApi, catalogApi, branchesApi } from "../../lib/api";
+import { showToast } from "../../lib/toast";
 import { useAuth } from "../../auth";
 import {
   Modal,
@@ -43,16 +43,6 @@ function formatDate(dateStr: string): string {
     year: "numeric",
     month: "short",
     day: "numeric",
-  });
-}
-
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   });
 }
 
@@ -173,13 +163,17 @@ export function PricingManagement() {
     try {
       setLoading(true);
       setError(null);
-      const [pricingRes, catalogRes, branchesData] = await Promise.all([
+
+      // Only fetch catalog items if user can create/edit (T role can only view pricing)
+      const fetches: [Promise<any>, Promise<any> | null, Promise<any>] = [
         pricingApi.getAll({ limit: 1000 }),
-        catalogApi.getAll({ limit: 1000 }),
+        canCreate ? catalogApi.getAll({ limit: 1000 }) : Promise.resolve(null),
         branchesApi.getAll(),
-      ]);
+      ];
+
+      const [pricingRes, catalogRes, branchesData] = await Promise.all(fetches);
       setAllPricingMatrices(pricingRes.data);
-      setCatalogItems(catalogRes.data);
+      if (catalogRes?.data) setCatalogItems(catalogRes.data);
       setBranches(branchesData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch data");
@@ -245,9 +239,11 @@ export function PricingManagement() {
         description: addForm.description || undefined,
       });
       setShowAddModal(false);
+      showToast.success("Pricing rule created successfully");
       fetchData();
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Failed to create pricing matrix");
+      showToast.error(err instanceof Error ? err.message : "Failed to create pricing matrix");
     } finally {
       setAddingItem(false);
     }
@@ -302,9 +298,11 @@ export function PricingManagement() {
         description: editForm.description || null,
       });
       setShowEditModal(false);
+      showToast.success("Pricing rule updated successfully");
       fetchData();
     } catch (err) {
       setEditError(err instanceof Error ? err.message : "Failed to update pricing matrix");
+      showToast.error(err instanceof Error ? err.message : "Failed to update pricing matrix");
     } finally {
       setEditingItem(false);
     }
@@ -323,9 +321,11 @@ export function PricingManagement() {
       await pricingApi.delete(itemToDelete.id);
       setShowDeleteConfirm(false);
       setItemToDelete(null);
+      showToast.success("Pricing rule deleted successfully");
       fetchData();
     } catch (err) {
       console.error("Failed to delete pricing matrix:", err);
+      showToast.error(err instanceof Error ? err.message : "Failed to delete pricing rule");
     } finally {
       setDeletingItem(false);
     }
@@ -461,9 +461,8 @@ export function PricingManagement() {
               </select>
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm font-medium transition-colors ${
-                  showFilters ? "border-primary bg-primary-100 text-primary" : "border-neutral-200 text-neutral-950 hover:bg-neutral-100"
-                }`}
+                className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm font-medium transition-colors ${showFilters ? "border-primary bg-primary-100 text-primary" : "border-neutral-200 text-neutral-950 hover:bg-neutral-100"
+                  }`}
               >
                 <LuFilter className="w-4 h-4" />
                 <span className="hidden sm:inline">Filters</span>
@@ -533,60 +532,51 @@ export function PricingManagement() {
         </div>
 
         {/* Mobile Card View */}
-        <div className="md:hidden p-4 space-y-4">
-          {paginatedItems.map((item) => (
-            <div
-              key={item.id}
-              onClick={() => openViewModal(item)}
-              className="border border-neutral-200 rounded-xl p-4 space-y-3 cursor-pointer hover:bg-neutral-50 transition-colors"
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-medium text-neutral-900 truncate">
-                    {item.catalog_items?.name || "Unknown Item"}
-                  </h4>
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                    item.pricing_type === "labor"
-                      ? "bg-primary-100 text-primary-800"
-                      : "bg-amber-100 text-amber-800"
-                  }`}>
-                    {pricingTypeLabel(item.pricing_type)}
-                  </span>
-                </div>
-                <span className="text-xs text-neutral-900 flex items-center gap-1">
-                  <LuClock className="w-3 h-3" />
-                  {formatDate(item.created_at)}
-                </span>
-              </div>
-
-              {/* Details */}
-              <div className="space-y-1">
-                <p className="text-sm text-neutral-900">
-                  <span className="text-neutral-900">Price:</span>{" "}
-                  <span className="font-medium">{formatCurrency(item.price)}</span>
-                </p>
-                <p className="text-sm text-neutral-900">
-                  <span className="text-neutral-900">Status:</span>{" "}
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                    item.status === "active"
-                      ? "bg-primary-100 text-positive-950"
-                      : "bg-neutral-100 text-neutral-950"
-                  }`}>
+        <div className="md:hidden p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {paginatedItems.map((item) => (
+              <div
+                key={item.id}
+                onClick={() => openViewModal(item)}
+                className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-50 transition-colors"
+              >
+                {/* Card header */}
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-primary-100 rounded-lg">
+                      <LuDollarSign className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-neutral-950">
+                        {item.catalog_items?.name || "Unknown Item"}
+                      </h4>
+                      {item.branches && (
+                        <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
+                          {item.branches.code}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span
+                    className={`px-2 py-1 rounded text-xs font-medium ${
+                      item.status === "active"
+                        ? "bg-positive-100 text-positive"
+                        : "bg-negative-100 text-negative"
+                    }`}
+                  >
                     {item.status === "active" ? "Active" : "Inactive"}
                   </span>
-                </p>
-                {item.branches && (
-                  <p className="text-sm text-neutral-900">
-                    <span className="text-neutral-900">Branch:</span>{" "}
-                    {item.branches.name} ({item.branches.code})
-                  </p>
-                )}
-              </div>
+                </div>
 
-              {/* Actions */}
-              {(canUpdate || canDelete) && (
-                <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
+                {/* Pricing details */}
+                <div className="space-y-1 text-sm text-neutral-900 mb-3">
+                  <p className="text-neutral-900">{pricingTypeLabel(item.pricing_type)}</p>
+                  <p className="text-neutral-900 font-medium">{formatCurrency(item.price)}</p>
+                  {item.description && <p className="text-neutral-900">{item.description}</p>}
+                </div>
+
+                {/* Actions */}
+                <div className={`flex items-center justify-end ${canUpdate || canDelete ? "gap-4 pt-3 border-t border-neutral-200" : ""}`}>
                   {canUpdate && (
                     <button
                       onClick={(e) => { e.stopPropagation(); openEditModal(item); }}
@@ -606,15 +596,15 @@ export function PricingManagement() {
                     </button>
                   )}
                 </div>
-              )}
-            </div>
-          ))}
+              </div>
+            ))}
 
-          {paginatedItems.length === 0 && (
-            <div className="text-center py-8 text-neutral-900">
-              No pricing rules found.
-            </div>
-          )}
+            {paginatedItems.length === 0 && (
+              <div className="col-span-full text-center py-12 text-neutral-900">
+                No pricing rules found.
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Desktop Table View */}
@@ -645,11 +635,10 @@ export function PricingManagement() {
                     {formatCurrency(item.price)}
                   </td>
                   <td className="py-3 px-4 whitespace-nowrap">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                      item.pricing_type === "labor"
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${item.pricing_type === "labor"
                         ? "bg-primary-100 text-primary-950"
                         : "bg-positive-100 text-positive-950"
-                    }`}>
+                      }`}>
                       {pricingTypeLabel(item.pricing_type)}
                     </span>
                   </td>
@@ -734,28 +723,28 @@ export function PricingManagement() {
               <ModalInput
                 type="text"
                 value={viewItem.catalog_items?.name || "Unknown Item"}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Catalog Item"
                 disabled
               />
               <ModalInput
                 type="text"
                 value={viewItem.catalog_items?.type ? viewItem.catalog_items.type.charAt(0).toUpperCase() + viewItem.catalog_items.type.slice(1) : "-"}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Item Type"
                 disabled
               />
               <ModalInput
                 type="text"
                 value={pricingTypeLabel(viewItem.pricing_type)}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Pricing Type"
                 disabled
               />
               <ModalInput
                 type="text"
                 value={formatCurrency(viewItem.price)}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Price"
                 disabled
               />
@@ -764,7 +753,7 @@ export function PricingManagement() {
             <ModalSection title="Assignment">
               <ModalSelect
                 value={viewItem.status}
-                onChange={() => {}}
+                onChange={() => { }}
                 options={STATUS_OPTIONS}
                 disabled
               />
@@ -775,7 +764,7 @@ export function PricingManagement() {
                     ? `${viewItem.branches.name} (${viewItem.branches.code})`
                     : "-"
                 }
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Branch"
                 disabled
               />
@@ -785,22 +774,25 @@ export function PricingManagement() {
               <ModalInput
                 type="text"
                 value={viewItem.description || "-"}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Description"
                 disabled
               />
-              <div className="grid grid-cols-2 gap-4 mt-2">
+            </ModalSection>
+
+            <ModalSection title="Timestamps">
+              <div className="grid grid-cols-2 gap-4">
                 <ModalInput
                   type="text"
-                  value={formatDateTime(viewItem.created_at)}
-                  onChange={() => {}}
+                  value={formatDate(viewItem.created_at)}
+                  onChange={() => { }}
                   placeholder="Created"
                   disabled
                 />
                 <ModalInput
                   type="text"
-                  value={formatDateTime(viewItem.updated_at)}
-                  onChange={() => {}}
+                  value={formatDate(viewItem.updated_at)}
+                  onChange={() => { }}
                   placeholder="Updated"
                   disabled
                 />

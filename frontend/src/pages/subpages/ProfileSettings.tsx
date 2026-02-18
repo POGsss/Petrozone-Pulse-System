@@ -2,6 +2,7 @@ import { useState } from "react";
 import { LuSave, LuKey, LuUser, LuCheck, LuCircleAlert } from "react-icons/lu";
 import { useAuth } from "../../auth";
 import { authApi } from "../../lib/api";
+import { showToast } from "../../lib/toast";
 
 export function ProfileSettings() {
   const { user, refreshUser } = useAuth();
@@ -57,12 +58,14 @@ export function ProfileSettings() {
         email: profileForm.email.trim() || undefined,
       });
       setProfileSuccess("Profile updated successfully");
+      showToast.success("Profile updated successfully");
       // Refresh user data in auth context
       if (refreshUser) {
         await refreshUser();
       }
     } catch (err) {
       setProfileError(err instanceof Error ? err.message : "Failed to update profile");
+      showToast.error(err instanceof Error ? err.message : "Failed to update profile");
     } finally {
       setProfileSaving(false);
     }
@@ -95,9 +98,11 @@ export function ProfileSettings() {
       setPasswordSaving(true);
       await authApi.changePassword(passwordForm.currentPassword, passwordForm.newPassword);
       setPasswordSuccess("Password changed successfully");
+      showToast.success("Password changed successfully");
       setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
     } catch (err) {
       setPasswordError(err instanceof Error ? err.message : "Failed to change password");
+      showToast.error(err instanceof Error ? err.message : "Failed to change password");
     } finally {
       setPasswordSaving(false);
     }

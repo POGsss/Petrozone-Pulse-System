@@ -13,6 +13,7 @@ import {
   LuUserX,
 } from "react-icons/lu";
 import { customersApi, branchesApi } from "../../lib/api";
+import { showToast } from "../../lib/toast";
 import { useAuth } from "../../auth";
 import {
   Modal,
@@ -223,9 +224,11 @@ export function CustomerManagement() {
         notes: addForm.notes.trim() || undefined,
       });
       setShowAddModal(false);
+      showToast.success("Customer created successfully");
       fetchData();
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Failed to create customer");
+      showToast.error(err instanceof Error ? err.message : "Failed to create customer");
     } finally {
       setAddingCustomer(false);
     }
@@ -295,9 +298,11 @@ export function CustomerManagement() {
       });
       setShowEditModal(false);
       setSelectedCustomer(null);
+      showToast.success("Customer updated successfully");
       fetchData();
     } catch (err) {
       setEditError(err instanceof Error ? err.message : "Failed to update customer");
+      showToast.error(err instanceof Error ? err.message : "Failed to update customer");
     } finally {
       setEditingCustomer(false);
     }
@@ -316,9 +321,11 @@ export function CustomerManagement() {
       await customersApi.delete(customerToDelete.id);
       setShowDeleteConfirm(false);
       setCustomerToDelete(null);
+      showToast.success("Customer deleted successfully");
       fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete customer");
+      showToast.error(err instanceof Error ? err.message : "Failed to delete customer");
     } finally {
       setDeletingCustomer(false);
     }
@@ -422,87 +429,79 @@ export function CustomerManagement() {
         </div>
 
         {/* Mobile Card View */}
-        <div className="md:hidden p-4 space-y-4">
-          {paginatedCustomers.map((customer) => (
-            <div
-              key={customer.id}
-              onClick={() => openViewModal(customer)}
-              className="border border-neutral-200 rounded-xl p-4 space-y-3 cursor-pointer hover:bg-neutral-50 transition-colors"
-            >
-              {/* Customer Header */}
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-medium text-neutral-900 truncate">{customer.full_name}</h4>
-                  <span className="text-xs text-neutral-900">
-                    {customer.customer_type === "company" ? "Company" : "Individual"}
+        <div className="md:hidden p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {paginatedCustomers.map((customer) => (
+              <div
+                key={customer.id}
+                onClick={() => openViewModal(customer)}
+                className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-50 transition-colors"
+              >
+                {/* Card header */}
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-primary-100 rounded-lg">
+                      <LuUsers className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-neutral-950">{customer.full_name}</h4>
+                      {customer.branches && (
+                        <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
+                          {customer.branches.code}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span
+                    className={`px-2 py-1 rounded text-xs font-medium ${
+                      customer.status === "active"
+                        ? "bg-positive-100 text-positive"
+                        : "bg-negative-100 text-negative"
+                    }`}
+                  >
+                    {customer.status === "active" ? "Active" : "Inactive"}
                   </span>
                 </div>
-                <span
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 ${
-                    customer.status === "active"
-                      ? "bg-primary-100 text-positive-950"
-                      : "bg-neutral-100 text-neutral-950"
-                  }`}
-                >
-                  {customer.status === "active" ? "Active" : "Inactive"}
-                </span>
-              </div>
 
-              {/* Contact Info */}
-              <div className="space-y-1">
-                {customer.contact_number && (
-                  <p className="text-sm text-neutral-900 flex items-center gap-2">
-                    {customer.contact_number}
-                  </p>
-                )}
-                {customer.email && (
-                  <p className="text-sm text-neutral-900 flex items-center gap-2 truncate">
-                    {customer.email}
-                  </p>
-                )}
-              </div>
-
-              {/* Branch */}
-              {customer.branches && (
-                <div>
-                  <p className="text-xs text-neutral-900 mb-1">Branch</p>
-                  <span className="px-2 py-0.5 bg-neutral-100 text-neutral-900 rounded text-xs font-medium">
-                    {customer.branches.name} ({customer.branches.code})
-                  </span>
+                {/* Customer details */}
+                <div className="space-y-1 text-sm text-neutral-900 mb-3">
+                  {customer.email && <p className="text-neutral-900">{customer.email}</p>}
+                  {customer.contact_number && <p className="text-neutral-900">{customer.contact_number}</p>}
+                  <p className="text-neutral-900">{customer.customer_type === "company" ? "Company" : "Individual"}</p>
                 </div>
-              )}
 
-              {/* Actions */}
-              <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
-                {canUpdate && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); openEditModal(customer); }}
-                    className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-                  >
-                    <LuPencil className="w-4 h-4" />
-                    Edit
-                  </button>
-                )}
-                {canDelete && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); openDeleteConfirmModal(customer); }}
-                    className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                  >
-                    <LuTrash2 className="w-4 h-4" />
-                    Delete
-                  </button>
-                )}
+                {/* Actions */}
+                <div className={`flex items-center justify-end ${canUpdate || canDelete ? "gap-4 pt-3 border-t border-neutral-200" : ""}`}>
+                  {canUpdate && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openEditModal(customer); }}
+                      className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
+                    >
+                      <LuPencil className="w-4 h-4" />
+                      Edit
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openDeleteConfirmModal(customer); }}
+                      className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
+                    >
+                      <LuTrash2 className="w-4 h-4" />
+                      Delete
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
 
-          {paginatedCustomers.length === 0 && (
-            <div className="text-center py-8 text-neutral-900">
-              {searchQuery
-                ? "No customers match your search."
-                : 'No customers found. Click "Add a New Customer" to create one.'}
-            </div>
-          )}
+            {paginatedCustomers.length === 0 && (
+              <div className="col-span-full text-center py-12 text-neutral-900">
+                {searchQuery
+                  ? "No customers match your search."
+                  : 'No customers found. Click "Add a New Customer" to create one.'}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Desktop Table View */}
@@ -539,11 +538,10 @@ export function CustomerManagement() {
                   </td>
                   <td className="py-3 px-4 whitespace-nowrap">
                     <span
-                      className={`px-2 py-0.5 rounded text-xs font-medium ${
-                        customer.customer_type === "company"
+                      className={`px-2 py-0.5 rounded text-xs font-medium ${customer.customer_type === "company"
                           ? "bg-primary-100 text-primary-950"
                           : "bg-neutral-100 text-neutral-950"
-                      }`}
+                        }`}
                     >
                       {customer.customer_type === "company" ? "Company" : "Individual"}
                     </span>
@@ -559,11 +557,10 @@ export function CustomerManagement() {
                   </td>
                   <td className="py-3 px-4 whitespace-nowrap">
                     <span
-                      className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        customer.status === "active"
+                      className={`px-3 py-1 rounded-full text-xs font-medium ${customer.status === "active"
                           ? "bg-primary-100 text-positive-950"
                           : "bg-neutral-100 text-neutral-950"
-                      }`}
+                        }`}
                     >
                       {customer.status === "active" ? "Active" : "Inactive"}
                     </span>
@@ -721,13 +718,13 @@ export function CustomerManagement() {
               <ModalInput
                 type="text"
                 value={viewCustomer.full_name}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Full Name"
                 disabled
               />
               <ModalSelect
                 value={viewCustomer.customer_type}
-                onChange={() => {}}
+                onChange={() => { }}
                 options={[
                   { value: "individual", label: "Individual" },
                   { value: "company", label: "Company" },
@@ -736,7 +733,7 @@ export function CustomerManagement() {
               />
               <ModalSelect
                 value={viewCustomer.status}
-                onChange={() => {}}
+                onChange={() => { }}
                 options={[
                   { value: "active", label: "Active" },
                   { value: "inactive", label: "Inactive" },
@@ -750,7 +747,7 @@ export function CustomerManagement() {
                     ? `${viewCustomer.branches.name} (${viewCustomer.branches.code})`
                     : "-"
                 }
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Branch"
                 disabled
               />
@@ -760,21 +757,21 @@ export function CustomerManagement() {
               <ModalInput
                 type="tel"
                 value={viewCustomer.contact_number || "-"}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Contact Number"
                 disabled
               />
               <ModalInput
                 type="email"
                 value={viewCustomer.email || "-"}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Email Address"
                 disabled
               />
               <ModalInput
                 type="text"
                 value={viewCustomer.address || "-"}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Address"
                 disabled
               />
@@ -788,18 +785,21 @@ export function CustomerManagement() {
                 rows={3}
                 className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none transition-all resize-none opacity-70 cursor-not-allowed"
               />
-              <div className="grid grid-cols-2 gap-4 mt-2">
+            </ModalSection>
+
+            <ModalSection title="Timestamps">
+              <div className="grid grid-cols-2 gap-4">
                 <ModalInput
                   type="text"
                   value={formatDate(viewCustomer.created_at)}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   placeholder="Created"
                   disabled
                 />
                 <ModalInput
                   type="text"
                   value={formatDate(viewCustomer.updated_at)}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   placeholder="Updated"
                   disabled
                 />

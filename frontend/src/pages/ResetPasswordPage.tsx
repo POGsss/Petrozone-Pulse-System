@@ -2,6 +2,7 @@ import { useState, useEffect, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { LuLock, LuEye, LuEyeOff, LuLoader, LuCheck, LuCircleAlert } from "react-icons/lu";
 import { authApi } from "../lib/api";
+import { showToast } from "../lib/toast";
 
 export function ResetPasswordPage() {
   const navigate = useNavigate();
@@ -67,8 +68,10 @@ export function ResetPasswordPage() {
     try {
       await authApi.resetPassword(accessToken, newPassword);
       setSuccess(true);
+      showToast.success("Password reset successfully");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to reset password");
+      showToast.error(err instanceof Error ? err.message : "Failed to reset password");
     } finally {
       setIsLoading(false);
     }

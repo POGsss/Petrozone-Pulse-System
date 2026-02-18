@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, ProtectedRoute, PublicRoute } from "./auth";
 import { LoginPage, DashboardPage, UnauthorizedPage, ResetPasswordPage } from "./pages";
 import { ThemeProvider } from "./lib/ThemeContext";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 function App() {
   return (
@@ -61,6 +63,18 @@ function App() {
         </Routes>
       </AuthProvider>
     </BrowserRouter>
+    <ToastContainer
+        position="bottom-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        pauseOnFocusLoss={false}
+        draggable
+        pauseOnHover
+        icon={false}
+        toastClassName="!rounded-xl !shadow-lg !font-sans !text-sm !border-0"
+      />
     </ThemeProvider>
   );
 }

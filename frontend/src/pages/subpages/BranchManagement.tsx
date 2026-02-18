@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { LuPlus, LuCircleAlert, LuRefreshCw, LuPencil, LuTrash2, LuBuilding } from "react-icons/lu";
 import { branchesApi } from "../../lib/api";
+import { showToast } from "../../lib/toast";
 import { Modal, ModalSection, ModalInput, ModalButtons, ModalError, SearchFilter } from "../../components";
 import type { FilterGroup } from "../../components";
 import type { Branch } from "../../types";
@@ -163,9 +164,11 @@ export function BranchManagement() {
       setShowAddModal(false);
       
       // Refresh branches list
+      showToast.success("Branch created successfully");
       fetchBranches();
     } catch (err) {
       setAddBranchError(err instanceof Error ? err.message : "Failed to create branch");
+      showToast.error(err instanceof Error ? err.message : "Failed to create branch");
     } finally {
       setAddingBranch(false);
     }
@@ -235,9 +238,11 @@ export function BranchManagement() {
       setSelectedBranch(null);
       
       // Refresh branches list
+      showToast.success("Branch updated successfully");
       fetchBranches();
     } catch (err) {
       setEditBranchError(err instanceof Error ? err.message : "Failed to update branch");
+      showToast.error(err instanceof Error ? err.message : "Failed to update branch");
     } finally {
       setEditingBranch(false);
     }
@@ -261,9 +266,11 @@ export function BranchManagement() {
       setBranchToDelete(null);
       
       // Refresh branches list
+      showToast.success("Branch deleted successfully");
       fetchBranches();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete branch");
+      showToast.error(err instanceof Error ? err.message : "Failed to delete branch");
     } finally {
       setDeletingBranch(false);
     }

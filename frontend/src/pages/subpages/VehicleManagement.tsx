@@ -10,6 +10,7 @@ import {
   LuChevronRight,
 } from "react-icons/lu";
 import { vehiclesApi, customersApi, branchesApi } from "../../lib/api";
+import { showToast } from "../../lib/toast";
 import { useAuth } from "../../auth";
 import {
   Modal,
@@ -300,9 +301,11 @@ export function VehicleManagement() {
         notes: addForm.notes.trim() || undefined,
       });
       setShowAddModal(false);
+      showToast.success("Vehicle created successfully");
       fetchData();
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Failed to create vehicle");
+      showToast.error(err instanceof Error ? err.message : "Failed to create vehicle");
     } finally {
       setAddingVehicle(false);
     }
@@ -380,9 +383,11 @@ export function VehicleManagement() {
       });
       setShowEditModal(false);
       setSelectedVehicle(null);
+      showToast.success("Vehicle updated successfully");
       fetchData();
     } catch (err) {
       setEditError(err instanceof Error ? err.message : "Failed to update vehicle");
+      showToast.error(err instanceof Error ? err.message : "Failed to update vehicle");
     } finally {
       setEditingVehicle(false);
     }
@@ -401,9 +406,11 @@ export function VehicleManagement() {
       await vehiclesApi.delete(vehicleToDelete.id);
       setShowDeleteConfirm(false);
       setVehicleToDelete(null);
+      showToast.success("Vehicle deactivated successfully");
       fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to deactivate vehicle");
+      showToast.error(err instanceof Error ? err.message : "Failed to deactivate vehicle");
     } finally {
       setDeletingVehicle(false);
     }
@@ -491,11 +498,10 @@ export function VehicleManagement() {
                 </div>
               </div>
               <span
-                className={`px-2 py-1 rounded text-xs font-medium ${
-                  vehicle.status === "active"
-                    ? "bg-positive-100 text-positive"
-                    : "bg-negative-100 text-negative"
-                }`}
+                className={`px-2 py-1 rounded text-xs font-medium ${vehicle.status === "active"
+                  ? "bg-positive-100 text-positive"
+                  : "bg-negative-100 text-negative"
+                  }`}
               >
                 {vehicle.status === "active" ? "Active" : "Inactive"}
               </span>
@@ -709,34 +715,34 @@ export function VehicleManagement() {
               <ModalInput
                 type="text"
                 value={viewVehicle.plate_number}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Plate Number"
                 disabled
                 className="font-mono"
               />
               <ModalSelect
                 value={viewVehicle.vehicle_type}
-                onChange={() => {}}
+                onChange={() => { }}
                 options={VEHICLE_TYPE_OPTIONS}
                 disabled
               />
               <ModalInput
                 type="text"
                 value={viewVehicle.model}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Model"
                 disabled
               />
               <ModalInput
                 type="text"
                 value={viewVehicle.orcr}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="OR/CR"
                 disabled
               />
               <ModalSelect
                 value={viewVehicle.status}
-                onChange={() => {}}
+                onChange={() => { }}
                 options={[
                   { value: "active", label: "Active" },
                   { value: "inactive", label: "Inactive" },
@@ -751,7 +757,7 @@ export function VehicleManagement() {
                 value={
                   viewVehicle.customers?.full_name || "-"
                 }
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Customer"
                 disabled
               />
@@ -762,7 +768,7 @@ export function VehicleManagement() {
                     ? `${viewVehicle.branches.name} (${viewVehicle.branches.code})`
                     : "-"
                 }
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Branch"
                 disabled
               />
@@ -773,14 +779,14 @@ export function VehicleManagement() {
                 <ModalInput
                   type="text"
                   value={viewVehicle.color || "-"}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   placeholder="Color"
                   disabled
                 />
                 <ModalInput
                   type="text"
                   value={viewVehicle.year?.toString() || "-"}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   placeholder="Year"
                   disabled
                 />
@@ -788,14 +794,14 @@ export function VehicleManagement() {
               <ModalInput
                 type="text"
                 value={viewVehicle.engine_number || "-"}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Engine Number"
                 disabled
               />
               <ModalInput
                 type="text"
                 value={viewVehicle.chassis_number || "-"}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Chassis Number"
                 disabled
               />
@@ -806,18 +812,21 @@ export function VehicleManagement() {
                 rows={3}
                 className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none transition-all resize-none opacity-70 cursor-not-allowed"
               />
-              <div className="grid grid-cols-2 gap-4 mt-2">
+            </ModalSection>
+
+            <ModalSection title="Timestamps">
+              <div className="grid grid-cols-2 gap-4">
                 <ModalInput
                   type="text"
                   value={formatDate(viewVehicle.created_at)}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   placeholder="Created"
                   disabled
                 />
                 <ModalInput
                   type="text"
                   value={formatDate(viewVehicle.updated_at)}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   placeholder="Updated"
                   disabled
                 />

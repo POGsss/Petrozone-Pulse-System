@@ -10,6 +10,7 @@ import {
   LuChevronRight,
 } from "react-icons/lu";
 import { catalogApi, branchesApi } from "../../lib/api";
+import { showToast } from "../../lib/toast";
 import { useAuth } from "../../auth";
 import {
   Modal,
@@ -261,9 +262,11 @@ export function CatalogManagement() {
         is_global: addForm.is_global,
       });
       setShowAddModal(false);
+      showToast.success("Catalog item created successfully");
       fetchData();
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Failed to create catalog item");
+      showToast.error(err instanceof Error ? err.message : "Failed to create catalog item");
     } finally {
       setAddingItem(false);
     }
@@ -322,9 +325,11 @@ export function CatalogManagement() {
       });
       setShowEditModal(false);
       setSelectedItem(null);
+      showToast.success("Catalog item updated successfully");
       fetchData();
     } catch (err) {
       setEditError(err instanceof Error ? err.message : "Failed to update catalog item");
+      showToast.error(err instanceof Error ? err.message : "Failed to update catalog item");
     } finally {
       setEditingItem(false);
     }
@@ -343,9 +348,11 @@ export function CatalogManagement() {
       await catalogApi.delete(itemToDelete.id);
       setShowDeleteConfirm(false);
       setItemToDelete(null);
+      showToast.success("Catalog item deleted successfully");
       fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete catalog item");
+      showToast.error(err instanceof Error ? err.message : "Failed to delete catalog item");
     } finally {
       setDeletingItem(false);
     }

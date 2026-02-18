@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { LuPlus, LuCircleAlert, LuRefreshCw, LuSearch, LuPencil, LuTrash2, LuUsers, LuUserCheck, LuUserX, LuChevronLeft, LuChevronRight, LuEye } from "react-icons/lu";
+import { showToast } from "../../lib/toast";
 import { rbacApi, branchesApi } from "../../lib/api";
 import { Modal, ModalSection, ModalInput, ModalSelect, ModalButtons, ModalError } from "../../components";
 import { useAuth } from "../../auth";
@@ -191,9 +192,11 @@ export function UserManagement() {
       setShowAddModal(false);
       
       // Refresh users list
+      showToast.success("User created successfully");
       fetchData();
     } catch (err) {
       setAddUserError(err instanceof Error ? err.message : "Failed to create user");
+      showToast.error(err instanceof Error ? err.message : "Failed to create user");
     } finally {
       setAddingUser(false);
     }
@@ -275,9 +278,11 @@ export function UserManagement() {
       );
       
       setShowEditModal(false);
+      showToast.success("User updated successfully");
       fetchData();
     } catch (err) {
       setEditUserError(err instanceof Error ? err.message : "Failed to update user");
+      showToast.error(err instanceof Error ? err.message : "Failed to update user");
     } finally {
       setEditingUser(false);
     }
@@ -298,9 +303,11 @@ export function UserManagement() {
       await rbacApi.deleteUser(userToDelete.id);
       setShowDeleteModal(false);
       setUserToDelete(null);
+      showToast.success("User deleted successfully");
       fetchData();
     } catch (err) {
       console.error("Failed to delete user:", err);
+      showToast.error(err instanceof Error ? err.message : "Failed to delete user");
     } finally {
       setDeletingUser(false);
     }
@@ -446,95 +453,86 @@ export function UserManagement() {
         </div>
 
         {/* Mobile Card View */}
-        <div className="md:hidden p-4 space-y-4">
-          {paginatedUsers.map((user) => (
-            <div
-              key={user.id}
-              onClick={() => openViewModal(user)}
-              className="border border-neutral-200 rounded-xl p-4 space-y-3 cursor-pointer hover:bg-neutral-50 transition-colors"
-            >
-              {/* User Header */}
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-medium text-neutral-900 truncate">{user.full_name}</h4>
-                  <p className="text-sm text-neutral-900 truncate">{user.email}</p>
-                  {user.phone && (
-                    <p className="text-sm text-neutral-900">{user.phone}</p>
-                  )}
+        <div className="md:hidden p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {paginatedUsers.map((user) => (
+              <div
+                key={user.id}
+                onClick={() => openViewModal(user)}
+                className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-50 transition-colors"
+              >
+                {/* Card header */}
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-primary-100 rounded-lg">
+                      <LuUsers className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-neutral-950">{user.full_name}</h4>
+                      {user.branches.length > 0 && (
+                        <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
+                          {user.branches.find(b => b.is_primary)?.branches?.code || user.branches[0]?.branches?.code || "—"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span
+                    className={`px-2 py-1 rounded text-xs font-medium ${
+                      user.is_active
+                        ? "bg-positive-100 text-positive"
+                        : "bg-negative-100 text-negative"
+                    }`}
+                  >
+                    {user.is_active ? "Active" : "Inactive"}
+                  </span>
                 </div>
-                <span
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 ${
-                    user.is_active
-                      ? "bg-primary-100 text-positive-950"
-                      : "bg-neutral-100 text-neutral-950"
-                  }`}
-                >
-                  {user.is_active ? "Active" : "Inactive"}
-                </span>
-              </div>
 
-              {/* Roles */}
-              <div>
-                <p className="text-xs text-neutral-900 mb-1">Roles</p>
-                <div className="flex flex-wrap gap-1">
-                  {user.roles.map((role) => (
-                    <span
-                      key={role}
-                      className="px-2 py-0.5 bg-neutral-100 text-neutral-900 rounded text-xs font-medium"
-                    >
-                      {role}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {/* Branches */}
-              {user.branches.length > 0 && (
-                <div>
-                  <p className="text-xs text-neutral-900 mb-1">Branches</p>
-                  <div className="flex flex-wrap gap-1">
-                    {user.branches.map((ba) => (
+                {/* User details */}
+                <div className="space-y-1 text-sm text-neutral-900 mb-3">
+                  <p className="text-neutral-900">{user.email}</p>
+                  {user.phone && <p className="text-neutral-900">{user.phone}</p>}
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {user.roles.map((role) => (
                       <span
-                        key={ba.branch_id}
-                        className={`px-2 py-0.5 rounded text-xs font-medium ${
-                          ba.is_primary
-                            ? "bg-primary-100 text-positive-950"
-                            : "bg-neutral-100 text-neutral-950"
-                        }`}
+                        key={role}
+                        className="px-2 py-0.5 bg-neutral-100 text-neutral-900 rounded text-xs font-medium"
                       >
-                        {ba.branches?.code || ba.branch_id.slice(0, 8)}
-                        {ba.is_primary && " ★"}
+                        {role}
                       </span>
                     ))}
                   </div>
                 </div>
-              )}
 
-              {/* Actions */}
-              <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
-                <button
-                  onClick={(e) => { e.stopPropagation(); openEditModal(user); }}
-                  className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-                >
-                  <LuPencil className="w-4 h-4" />
-                  Edit
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); openDeleteModal(user); }}
-                  className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                >
-                  <LuTrash2 className="w-4 h-4" />
-                  Delete
-                </button>
+                {/* Actions */}
+                <div className={`flex items-center justify-end ${canEditUser(user) ? "gap-4 pt-3 border-t border-neutral-200" : ""}`}>
+                  {canEditUser(user) && (
+                    <>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openEditModal(user); }}
+                        className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
+                      >
+                        <LuPencil className="w-4 h-4" />
+                        Edit
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openDeleteModal(user); }}
+                        className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
+                      >
+                        <LuTrash2 className="w-4 h-4" />
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
 
-          {paginatedUsers.length === 0 && (
-            <div className="text-center py-8 text-neutral-900">
-              {searchQuery ? "No users match your search." : "No users found. Click \"Add a New User\" to create one."}
-            </div>
-          )}
+            {paginatedUsers.length === 0 && (
+              <div className="col-span-full text-center py-12 text-neutral-900">
+                {searchQuery ? "No users match your search." : 'No users found. Click "Add a New User" to create one.'}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Desktop Table View */}

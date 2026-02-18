@@ -11,6 +11,7 @@ import {
   LuPencil,
 } from "react-icons/lu";
 import { jobOrdersApi, branchesApi, customersApi, vehiclesApi, catalogApi, pricingApi } from "../../lib/api";
+import { showToast } from "../../lib/toast";
 import { useAuth } from "../../auth";
 import {
   Modal,
@@ -371,9 +372,11 @@ export function JobOrderManagement() {
         })),
       });
       setShowAddModal(false);
+      showToast.success("Job order created successfully");
       fetchData();
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Failed to create job order");
+      showToast.error(err instanceof Error ? err.message : "Failed to create job order");
     } finally {
       setAddingOrder(false);
     }
@@ -413,9 +416,11 @@ export function JobOrderManagement() {
       await jobOrdersApi.update(editOrder.id, { notes: editNotes.trim() || null });
       setShowEditModal(false);
       setEditOrder(null);
+      showToast.success("Job order updated successfully");
       fetchData();
     } catch (err) {
       setEditError(err instanceof Error ? err.message : "Failed to update job order");
+      showToast.error(err instanceof Error ? err.message : "Failed to update job order");
     } finally {
       setEditingOrder(false);
     }
@@ -434,9 +439,11 @@ export function JobOrderManagement() {
       await jobOrdersApi.delete(orderToDelete.id);
       setShowDeleteConfirm(false);
       setOrderToDelete(null);
+      showToast.success("Job order deleted successfully");
       fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete job order");
+      showToast.error(err instanceof Error ? err.message : "Failed to delete job order");
     } finally {
       setDeletingOrder(false);
     }
