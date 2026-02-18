@@ -9,7 +9,6 @@ import {
   LuChevronRight,
   LuX,
   LuPencil,
-  LuWrench,
 } from "react-icons/lu";
 import { jobOrdersApi, branchesApi, customersApi, vehiclesApi, catalogApi, pricingApi, thirdPartyRepairsApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
@@ -916,7 +915,7 @@ export function JobOrderManagement() {
                 />
                 <ModalInput
                   type="text"
-                  value={formatPrice(viewOrder.total_amount)}
+                  value={formatPrice(viewOrder.total_amount + repairs.reduce((sum, r) => sum + r.cost, 0))}
                   onChange={() => { }}
                   placeholder="Total"
                   disabled
