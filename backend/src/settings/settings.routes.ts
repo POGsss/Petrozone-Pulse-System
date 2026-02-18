@@ -74,25 +74,26 @@ router.put(
         return;
       }
 
-      // Update the singleton row (no .select().single() to avoid 406)
-      const { error } = await supabaseAdmin
+      // Update with select to verify row was actually affected
+      const { data: updatedRows, error } = await supabaseAdmin
         .from("system_settings")
         .update(updates)
-        .eq("id", existing.id);
+        .eq("id", existing.id)
+        .select();
 
       if (error) {
+        console.error("Settings update error:", error);
         res.status(500).json({ error: error.message });
         return;
       }
 
-      // Fetch the updated row separately
-      const { data: updated } = await supabaseAdmin
-        .from("system_settings")
-        .select("*")
-        .limit(1)
-        .single();
+      if (!updatedRows || updatedRows.length === 0) {
+        console.error("Settings update: no rows affected");
+        res.status(500).json({ error: "Update did not affect any rows" });
+        return;
+      }
 
-      res.json(updated);
+      res.json(updatedRows[0]);
     } catch (err) {
       console.error("PUT /api/settings error:", err);
       res.status(500).json({ error: "Failed to update settings" });

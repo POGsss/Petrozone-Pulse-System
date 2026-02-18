@@ -212,11 +212,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setSettings(next);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
 
-    // Persist to DB (fire-and-forget with retry)
-    try {
-      await settingsApi.update(toDb(next));
-    } catch (err) {
-      console.error("Failed to save settings to server:", err);
+    // Persist to DB and verify the update took effect
+    const result = await settingsApi.update(toDb(next));
+    
+    // Verify the returned data matches what we sent
+    if (result && result.dark_mode !== next.darkMode) {
+      throw new Error("Settings were not saved to the database. The server returned stale data.");
     }
   }
 
@@ -224,11 +225,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setSettings(DEFAULT_SETTINGS);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_SETTINGS));
 
-    try {
-      await settingsApi.update(toDb(DEFAULT_SETTINGS));
-    } catch (err) {
-      console.error("Failed to reset settings on server:", err);
-    }
+    await settingsApi.update(toDb(DEFAULT_SETTINGS));
   }
 
   return (

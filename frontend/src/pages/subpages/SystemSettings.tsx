@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { LuMoon, LuSun, LuPanelLeftClose, LuPanelLeft, LuType, LuRotateCcw, LuCheck, LuSave } from "react-icons/lu";
 import { useTheme, COLOR_PRESETS, DEFAULT_SETTINGS, type FontSize, type ThemeSettings } from "../../lib/ThemeContext";
+import { showToast } from "../../lib/toast";
 
 const FONT_SIZE_OPTIONS: { value: FontSize; label: string; description: string }[] = [
     { value: "small", label: "Small", description: "Compact UI (14px)" },
@@ -14,6 +15,7 @@ export function SystemSettings() {
     // Local draft — only applied on Save
     const [draft, setDraft] = useState<ThemeSettings>({ ...settings });
     const [saved, setSaved] = useState(false);
+    const [saving, setSaving] = useState(false);
 
     const hasChanges =
         draft.darkMode !== settings.darkMode ||
@@ -26,15 +28,29 @@ export function SystemSettings() {
         setSaved(false);
     }
 
-    function handleSave() {
-        updateSettings(draft);
-        setSaved(true);
-        setTimeout(() => setSaved(false), 2000);
+    async function handleSave() {
+        try {
+            setSaving(true);
+            await updateSettings(draft);
+            setSaved(true);
+            showToast.success("Settings have been updated successfully.");
+            setTimeout(() => setSaved(false), 2000);
+        } catch (err) {
+            showToast.error(err instanceof Error ? err.message : "Failed to save changes on settings.");
+        } finally {
+            setSaving(false);
+        }
     }
 
-    function handleReset() {
-        setDraft({ ...DEFAULT_SETTINGS });
-        setSaved(false);
+    async function handleReset() {
+        try {
+            setDraft({ ...DEFAULT_SETTINGS });
+            setSaved(false);
+            await updateSettings({ ...DEFAULT_SETTINGS });
+            showToast.success("System settings have been reset to defaults.");
+        } catch (err) {
+            showToast.error(err instanceof Error ? err.message : "Failed to reset settings on the server.");
+        }
     }
 
     return (
@@ -55,7 +71,7 @@ export function SystemSettings() {
                     </button>
                     <button
                         onClick={handleSave}
-                        disabled={!hasChanges && !saved}
+                        disabled={(!hasChanges && !saved) || saving}
                         className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${saved
                                 ? "bg-positive text-white"
                                 : hasChanges
@@ -67,6 +83,11 @@ export function SystemSettings() {
                             <>
                                 <LuCheck className="w-4 h-4" />
                                 Saved
+                            </>
+                        ) : saving ? (
+                            <>
+                                <LuSave className="w-4 h-4 animate-pulse" />
+                                Saving...
                             </>
                         ) : (
                             <>
@@ -204,13 +225,6 @@ export function SystemSettings() {
                     })}
                 </div>
             </div>
-
-            {/* Unsaved indicator */}
-            {hasChanges && (
-                <div className="text-sm text-secondary-950 text-center py-2">
-                    You have unsaved changes — click <strong>Save</strong> to apply.
-                </div>
-            )}
         </div>
     );
 }
