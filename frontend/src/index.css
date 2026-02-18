@@ -133,6 +133,26 @@ html.dark textarea::placeholder {
   color: #f3f5fb;
 }
 
+/* WebKit scrollbar styles */
+*::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+*::-webkit-scrollbar:hover {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--color-primary);
+  border-radius: 4px;
+}
+
 /* Toast custom styles */
 .Toastify__toast {
   border-radius: 0.75rem !important;

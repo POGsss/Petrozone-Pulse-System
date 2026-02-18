@@ -622,6 +622,69 @@ export const jobOrdersApi = {
   },
 };
 
+// Third-Party Repairs API
+export const thirdPartyRepairsApi = {
+  getAll: async (params?: {
+    job_order_id?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
+    const query = searchParams.toString();
+    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").ThirdPartyRepair>>(
+      `/api/third-party-repairs${query ? `?${query}` : ""}`
+    );
+  },
+
+  getById: async (id: string) => {
+    return fetchWithAuth<import("../types").ThirdPartyRepair>(`/api/third-party-repairs/${id}`);
+  },
+
+  create: async (data: {
+    job_order_id: string;
+    provider_name: string;
+    description: string;
+    cost: number;
+    repair_date: string;
+    notes?: string;
+  }) => {
+    return fetchWithAuth<import("../types").ThirdPartyRepair>("/api/third-party-repairs", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (
+    id: string,
+    data: {
+      provider_name?: string;
+      description?: string;
+      cost?: number;
+      repair_date?: string;
+      notes?: string | null;
+    }
+  ) => {
+    return fetchWithAuth<import("../types").ThirdPartyRepair>(`/api/third-party-repairs/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: string) => {
+    return fetchWithAuth<{ message: string }>(`/api/third-party-repairs/${id}`, {
+      method: "DELETE",
+    });
+  },
+};
+
 // Settings API
 export const settingsApi = {
   get: async () => {

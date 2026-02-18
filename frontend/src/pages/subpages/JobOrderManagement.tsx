@@ -9,8 +9,9 @@ import {
   LuChevronRight,
   LuX,
   LuPencil,
+  LuWrench,
 } from "react-icons/lu";
-import { jobOrdersApi, branchesApi, customersApi, vehiclesApi, catalogApi, pricingApi } from "../../lib/api";
+import { jobOrdersApi, branchesApi, customersApi, vehiclesApi, catalogApi, pricingApi, thirdPartyRepairsApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
 import { useAuth } from "../../auth";
 import {
@@ -23,7 +24,7 @@ import {
   SearchFilter,
 } from "../../components";
 import type { FilterGroup } from "../../components";
-import type { JobOrder, Branch, Customer, Vehicle, CatalogItem, ResolvedPricing } from "../../types";
+import type { JobOrder, Branch, Customer, Vehicle, CatalogItem, ResolvedPricing, ThirdPartyRepair } from "../../types";
 
 const ITEMS_PER_PAGE = 12;
 
@@ -124,6 +125,34 @@ export function JobOrderManagement() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<JobOrder | null>(null);
+
+  // Third-party repairs (embedded in view modal)
+  const [repairs, setRepairs] = useState<ThirdPartyRepair[]>([]);
+  const [loadingRepairs, setLoadingRepairs] = useState(false);
+  const [showAddRepairModal, setShowAddRepairModal] = useState(false);
+  const [addingRepair, setAddingRepair] = useState(false);
+  const [addRepairError, setAddRepairError] = useState<string | null>(null);
+  const [addRepairForm, setAddRepairForm] = useState({
+    provider_name: "",
+    description: "",
+    cost: "",
+    repair_date: new Date().toISOString().split("T")[0],
+    notes: "",
+  });
+  const [showEditRepairModal, setShowEditRepairModal] = useState(false);
+  const [editingRepairItem, setEditingRepairItem] = useState(false);
+  const [editRepair, setEditRepair] = useState<ThirdPartyRepair | null>(null);
+  const [editRepairError, setEditRepairError] = useState<string | null>(null);
+  const [editRepairForm, setEditRepairForm] = useState({
+    provider_name: "",
+    description: "",
+    cost: "",
+    repair_date: "",
+    notes: "",
+  });
+  const [showDeleteRepairConfirm, setShowDeleteRepairConfirm] = useState(false);
+  const [deletingRepairItem, setDeletingRepairItem] = useState(false);
+  const [repairToDelete, setRepairToDelete] = useState<ThirdPartyRepair | null>(null);
 
   // Filter groups for SearchFilter
   const filterGroups: FilterGroup[] = useMemo(() => {
@@ -388,13 +417,32 @@ export function JobOrderManagement() {
     setViewOrder(order);
     setLoadingView(true);
     setShowViewModal(true);
+    setRepairs([]);
+    setLoadingRepairs(true);
     try {
-      const full = await jobOrdersApi.getById(order.id);
+      const [full, repairsRes] = await Promise.all([
+        jobOrdersApi.getById(order.id),
+        thirdPartyRepairsApi.getAll({ job_order_id: order.id }),
+      ]);
       setViewOrder(full);
+      setRepairs(repairsRes.data);
     } catch {
       // Keep showing list data if fetch fails
     } finally {
       setLoadingView(false);
+      setLoadingRepairs(false);
+    }
+  }
+
+  async function fetchRepairsForOrder(orderId: string) {
+    try {
+      setLoadingRepairs(true);
+      const res = await thirdPartyRepairsApi.getAll({ job_order_id: orderId });
+      setRepairs(res.data);
+    } catch {
+      // silent
+    } finally {
+      setLoadingRepairs(false);
     }
   }
 
@@ -446,6 +494,117 @@ export function JobOrderManagement() {
       showToast.error(err instanceof Error ? err.message : "Failed to delete job order");
     } finally {
       setDeletingOrder(false);
+    }
+  }
+
+  // --- Third-Party Repair CRUD ---
+  function openAddRepairModal() {
+    setAddRepairForm({
+      provider_name: "",
+      description: "",
+      cost: "",
+      repair_date: new Date().toISOString().split("T")[0],
+      notes: "",
+    });
+    setAddRepairError(null);
+    setShowAddRepairModal(true);
+  }
+
+  async function handleCreateRepair(e: React.FormEvent) {
+    e.preventDefault();
+    if (!viewOrder) return;
+    setAddRepairError(null);
+
+    if (!addRepairForm.provider_name.trim()) { setAddRepairError("Provider name is required"); return; }
+    if (!addRepairForm.description.trim()) { setAddRepairError("Description is required"); return; }
+    if (!addRepairForm.cost || isNaN(Number(addRepairForm.cost)) || Number(addRepairForm.cost) < 0) {
+      setAddRepairError("Valid cost is required"); return;
+    }
+    if (!addRepairForm.repair_date) { setAddRepairError("Repair date is required"); return; }
+
+    try {
+      setAddingRepair(true);
+      await thirdPartyRepairsApi.create({
+        job_order_id: viewOrder.id,
+        provider_name: addRepairForm.provider_name.trim(),
+        description: addRepairForm.description.trim(),
+        cost: Number(addRepairForm.cost),
+        repair_date: addRepairForm.repair_date,
+        notes: addRepairForm.notes.trim() || undefined,
+      });
+      setShowAddRepairModal(false);
+      showToast.success("Third-party repair added");
+      fetchRepairsForOrder(viewOrder.id);
+    } catch (err) {
+      setAddRepairError(err instanceof Error ? err.message : "Failed to add repair");
+    } finally {
+      setAddingRepair(false);
+    }
+  }
+
+  function openEditRepairModal(repair: ThirdPartyRepair) {
+    setEditRepair(repair);
+    setEditRepairForm({
+      provider_name: repair.provider_name,
+      description: repair.description,
+      cost: String(repair.cost),
+      repair_date: repair.repair_date,
+      notes: repair.notes || "",
+    });
+    setEditRepairError(null);
+    setShowEditRepairModal(true);
+  }
+
+  async function handleEditRepair(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editRepair || !viewOrder) return;
+    setEditRepairError(null);
+
+    if (!editRepairForm.provider_name.trim()) { setEditRepairError("Provider name is required"); return; }
+    if (!editRepairForm.description.trim()) { setEditRepairError("Description is required"); return; }
+    if (!editRepairForm.cost || isNaN(Number(editRepairForm.cost)) || Number(editRepairForm.cost) < 0) {
+      setEditRepairError("Valid cost is required"); return;
+    }
+    if (!editRepairForm.repair_date) { setEditRepairError("Repair date is required"); return; }
+
+    try {
+      setEditingRepairItem(true);
+      await thirdPartyRepairsApi.update(editRepair.id, {
+        provider_name: editRepairForm.provider_name.trim(),
+        description: editRepairForm.description.trim(),
+        cost: Number(editRepairForm.cost),
+        repair_date: editRepairForm.repair_date,
+        notes: editRepairForm.notes.trim() || null,
+      });
+      setShowEditRepairModal(false);
+      setEditRepair(null);
+      showToast.success("Repair updated");
+      fetchRepairsForOrder(viewOrder.id);
+    } catch (err) {
+      setEditRepairError(err instanceof Error ? err.message : "Failed to update repair");
+    } finally {
+      setEditingRepairItem(false);
+    }
+  }
+
+  function openDeleteRepairModal(repair: ThirdPartyRepair) {
+    setRepairToDelete(repair);
+    setShowDeleteRepairConfirm(true);
+  }
+
+  async function handleDeleteRepair() {
+    if (!repairToDelete || !viewOrder) return;
+    try {
+      setDeletingRepairItem(true);
+      await thirdPartyRepairsApi.delete(repairToDelete.id);
+      setShowDeleteRepairConfirm(false);
+      setRepairToDelete(null);
+      showToast.success("Repair deleted");
+      fetchRepairsForOrder(viewOrder.id);
+    } catch (err) {
+      showToast.error(err instanceof Error ? err.message : "Failed to delete repair");
+    } finally {
+      setDeletingRepairItem(false);
     }
   }
 
@@ -542,9 +701,8 @@ export function JobOrderManagement() {
 
             {/* Actions */}
             <div
-              className={`flex items-center justify-end ${
-                canUpdate || canDelete ? "gap-4 pt-3 border-t border-neutral-200" : ""
-              }`}
+              className={`flex items-center justify-end ${canUpdate || canDelete ? "gap-4 pt-3 border-t border-neutral-200" : ""
+                }`}
             >
               {canUpdate && (
                 <button
@@ -747,19 +905,19 @@ export function JobOrderManagement() {
         {viewOrder && (
           <div>
             <ModalSection title="Order Information">
-              <ModalInput type="text" value={viewOrder.order_number} onChange={() => {}} placeholder="Order #" disabled />
+              <ModalInput type="text" value={viewOrder.order_number} onChange={() => { }} placeholder="Order #" disabled />
               <div className="grid grid-cols-2 gap-4">
                 <ModalInput
                   type="text"
                   value={viewOrder.status.charAt(0).toUpperCase() + viewOrder.status.slice(1)}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   placeholder="Status"
                   disabled
                 />
                 <ModalInput
                   type="text"
                   value={formatPrice(viewOrder.total_amount)}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   placeholder="Total"
                   disabled
                 />
@@ -770,7 +928,7 @@ export function JobOrderManagement() {
               <ModalInput
                 type="text"
                 value={viewOrder.customers?.full_name || "—"}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Customer"
                 disabled
               />
@@ -781,7 +939,7 @@ export function JobOrderManagement() {
                     ? `${viewOrder.vehicles.plate_number} — ${viewOrder.vehicles.model} (${viewOrder.vehicles.vehicle_type})`
                     : "—"
                 }
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Vehicle"
                 disabled
               />
@@ -792,7 +950,7 @@ export function JobOrderManagement() {
                     ? `${viewOrder.branches.name} (${viewOrder.branches.code})`
                     : "—"
                 }
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Branch"
                 disabled
               />
@@ -834,7 +992,7 @@ export function JobOrderManagement() {
                     </div>
                   ))}
                   <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
-                    <span className="font-semibold text-neutral-950">Total</span>
+                    <span className="font-semibold text-neutral-950">Items Total</span>
                     <span className="font-bold text-primary text-lg">
                       {formatPrice(viewOrder.total_amount)}
                     </span>
@@ -842,6 +1000,84 @@ export function JobOrderManagement() {
                 </div>
               ) : (
                 <p className="text-sm text-neutral-900 text-center py-4">No items.</p>
+              )}
+            </ModalSection>
+
+            {/* Third-Party Repairs section */}
+            <ModalSection title="Third-Party Repairs">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm text-neutral-900">
+                  {repairs.length} repair{repairs.length !== 1 ? "s" : ""} recorded
+                </p>
+                <button
+                  type="button"
+                  onClick={openAddRepairModal}
+                  className="flex items-center gap-1 text-sm text-primary hover:text-primary-900 font-medium"
+                >
+                  <LuPlus className="w-4 h-4" />
+                  Add Repair
+                </button>
+              </div>
+
+              {loadingRepairs ? (
+                <div className="space-y-2">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
+                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
+                    </div>
+                  ))}
+                </div>
+              ) : repairs.length > 0 ? (
+                <div className="space-y-2">
+                  {repairs.map((repair) => (
+                    <div
+                      key={repair.id}
+                      className="flex items-start justify-between bg-neutral-100 rounded-xl px-4 py-3"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-neutral-950 text-sm truncate">
+                            {repair.provider_name}
+                          </p>
+                        </div>
+                        <p className="text-xs text-neutral-900 mt-1 line-clamp-1">
+                          {repair.description}
+                        </p>
+                        <p className="text-xs text-neutral-900 mt-0.5">
+                          {formatDate(repair.repair_date)} · {formatPrice(repair.cost)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 ml-3 flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => openEditRepairModal(repair)}
+                          className="p-1.5 text-primary-950 hover:bg-primary-50 rounded-lg transition-colors"
+                          title="Edit repair"
+                        >
+                          <LuPencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openDeleteRepairModal(repair)}
+                          className="p-1.5 text-negative-950 hover:bg-negative-50 rounded-lg transition-colors"
+                          title="Delete repair"
+                        >
+                          <LuTrash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {/* Repairs total */}
+                  <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
+                    <span className="font-semibold text-neutral-950">Repairs Total</span>
+                    <span className="font-bold text-primary text-lg">
+                      {formatPrice(repairs.reduce((sum, r) => sum + r.cost, 0))}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-neutral-900 text-center py-4">No third-party repairs.</p>
               )}
             </ModalSection>
 
@@ -862,14 +1098,14 @@ export function JobOrderManagement() {
                 <ModalInput
                   type="text"
                   value={formatDateTime(viewOrder.created_at)}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   placeholder="Created"
                   disabled
                 />
                 <ModalInput
                   type="text"
                   value={formatDateTime(viewOrder.updated_at)}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   placeholder="Updated"
                   disabled
                 />
@@ -877,6 +1113,161 @@ export function JobOrderManagement() {
             </ModalSection>
           </div>
         )}
+
+        {/* ========== Add Third-Party Repair Modal ========== */}
+        <Modal
+          isOpen={showAddRepairModal}
+          onClose={() => setShowAddRepairModal(false)}
+          title="Add Third-Party Repair"
+          maxWidth="lg"
+        >
+          <form onSubmit={handleCreateRepair}>
+            <ModalSection title="Repair Information">
+              <ModalInput
+                type="text"
+                value={addRepairForm.provider_name}
+                onChange={(v) => setAddRepairForm((f) => ({ ...f, provider_name: v }))}
+                placeholder="Provider Name *"
+                required
+              />
+              <textarea
+                value={addRepairForm.description}
+                onChange={(e) => setAddRepairForm((f) => ({ ...f, description: e.target.value }))}
+                placeholder="Description *"
+                rows={3}
+                className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
+              />
+              <ModalInput
+                type="number"
+                value={addRepairForm.cost}
+                onChange={(v) => setAddRepairForm((f) => ({ ...f, cost: v }))}
+                placeholder="Cost (PHP) *"
+                required
+              />
+              <input
+                type="date"
+                value={addRepairForm.repair_date}
+                onChange={(e) => setAddRepairForm((f) => ({ ...f, repair_date: e.target.value }))}
+                required
+                className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all"
+              />
+            </ModalSection>
+
+            <ModalSection title="Additional Notes">
+              <textarea
+                value={addRepairForm.notes}
+                onChange={(e) => setAddRepairForm((f) => ({ ...f, notes: e.target.value }))}
+                placeholder="Notes (optional)"
+                rows={2}
+                className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
+              />
+            </ModalSection>
+
+            <ModalError message={addRepairError} />
+            <ModalButtons
+              onCancel={() => setShowAddRepairModal(false)}
+              submitText={addingRepair ? "Adding..." : "Add Repair"}
+              loading={addingRepair}
+            />
+          </form>
+        </Modal>
+
+        {/* ========== Edit Third-Party Repair Modal ========== */}
+        <Modal
+          isOpen={showEditRepairModal}
+          onClose={() => setShowEditRepairModal(false)}
+          title="Edit Third-Party Repair"
+          maxWidth="lg"
+        >
+          <form onSubmit={handleEditRepair}>
+            <ModalSection title="Repair Information">
+              <ModalInput
+                type="text"
+                value={editRepairForm.provider_name}
+                onChange={(v) => setEditRepairForm((f) => ({ ...f, provider_name: v }))}
+                placeholder="Provider Name *"
+                required
+              />
+              <textarea
+                value={editRepairForm.description}
+                onChange={(e) => setEditRepairForm((f) => ({ ...f, description: e.target.value }))}
+                placeholder="Description *"
+                rows={3}
+                className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
+              />
+              <ModalInput
+                type="number"
+                value={editRepairForm.cost}
+                onChange={(v) => setEditRepairForm((f) => ({ ...f, cost: v }))}
+                placeholder="Cost (PHP) *"
+                required
+              />
+              <input
+                type="date"
+                value={editRepairForm.repair_date}
+                onChange={(e) => setEditRepairForm((f) => ({ ...f, repair_date: e.target.value }))}
+                required
+                className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all"
+              />
+            </ModalSection>
+
+            <ModalSection title="Additional Notes">
+              <textarea
+                value={editRepairForm.notes}
+                onChange={(e) => setEditRepairForm((f) => ({ ...f, notes: e.target.value }))}
+                placeholder="Notes (optional)"
+                rows={2}
+                className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
+              />
+            </ModalSection>
+
+            <ModalError message={editRepairError} />
+            <ModalButtons
+              onCancel={() => setShowEditRepairModal(false)}
+              submitText={editingRepairItem ? "Saving..." : "Save Changes"}
+              loading={editingRepairItem}
+            />
+          </form>
+        </Modal>
+
+        {/* ========== Delete Third-Party Repair Modal ========== */}
+        <Modal
+          isOpen={showDeleteRepairConfirm && !!repairToDelete}
+          onClose={() => setShowDeleteRepairConfirm(false)}
+          title="Delete Third-Party Repair"
+          maxWidth="sm"
+        >
+          {repairToDelete && (
+            <div>
+              <div className="bg-neutral-100 rounded-xl p-4 my-4">
+                <p className="text-neutral-900">
+                  Are you sure you want to delete the repair from{" "}
+                  <strong className="text-neutral-950">{repairToDelete.provider_name}</strong>?
+                </p>
+              </div>
+              <p className="text-sm text-neutral-900 mb-2">
+                This action cannot be undone.
+              </p>
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteRepairConfirm(false)}
+                  className="flex-1 px-4 py-3.5 border-2 border-negative text-negative rounded-xl font-semibold hover:bg-negative-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteRepair}
+                  disabled={deletingRepairItem}
+                  className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {deletingRepairItem ? "Deleting..." : "Delete"}
+                </button>
+              </div>
+            </div>
+          )}
+        </Modal>
       </Modal>
 
       {/* ========== Edit Job Order Modal (notes only) ========== */}
@@ -891,7 +1282,7 @@ export function JobOrderManagement() {
             <ModalInput
               type="text"
               value={editOrder?.order_number || ""}
-              onChange={() => {}}
+              onChange={() => { }}
               placeholder="Order #"
               disabled
             />

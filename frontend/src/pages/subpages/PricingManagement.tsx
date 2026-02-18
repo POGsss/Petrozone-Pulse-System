@@ -616,6 +616,7 @@ export function PricingManagement() {
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Price</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Type</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Branch</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Status</th>
                 {(canUpdate || canDelete) && (
                   <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Actions</th>
                 )}
@@ -643,7 +644,24 @@ export function PricingManagement() {
                     </span>
                   </td>
                   <td className="py-3 px-4 text-sm text-neutral-900">
-                    {item.branches ? `${item.branches.name} (${item.branches.code})` : "-"}
+                    {item.branches ? (
+                      <span className="px-2 py-0.5 bg-neutral-100 text-neutral-900 rounded text-xs font-medium">
+                        {item.branches.name}
+                      </span>
+                    ) : (
+                      <span className="text-sm text-neutral-400">-</span>
+                    )}
+                  </td>
+                  <td className="py-3 px-4 whitespace-nowrap">
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        item.status === "active"
+                          ? "bg-primary-100 text-positive-950"
+                          : "bg-neutral-100 text-neutral-950"
+                      }`}
+                    >
+                      {item.status === "active" ? "Active" : "Inactive"}
+                    </span>
                   </td>
                   {(canUpdate || canDelete) && (
                     <td className="py-3 px-4 whitespace-nowrap">

@@ -248,3 +248,31 @@ export interface JobOrder {
   branches?: Branch;
   job_order_items?: JobOrderItem[];
 }
+
+// Third-Party Repair types
+export interface ThirdPartyRepair {
+  id: string;
+  job_order_id: string;
+  provider_name: string;
+  description: string;
+  cost: number;
+  repair_date: string;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  job_orders?: {
+    id: string;
+    order_number: string;
+    branch_id: string;
+    customers?: {
+      id: string;
+      full_name: string;
+    };
+    vehicles?: {
+      id: string;
+      plate_number: string;
+      model: string;
+    };
+  };
+}

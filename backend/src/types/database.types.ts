@@ -436,6 +436,53 @@ export type Database = {
         }
         Relationships: []
       }
+      third_party_repairs: {
+        Row: {
+          cost: number
+          created_at: string
+          created_by: string | null
+          description: string
+          id: string
+          job_order_id: string
+          notes: string | null
+          provider_name: string
+          repair_date: string
+          updated_at: string
+        }
+        Insert: {
+          cost?: number
+          created_at?: string
+          created_by?: string | null
+          description: string
+          id?: string
+          job_order_id: string
+          notes?: string | null
+          provider_name: string
+          repair_date?: string
+          updated_at?: string
+        }
+        Update: {
+          cost?: number
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          job_order_id?: string
+          notes?: string | null
+          provider_name?: string
+          repair_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "third_party_repairs_job_order_id_fkey"
+            columns: ["job_order_id"]
+            isOneToOne: false
+            referencedRelation: "job_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_branch_assignments: {
         Row: {
           branch_id: string

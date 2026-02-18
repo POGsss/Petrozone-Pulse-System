@@ -15,6 +15,7 @@ import catalogRoutes from "./catalog/catalog.routes.js";
 import pricingRoutes from "./pricing/pricing.routes.js";
 import settingsRoutes from "./settings/settings.routes.js";
 import jobOrderRoutes from "./joborders/joborders.routes.js";
+import thirdPartyRepairRoutes from "./thirdpartyrepairs/thirdpartyrepairs.routes.js";
 
 const app = express();
 
@@ -59,6 +60,7 @@ app.use("/api/catalog", catalogRoutes);
 app.use("/api/pricing", pricingRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/job-orders", jobOrderRoutes);
+app.use("/api/third-party-repairs", thirdPartyRepairRoutes);
 
 // 404 handler
 app.use((_req, res) => {
