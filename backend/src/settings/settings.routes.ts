@@ -94,6 +94,20 @@ router.put(
       }
 
       res.json(updatedRows[0]);
+
+      // Log the settings update
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "UPDATE",
+          p_entity_type: "SYSTEM_SETTINGS",
+          p_entity_id: existing.id,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: updates,
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
     } catch (err) {
       console.error("PUT /api/settings error:", err);
       res.status(500).json({ error: "Failed to update settings" });

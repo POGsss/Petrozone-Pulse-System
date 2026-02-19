@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../auth";
-import { DashboardLayout, NavIcons } from "../components";
+import { DashboardLayout, NavIcons, Modal } from "../components";
 import type { NavItem } from "../components";
 
 
@@ -121,8 +121,17 @@ function getNavItemsForRole(roles: string[]): NavItem[] {
 }
 
 export function DashboardPage() {
-  const { user } = useAuth();
+  const { user, mustChangePassword } = useAuth();
   const [activeNav, setActiveNav] = useState("dashboard");
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+
+  // Show the change password modal when the user must change their password
+  // Re-show when navigating away from profile settings
+  useEffect(() => {
+    if (mustChangePassword && activeNav !== "profile") {
+      setShowPasswordModal(true);
+    }
+  }, [mustChangePassword, activeNav]);
 
   if (!user) return null;
 
@@ -227,6 +236,47 @@ export function DashboardPage() {
       {/* Settings - HM only */}
       {activeNav === "settings" && canAccessSettings && (
         <SystemSettings />
+      )}
+
+      {/* Change Password Modal - shown for first-time login users */}
+      {showPasswordModal && mustChangePassword && (
+        <Modal
+          isOpen={true}
+          onClose={() => setShowPasswordModal(false)}
+          title="Change Your Password"
+          maxWidth="sm"
+        >
+          <div>
+            <div className="bg-neutral-100 rounded-xl p-4 my-4">
+              <p className="text-neutral-900">
+                For security purposes, you are required to <strong className="text-neutral-950">change your temporary password.</strong>
+              </p>
+            </div>
+            <p className="text-sm text-neutral-900 mb-2">
+              You can dismiss this reminder, but it will appear again until your password is changed.
+            </p>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowPasswordModal(false)}
+                className="flex-1 px-4 py-3.5 border-2 border-negative text-negative rounded-xl font-semibold hover:bg-negative-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  setActiveNav("profile");
+                }}
+                className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Change
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </DashboardLayout>
   );

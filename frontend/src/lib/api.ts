@@ -109,6 +109,13 @@ export const authApi = {
   getProfile: async () => {
     return fetchWithAuth<{ profile: import("../types").UserProfile }>("/api/auth/profile");
   },
+
+  unlockAccount: async (userId: string) => {
+    return fetchWithAuth<{ message: string }>("/api/auth/unlock-account", {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId }),
+    });
+  },
 };
 
 // Branches API
@@ -222,6 +229,13 @@ export const rbacApi = {
     return fetchWithAuth<{ message: string }>(`/api/rbac/users/${userId}/status`, {
       method: "PUT",
       body: JSON.stringify({ is_active: isActive }),
+    });
+  },
+
+  resetUserPassword: async (userId: string, tempPassword: string) => {
+    return fetchWithAuth<{ message: string }>(`/api/rbac/users/${userId}/reset-password`, {
+      method: "POST",
+      body: JSON.stringify({ temp_password: tempPassword }),
     });
   },
 };

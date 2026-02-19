@@ -40,6 +40,7 @@ export interface AuthUser {
   profile: UserProfile | null;
   roles: UserRole[];
   branches: BranchAssignment[];
+  must_change_password?: boolean;
 }
 
 // Session type
@@ -81,6 +82,7 @@ export interface AuditLog {
   ip_address: string | null;
   user_agent: string | null;
   branch_id: string | null;
+  status: string | null;
   created_at: string;
   user_profiles?: UserProfile;
   branches?: Branch;

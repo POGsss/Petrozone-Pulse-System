@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { LuSave, LuKey, LuUser, LuCheck, LuCircleAlert } from "react-icons/lu";
 import { useAuth } from "../../auth";
 import { authApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
 
 export function ProfileSettings() {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, clearMustChangePassword } = useAuth();
   
   // Profile form state
   const [profileForm, setProfileForm] = useState({
@@ -71,6 +71,14 @@ export function ProfileSettings() {
     }
   }
 
+  // Password complexity checks
+  const passwordChecks = useMemo(() => ({
+    minLength: passwordForm.newPassword.length >= 8,
+    hasUppercase: /[A-Z]/.test(passwordForm.newPassword),
+    hasLowercase: /[a-z]/.test(passwordForm.newPassword),
+    hasNumber: /[0-9]/.test(passwordForm.newPassword),
+  }), [passwordForm.newPassword]);
+
   // Handle password change
   async function handlePasswordSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -89,6 +97,18 @@ export function ProfileSettings() {
       setPasswordError("New password must be at least 8 characters");
       return;
     }
+    if (!/[A-Z]/.test(passwordForm.newPassword)) {
+      setPasswordError("Password must contain at least one uppercase letter");
+      return;
+    }
+    if (!/[a-z]/.test(passwordForm.newPassword)) {
+      setPasswordError("Password must contain at least one lowercase letter");
+      return;
+    }
+    if (!/[0-9]/.test(passwordForm.newPassword)) {
+      setPasswordError("Password must contain at least one number");
+      return;
+    }
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
       setPasswordError("Passwords do not match");
       return;
@@ -100,6 +120,7 @@ export function ProfileSettings() {
       setPasswordSuccess("Password changed successfully");
       showToast.success("Password changed successfully");
       setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      clearMustChangePassword();
     } catch (err) {
       setPasswordError(err instanceof Error ? err.message : "Failed to change password");
       showToast.error(err instanceof Error ? err.message : "Failed to change password");
@@ -124,7 +145,7 @@ export function ProfileSettings() {
 
         <form onSubmit={handleProfileSubmit} className="space-y-4">
           {profileError && (
-            <div className="flex items-center gap-2 p-3 bg-negative-50 border border-negative-200 rounded-lg text-sm text-negative-700">
+            <div className="flex items-center gap-2 p-3 bg-negative-100 border border-negative rounded-lg text-sm text-negative-950">
               <LuCircleAlert className="w-4 h-4 flex-shrink-0" />
               {profileError}
             </div>
@@ -244,9 +265,24 @@ export function ProfileSettings() {
               value={passwordForm.newPassword}
               onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))}
               className="w-full px-4 py-2.5 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              placeholder="Enter new password (min 8 characters)"
+              placeholder="Enter new password"
               minLength={8}
             />
+            {passwordForm.newPassword.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {[
+                  { met: passwordChecks.minLength, label: "At least 8 characters" },
+                  { met: passwordChecks.hasUppercase, label: "One uppercase letter" },
+                  { met: passwordChecks.hasLowercase, label: "One lowercase letter" },
+                  { met: passwordChecks.hasNumber, label: "One number" },
+                ].map(({ met, label }) => (
+                  <div key={label} className={`flex items-center gap-1.5 text-xs ${met ? "text-positive-600" : "text-neutral-400"}`}>
+                    {met ? <LuCheck className="w-3.5 h-3.5" /> : <span className="w-3.5 h-3.5 rounded-full border border-neutral-300 inline-block" />}
+                    {label}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>

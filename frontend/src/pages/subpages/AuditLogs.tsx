@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { LuFileText, LuRefreshCw, LuCircleAlert, LuSearch, LuFilter, LuChevronLeft, LuChevronRight, LuLogIn, LuActivity, LuClock } from "react-icons/lu";
+import { LuFileText, LuRefreshCw, LuCircleAlert, LuSearch, LuFilter, LuChevronLeft, LuChevronRight, LuCheck, LuX, LuClock } from "react-icons/lu";
 import { auditApi } from "../../lib/api";
 import {
   Modal,
@@ -56,6 +56,8 @@ export function AuditLogs() {
   const [stats, setStats] = useState<{
     total_events: number;
     logins: number;
+    successful: number;
+    failed: number;
     actions: Record<string, number>;
   } | null>(null);
 
@@ -84,11 +86,11 @@ export function AuditLogs() {
 
   // Stats summary
   const summaryStats = useMemo(() => {
-    if (!stats) return { total: 0, logins: 0, actions: 0 };
+    if (!stats) return { total: 0, successful: 0, failed: 0 };
     return {
       total: stats.total_events,
-      logins: stats.logins || 0,
-      actions: Object.values(stats.actions).reduce((sum: number, count) => sum + (count as number), 0) - (stats.logins || 0),
+      successful: stats.successful || 0,
+      failed: stats.failed || 0,
     };
   }, [stats]);
 
@@ -204,22 +206,22 @@ export function AuditLogs() {
         <div className="bg-white border border-neutral-200 rounded-xl p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-positive-100 rounded-lg">
-              <LuLogIn className="w-5 h-5 text-positive" />
+              <LuCheck className="w-5 h-5 text-positive" />
             </div>
             <div>
-              <p className="text-sm text-neutral-900">Login Events</p>
-              <p className="text-2xl font-bold text-neutral-950">{summaryStats.logins}</p>
+              <p className="text-sm text-neutral-900">Successful</p>
+              <p className="text-2xl font-bold text-neutral-950">{summaryStats.successful}</p>
             </div>
           </div>
         </div>
         <div className="bg-white border border-neutral-200 rounded-xl p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-negative-100 rounded-lg">
-              <LuActivity className="w-5 h-5 text-negative" />
+              <LuX className="w-5 h-5 text-negative" />
             </div>
             <div>
-              <p className="text-sm text-neutral-900">Other Actions</p>
-              <p className="text-2xl font-bold text-neutral-950">{summaryStats.actions}</p>
+              <p className="text-sm text-neutral-900">Failed</p>
+              <p className="text-2xl font-bold text-neutral-950">{summaryStats.failed}</p>
             </div>
           </div>
         </div>
@@ -322,9 +324,14 @@ export function AuditLogs() {
             >
               {/* Header */}
               <div className="flex items-start justify-between">
-                <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getActionColor(log.action)}`}>
-                  {log.action}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getActionColor(log.action)}`}>
+                    {log.action}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${log.status === 'FAILED' ? 'bg-negative-100 text-negative-950' : 'bg-positive-100 text-positive-950'}`}>
+                    {log.status || 'SUCCESS'}
+                  </span>
+                </div>
                 <span className="text-xs text-neutral-900 flex items-center gap-1">
                   <LuClock className="w-3 h-3" />
                   {formatDate(log.created_at)}
@@ -341,12 +348,6 @@ export function AuditLogs() {
                   <p className="text-sm text-neutral-900">
                     <span className="text-neutral-900">User:</span>{" "}
                     {log.user_profiles.full_name || log.user_profiles.email}
-                  </p>
-                )}
-                {log.branches && (
-                  <p className="text-sm text-neutral-900">
-                    <span className="text-neutral-900">Branch:</span>{" "}
-                    {log.branches.name} ({log.branches.code})
                   </p>
                 )}
               </div>
@@ -367,9 +368,9 @@ export function AuditLogs() {
               <tr className="border-b border-neutral-200 bg-neutral-100">
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Date & Time</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Action</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Status</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Entity</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">User</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Branch</th>
               </tr>
             </thead>
             <tbody>
@@ -383,14 +384,16 @@ export function AuditLogs() {
                       {log.action}
                     </span>
                   </td>
+                  <td className="py-3 px-4 whitespace-nowrap">
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${log.status === 'FAILED' ? 'bg-negative-100 text-negative-950' : 'bg-positive-100 text-positive-950'}`}>
+                      {log.status || 'SUCCESS'}
+                    </span>
+                  </td>
                   <td className="py-3 px-4 text-sm text-neutral-900">
                     {log.entity_type || "-"}
                   </td>
                   <td className="py-3 px-4 text-sm text-neutral-900">
                     {log.user_profiles?.full_name || log.user_profiles?.email || "-"}
-                  </td>
-                  <td className="py-3 px-4 text-sm text-neutral-900">
-                    {log.branches ? `${log.branches.name} (${log.branches.code})` : "-"}
                   </td>
                 </tr>
               ))}
@@ -510,9 +513,9 @@ export function AuditLogs() {
             <ModalSection title="Additional Information">
               <ModalInput
                 type="text"
-                value={viewLog.ip_address || "-"}
+                value={viewLog.status || "SUCCESS"}
                 onChange={() => {}}
-                placeholder="IP Address"
+                placeholder="Status"
                 disabled
               />
               <ModalInput

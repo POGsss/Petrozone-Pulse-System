@@ -163,23 +163,23 @@ html.dark textarea::placeholder {
 }
 
 .Toastify__progress-bar {
-  background: #5570f1 !important;
+  background: var(--color-primary) !important;
 }
 
 .Toastify__progress-bar--bg {
-  background: #e6e6e7 !important;
+  background: var(--color-neutral-100) !important;
   opacity: 1 !important;
 }
 
 html.dark .Toastify__progress-bar--bg {
-  background: #2a2a30 !important;
+  background: var(--color-neutral-200) !important;
 }
 
 html.dark .Toastify__toast {
-  background-color: #1e1e24 !important;
-  color: #e6e6e7 !important;
+  background-color: var(--color-neutral-100) !important;
+  color: var(--color-neutral-950) !important;
 }
 
 html.dark .Toastify__close-button {
-  color: #a7a7a9 !important;
+  color: var(--color-neutral-700) !important;
 }

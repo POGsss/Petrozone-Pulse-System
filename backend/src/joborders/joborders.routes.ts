@@ -487,6 +487,20 @@ router.delete(
       }
 
       res.json({ message: `Job order ${existing.order_number} deleted successfully` });
+
+      // Log deletion
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "DELETE",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: orderId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { order_number: existing.order_number, branch_id: existing.branch_id },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
     } catch (error) {
       console.error("Delete job order error:", error);
       res.status(500).json({ error: "Failed to delete job order" });

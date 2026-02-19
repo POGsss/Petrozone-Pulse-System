@@ -177,7 +177,7 @@ router.get("/stats", requireRoles("HM", "POC"), async (req: Request, res: Respon
     // Get counts by action type
     let query = supabaseAdmin
       .from("audit_logs")
-      .select("action")
+      .select("action, status")
       .gte("created_at", startDate.toISOString());
 
     // For POC users, filter by their branch assignments (same as logs endpoint)
@@ -198,14 +198,17 @@ router.get("/stats", requireRoles("HM", "POC"), async (req: Request, res: Respon
       return acc;
     }, {} as Record<string, number>) ?? {};
 
-    // Get recent login count
-    const loginCount = actionStats["LOGIN"] || 0;
+    // Count by status
+    const successCount = actionCounts?.filter(log => log.status !== 'FAILED').length ?? 0;
+    const failedCount = actionCounts?.filter(log => log.status === 'FAILED').length ?? 0;
 
     res.json({
       period_days: parseInt(days as string),
       total_events: actionCounts?.length ?? 0,
       actions: actionStats,
-      logins: loginCount,
+      logins: actionStats["LOGIN"] || 0,
+      successful: successCount,
+      failed: failedCount,
     });
   } catch (error) {
     console.error("Get audit stats error:", error);

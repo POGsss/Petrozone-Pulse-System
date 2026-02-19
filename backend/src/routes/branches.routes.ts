@@ -136,7 +136,7 @@ router.post("/", requireBranchManager, async (req: Request, res: Response): Prom
     const adminPrimaryBranch = req.user!.branchIds[0] || null;
     await supabaseAdmin.rpc("log_admin_action", {
       p_action: "CREATE",
-      p_entity_type: "branch",
+      p_entity_type: "BRANCH",
       p_entity_id: branch.id,
       p_performed_by_user_id: req.user!.id,
       p_performed_by_branch_id: adminPrimaryBranch,
@@ -211,7 +211,7 @@ router.put("/:branchId", requireBranchManager, async (req: Request, res: Respons
     const adminPrimaryBranch = req.user!.branchIds[0] || null;
     await supabaseAdmin.rpc("log_admin_action", {
       p_action: "UPDATE",
-      p_entity_type: "branch",
+      p_entity_type: "BRANCH",
       p_entity_id: branchId,
       p_performed_by_user_id: req.user!.id,
       p_performed_by_branch_id: adminPrimaryBranch,
@@ -253,6 +253,20 @@ router.delete("/:branchId", requireBranchManager, async (req: Request, res: Resp
         return;
       }
 
+      // Log soft delete
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "UPDATE",
+          p_entity_type: "BRANCH",
+          p_entity_id: branchId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { is_active: false, reason: "soft_delete" },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
       res.json({ message: "Branch deactivated (has assigned users)" });
       return;
     }
@@ -266,6 +280,20 @@ router.delete("/:branchId", requireBranchManager, async (req: Request, res: Resp
     if (error) {
       res.status(500).json({ error: error.message });
       return;
+    }
+
+    // Log hard delete
+    try {
+      await supabaseAdmin.rpc("log_admin_action", {
+        p_action: "DELETE",
+        p_entity_type: "BRANCH",
+        p_entity_id: branchId,
+        p_performed_by_user_id: req.user!.id,
+        p_performed_by_branch_id: req.user!.branchIds[0] || null,
+        p_new_values: { deleted: true },
+      });
+    } catch (auditErr) {
+      console.error("Audit log error:", auditErr);
     }
 
     res.json({ message: "Branch deleted successfully" });

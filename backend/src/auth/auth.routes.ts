@@ -1,12 +1,29 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
-import { requireAuth } from "../middleware/auth.middleware.js";
+import { requireAuth, requireUserManager } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
 // Frontend URL for password reset redirect
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+
+// Password complexity validation per AuthenticationRules spec (Section 3.2)
+function validatePasswordComplexity(password: string): string | null {
+  if (password.length < 8) {
+    return "Password must be at least 8 characters";
+  }
+  if (!/[A-Z]/.test(password)) {
+    return "Password must contain at least one uppercase letter";
+  }
+  if (!/[a-z]/.test(password)) {
+    return "Password must contain at least one lowercase letter";
+  }
+  if (!/[0-9]/.test(password)) {
+    return "Password must contain at least one number";
+  }
+  return null;
+}
 
 /**
  * POST /api/auth/forgot-password
@@ -65,8 +82,9 @@ router.post("/reset-password", async (req: Request, res: Response): Promise<void
       return;
     }
 
-    if (new_password.length < 8) {
-      res.status(400).json({ error: "Password must be at least 8 characters" });
+    const passwordError = validatePasswordComplexity(new_password);
+    if (passwordError) {
+      res.status(400).json({ error: passwordError });
       return;
     }
 
@@ -99,6 +117,7 @@ router.post("/reset-password", async (req: Request, res: Response): Promise<void
 /**
  * POST /api/auth/login
  * Authenticate user with email and password
+ * Includes account lockout after 5 failed attempts (15-min lock)
  */
 router.post("/login", async (req: Request, res: Response): Promise<void> => {
   try {
@@ -109,21 +128,125 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Check if account exists and is locked
+    const { data: userProfile } = await supabaseAdmin
+      .from("user_profiles")
+      .select("id, failed_login_attempts, locked_until, is_active")
+      .eq("email", email)
+      .single();
+
+    if (userProfile) {
+      // Check if account is currently locked
+      if (userProfile.locked_until) {
+        const lockedUntil = new Date(userProfile.locked_until);
+        if (lockedUntil > new Date()) {
+          const minutesLeft = Math.ceil((lockedUntil.getTime() - Date.now()) / 60000);
+          // Log the locked attempt
+          try {
+            await supabaseAdmin.rpc("log_auth_event", {
+              p_user_id: userProfile.id,
+              p_event_type: "LOGIN",
+              p_branch_id: null,
+              p_status: "FAILED",
+            });
+          } catch (rpcError) {
+            console.error("RPC log_auth_event error:", rpcError);
+          }
+          res.status(423).json({ 
+            error: `Account is locked due to too many failed attempts. Try again in ${minutesLeft} minute(s).` 
+          });
+          return;
+        } else {
+          // Lock period has expired, reset the counters
+          await supabaseAdmin
+            .from("user_profiles")
+            .update({ failed_login_attempts: 0, locked_until: null })
+            .eq("id", userProfile.id);
+        }
+      }
+
+      // Check if account is active
+      if (!userProfile.is_active) {
+        try {
+          await supabaseAdmin.rpc("log_auth_event", {
+            p_user_id: userProfile.id,
+            p_event_type: "LOGIN",
+            p_branch_id: null,
+            p_status: "FAILED",
+          });
+        } catch (rpcError) {
+          console.error("RPC log_auth_event error:", rpcError);
+        }
+        res.status(403).json({ error: "Account is deactivated. Contact your supervisor." });
+        return;
+      }
+    }
+
     const { data, error } = await supabaseAdmin.auth.signInWithPassword({
       email,
       password,
     });
 
     if (error) {
-      res.status(401).json({ error: error.message });
+      // Failed login: increment counter and log
+      if (userProfile) {
+        const newAttempts = (userProfile.failed_login_attempts || 0) + 1;
+        const updateData: { failed_login_attempts: number; locked_until?: string } = {
+          failed_login_attempts: newAttempts,
+        };
+
+        // Lock account after 5 failed attempts
+        if (newAttempts >= 5) {
+          const lockUntil = new Date(Date.now() + 15 * 60 * 1000);
+          updateData.locked_until = lockUntil.toISOString();
+        }
+
+        await supabaseAdmin
+          .from("user_profiles")
+          .update(updateData)
+          .eq("id", userProfile.id);
+
+        // Log failed login attempt
+        try {
+          await supabaseAdmin.rpc("log_auth_event", {
+            p_user_id: userProfile.id,
+            p_event_type: "LOGIN",
+            p_branch_id: null,
+            p_status: "FAILED",
+          });
+        } catch (rpcError) {
+          console.error("RPC log_auth_event error:", rpcError);
+        }
+
+        if (newAttempts >= 5) {
+          res.status(423).json({ error: "Account locked due to too many failed attempts. Try again in 15 minutes." });
+          return;
+        }
+
+        const remaining = 5 - newAttempts;
+        res.status(401).json({ error: `Invalid credentials. ${remaining} attempt(s) remaining before account lockout.` });
+        return;
+      }
+
+      res.status(401).json({ error: "Invalid credentials" });
       return;
     }
 
-    // Log the login event
+    // Successful login: reset failed attempts counter
+    if (userProfile) {
+      await supabaseAdmin
+        .from("user_profiles")
+        .update({ failed_login_attempts: 0, locked_until: null })
+        .eq("id", userProfile.id);
+    }
+
+    // Log the successful login event
     try {
       await supabaseAdmin.rpc("log_auth_event", {
-        p_event_type: "LOGIN",
         p_user_id: data.user.id,
+        p_event_type: "LOGIN",
+        p_branch_id: null,
+        p_status: "SUCCESS",
       });
     } catch (rpcError) {
       console.error("RPC log_auth_event error:", rpcError);
@@ -152,6 +275,7 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
         profile,
         roles: userRoles || [],
         branches: branchAssignments || [],
+        must_change_password: profile?.must_change_password || false,
       },
       session: {
         access_token: data.session.access_token,
@@ -173,8 +297,10 @@ router.post("/logout", requireAuth, async (req: Request, res: Response): Promise
   try {
     // Log the logout event before invalidating the session
     await supabaseAdmin.rpc("log_auth_event", {
-      p_event_type: "LOGOUT",
       p_user_id: req.user!.id,
+      p_event_type: "LOGOUT",
+      p_branch_id: null,
+      p_status: "SUCCESS",
     });
 
     // Sign out the user
@@ -254,6 +380,7 @@ router.get("/me", requireAuth, async (req: Request, res: Response): Promise<void
       profile,
       roles: userRoles,
       branches: branchAssignments,
+      must_change_password: profile?.must_change_password || false,
     });
   } catch (error) {
     console.error("Get user error:", error);
@@ -274,8 +401,9 @@ router.post("/change-password", requireAuth, async (req: Request, res: Response)
       return;
     }
 
-    if (newPassword.length < 8) {
-      res.status(400).json({ error: "New password must be at least 8 characters" });
+    const passwordError = validatePasswordComplexity(newPassword);
+    if (passwordError) {
+      res.status(400).json({ error: passwordError });
       return;
     }
 
@@ -301,11 +429,17 @@ router.post("/change-password", requireAuth, async (req: Request, res: Response)
       return;
     }
 
+    // Clear must_change_password flag (for first-login temp password flow)
+    await supabaseAdmin
+      .from("user_profiles")
+      .update({ must_change_password: false })
+      .eq("id", req.user!.id);
+
     // Log the password change event
     const userPrimaryBranch = req.user!.branchIds[0] || null;
     await supabaseAdmin.rpc("log_admin_action", {
       p_action: "UPDATE",
-      p_entity_type: "password",
+      p_entity_type: "PASSWORD",
       p_entity_id: req.user!.id,
       p_performed_by_user_id: req.user!.id,
       p_performed_by_branch_id: userPrimaryBranch,
@@ -374,7 +508,7 @@ router.put("/profile", requireAuth, async (req: Request, res: Response): Promise
     const userPrimaryBranch = req.user!.branchIds[0] || null;
     await supabaseAdmin.rpc("log_admin_action", {
       p_action: "UPDATE",
-      p_entity_type: "user_profile",
+      p_entity_type: "USER_PROFILE",
       p_entity_id: req.user!.id,
       p_performed_by_user_id: req.user!.id,
       p_performed_by_branch_id: userPrimaryBranch,
@@ -412,6 +546,51 @@ router.get("/profile", requireAuth, async (req: Request, res: Response): Promise
   } catch (error) {
     console.error("Get profile error:", error);
     res.status(500).json({ error: "Failed to get profile" });
+  }
+});
+
+/**
+ * POST /api/auth/unlock-account
+ * Unlock a locked user account (HM, POC, JS only)
+ */
+router.post("/unlock-account", requireAuth, requireUserManager, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { user_id } = req.body;
+
+    if (!user_id) {
+      res.status(400).json({ error: "User ID is required" });
+      return;
+    }
+
+    const { error } = await supabaseAdmin
+      .from("user_profiles")
+      .update({ failed_login_attempts: 0, locked_until: null })
+      .eq("id", user_id);
+
+    if (error) {
+      res.status(500).json({ error: "Failed to unlock account" });
+      return;
+    }
+
+    // Log the unlock action
+    const userPrimaryBranch = req.user!.branchIds[0] || null;
+    try {
+      await supabaseAdmin.rpc("log_admin_action", {
+        p_action: "UPDATE",
+        p_entity_type: "USER_PROFILE",
+        p_entity_id: user_id,
+        p_performed_by_user_id: req.user!.id,
+        p_performed_by_branch_id: userPrimaryBranch as string,
+        p_new_values: { action: "UNLOCK_ACCOUNT" },
+      });
+    } catch (rpcError) {
+      console.error("RPC log_admin_action error:", rpcError);
+    }
+
+    res.json({ message: "Account unlocked successfully" });
+  } catch (error) {
+    console.error("Unlock account error:", error);
+    res.status(500).json({ error: "Failed to unlock account" });
   }
 });
 

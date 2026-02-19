@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, useEffect, useMemo, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { LuLock, LuEye, LuEyeOff, LuLoader, LuCheck, LuCircleAlert } from "react-icons/lu";
 import { authApi } from "../lib/api";
@@ -44,12 +44,35 @@ export function ResetPasswordPage() {
     }
   }, [searchParams]);
 
+  // Password complexity checks
+  const passwordChecks = useMemo(() => ({
+    minLength: newPassword.length >= 8,
+    hasUppercase: /[A-Z]/.test(newPassword),
+    hasLowercase: /[a-z]/.test(newPassword),
+    hasNumber: /[0-9]/.test(newPassword),
+  }), [newPassword]);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
 
     if (newPassword.length < 8) {
       setError("Password must be at least 8 characters");
+      return;
+    }
+
+    if (!/[A-Z]/.test(newPassword)) {
+      setError("Password must contain at least one uppercase letter");
+      return;
+    }
+
+    if (!/[a-z]/.test(newPassword)) {
+      setError("Password must contain at least one lowercase letter");
+      return;
+    }
+
+    if (!/[0-9]/.test(newPassword)) {
+      setError("Password must contain at least one number");
       return;
     }
 
@@ -205,9 +228,27 @@ export function ResetPasswordPage() {
             </div>
 
             {/* Password requirements */}
-            <p className="text-xs text-neutral-500">
-              Password must be at least 8 characters long.
-            </p>
+            {newPassword.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-neutral-600">Password requirements:</p>
+                {[
+                  { met: passwordChecks.minLength, label: "At least 8 characters" },
+                  { met: passwordChecks.hasUppercase, label: "One uppercase letter" },
+                  { met: passwordChecks.hasLowercase, label: "One lowercase letter" },
+                  { met: passwordChecks.hasNumber, label: "One number" },
+                ].map(({ met, label }) => (
+                  <div key={label} className={`flex items-center gap-1.5 text-xs ${met ? "text-positive-600" : "text-neutral-400"}`}>
+                    {met ? <LuCheck className="w-3.5 h-3.5" /> : <span className="w-3.5 h-3.5 rounded-full border border-neutral-300 inline-block" />}
+                    {label}
+                  </div>
+                ))}
+              </div>
+            )}
+            {newPassword.length === 0 && (
+              <p className="text-xs text-neutral-500">
+                Password must be at least 8 characters with uppercase, lowercase, and a number.
+              </p>
+            )}
 
             {/* Submit button */}
             <button

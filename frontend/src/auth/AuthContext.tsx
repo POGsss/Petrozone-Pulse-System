@@ -6,9 +6,11 @@ interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  mustChangePassword: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  clearMustChangePassword: () => void;
   hasRole: (role: string) => boolean;
   hasAnyRole: (...roles: string[]) => boolean;
   hasBranchAccess: (branchId: string) => boolean;
@@ -19,6 +21,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
 
   // Check for existing session on mount
   useEffect(() => {
@@ -32,6 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const userData = await authApi.getMe();
         setUser(userData);
+        setMustChangePassword(userData.must_change_password || false);
       } catch (error) {
         // Token invalid or expired, try refresh
         const refreshToken = localStorage.getItem("refresh_token");
@@ -41,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setTokens(session.access_token, session.refresh_token);
             const userData = await authApi.getMe();
             setUser(userData);
+            setMustChangePassword(userData.must_change_password || false);
           } catch {
             clearTokens();
           }
@@ -59,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { user: userData, session } = await authApi.login(email, password);
     setTokens(session.access_token, session.refresh_token);
     setUser(userData);
+    setMustChangePassword(userData.must_change_password || false);
   }, []);
 
   const logout = useCallback(async () => {
@@ -69,6 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       clearTokens();
       setUser(null);
+      setMustChangePassword(false);
     }
   }, []);
 
@@ -76,9 +83,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const userData = await authApi.getMe();
       setUser(userData);
+      setMustChangePassword(userData.must_change_password || false);
     } catch {
       // Ignore refresh errors
     }
+  }, []);
+
+  const clearMustChangePassword = useCallback(() => {
+    setMustChangePassword(false);
   }, []);
 
   const hasRole = useCallback(
@@ -108,9 +120,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     isLoading,
     isAuthenticated: !!user,
+    mustChangePassword,
     login,
     logout,
     refreshUser,
+    clearMustChangePassword,
     hasRole,
     hasAnyRole,
     hasBranchAccess,

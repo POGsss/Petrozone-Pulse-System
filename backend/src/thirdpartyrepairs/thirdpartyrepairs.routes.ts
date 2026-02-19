@@ -408,6 +408,20 @@ router.delete(
       }
 
       res.json({ message: `Third-party repair "${existing.provider_name}" deleted successfully` });
+
+      // Log deletion
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "DELETE",
+          p_entity_type: "THIRD_PARTY_REPAIR",
+          p_entity_id: repairId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { provider_name: existing.provider_name, job_order_id: existing.job_order_id },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
     } catch (error) {
       console.error("Delete third-party repair error:", error);
       res.status(500).json({ error: "Failed to delete third-party repair" });

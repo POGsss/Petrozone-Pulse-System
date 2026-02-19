@@ -25,6 +25,7 @@ export type Database = {
           ip_address: unknown
           new_values: Json | null
           old_values: Json | null
+          status: string | null
           user_agent: string | null
           user_id: string | null
         }
@@ -38,6 +39,7 @@ export type Database = {
           ip_address?: unknown
           new_values?: Json | null
           old_values?: Json | null
+          status?: string | null
           user_agent?: string | null
           user_id?: string | null
         }
@@ -51,6 +53,7 @@ export type Database = {
           ip_address?: unknown
           new_values?: Json | null
           old_values?: Json | null
+          status?: string | null
           user_agent?: string | null
           user_id?: string | null
         }
@@ -526,27 +529,36 @@ export type Database = {
         Row: {
           created_at: string
           email: string
+          failed_login_attempts: number
           full_name: string
           id: string
           is_active: boolean
+          locked_until: string | null
+          must_change_password: boolean
           phone: string | null
           updated_at: string
         }
         Insert: {
           created_at?: string
           email: string
+          failed_login_attempts?: number
           full_name: string
           id: string
           is_active?: boolean
+          locked_until?: string | null
+          must_change_password?: boolean
           phone?: string | null
           updated_at?: string
         }
         Update: {
           created_at?: string
           email?: string
+          failed_login_attempts?: number
           full_name?: string
           id?: string
           is_active?: boolean
+          locked_until?: string | null
+          must_change_password?: boolean
           phone?: string | null
           updated_at?: string
         }
@@ -704,13 +716,13 @@ export type Database = {
           p_entity_type: string
           p_new_values?: Json
           p_old_values?: Json
-          p_performed_by_branch_id: string
+          p_performed_by_branch_id: string | null
           p_performed_by_user_id: string
         }
         Returns: string
       }
       log_auth_event: {
-        Args: { p_branch_id?: string; p_event_type: string; p_user_id: string }
+        Args: { p_user_id: string; p_event_type: string; p_branch_id?: string | null; p_status?: string }
         Returns: string
       }
       update_user_branches: {

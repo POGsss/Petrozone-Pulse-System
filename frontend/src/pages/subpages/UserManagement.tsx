@@ -34,11 +34,11 @@ export function UserManagement() {
   const [roles, setRoles] = useState<RoleInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Search and pagination state
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  
+
   // Add user modal state
   const [showAddModal, setShowAddModal] = useState(false);
   const [addingUser, setAddingUser] = useState(false);
@@ -74,6 +74,9 @@ export function UserManagement() {
   // View detail modal state
   const [showViewModal, setShowViewModal] = useState(false);
   const [viewUser, setViewUser] = useState<User | null>(null);
+
+  // Reset password within edit modal
+  const [resetTempPassword, setResetTempPassword] = useState("");
 
   // Current user's role level for permission filtering
   const currentUserRoleLevel = useMemo(() => {
@@ -146,7 +149,7 @@ export function UserManagement() {
   async function handleAddUser(e: React.FormEvent) {
     e.preventDefault();
     setAddUserError(null);
-    
+
     if (addUserForm.roles.length === 0) {
       setAddUserError("Please select at least one role");
       return;
@@ -179,7 +182,7 @@ export function UserManagement() {
         roles: addUserForm.roles,
         branch_ids: addUserForm.branch_ids,
       });
-      
+
       // Reset form and close modal
       setAddUserForm({
         email: "",
@@ -190,7 +193,7 @@ export function UserManagement() {
         branch_ids: [],
       });
       setShowAddModal(false);
-      
+
       // Refresh users list
       showToast.success("User created successfully");
       fetchData();
@@ -221,6 +224,7 @@ export function UserManagement() {
       primary_branch_id: user.branches.find(b => b.is_primary)?.branch_id || null,
     });
     setEditUserError(isEditable ? null : "You can only view this user (they have a higher role)");
+    setResetTempPassword("");
     setShowEditModal(true);
   }
 
@@ -257,9 +261,18 @@ export function UserManagement() {
       return;
     }
 
+    // Validate temp password complexity if provided
+    if (resetTempPassword.trim()) {
+      const pw = resetTempPassword;
+      if (pw.length < 8) { setEditUserError("Temp password must be at least 8 characters"); return; }
+      if (!/[A-Z]/.test(pw)) { setEditUserError("Temp password must contain an uppercase letter"); return; }
+      if (!/[a-z]/.test(pw)) { setEditUserError("Temp password must contain a lowercase letter"); return; }
+      if (!/[0-9]/.test(pw)) { setEditUserError("Temp password must contain a number"); return; }
+    }
+
     try {
       setEditingUser(true);
-      
+
       // Update user profile
       await rbacApi.updateUser(editUserForm.id, {
         full_name: editUserForm.full_name,
@@ -276,7 +289,13 @@ export function UserManagement() {
         editUserForm.branch_ids,
         editUserForm.primary_branch_id || undefined
       );
-      
+
+      // Reset password if temp password was provided
+      if (resetTempPassword.trim()) {
+        await rbacApi.resetUserPassword(editUserForm.id, resetTempPassword);
+        setResetTempPassword("");
+      }
+
       setShowEditModal(false);
       showToast.success("User updated successfully");
       fetchData();
@@ -313,6 +332,8 @@ export function UserManagement() {
     }
   }
 
+
+
   // Toggle role selection
   function toggleRole(role: string) {
     setAddUserForm(prev => ({
@@ -339,10 +360,10 @@ export function UserManagement() {
       const newBranches = prev.branch_ids.includes(branchId)
         ? prev.branch_ids.filter(id => id !== branchId)
         : [...prev.branch_ids, branchId];
-      
+
       // First selected branch is always primary
       const newPrimary = newBranches[0] || null;
-      
+
       return { ...prev, branch_ids: newBranches, primary_branch_id: newPrimary };
     });
   }
@@ -477,11 +498,10 @@ export function UserManagement() {
                     </div>
                   </div>
                   <span
-                    className={`px-2 py-1 rounded text-xs font-medium ${
-                      user.is_active
-                        ? "bg-positive-100 text-positive"
-                        : "bg-negative-100 text-negative"
-                    }`}
+                    className={`px-2 py-1 rounded text-xs font-medium ${user.is_active
+                      ? "bg-positive-100 text-positive"
+                      : "bg-negative-100 text-negative"
+                      }`}
                   >
                     {user.is_active ? "Active" : "Inactive"}
                   </span>
@@ -572,29 +592,18 @@ export function UserManagement() {
                       {user.branches.length === 0 ? (
                         <span className="text-sm text-neutral-400">-</span>
                       ) : (
-                        user.branches.map((ba) => (
-                          <span
-                            key={ba.branch_id}
-                            className={`px-2 py-0.5 rounded text-xs font-medium ${
-                              ba.is_primary
-                                ? "bg-primary-100 text-positive-950"
-                                : "bg-neutral-100 text-neutral-950"
-                            }`}
-                          >
-                            {ba.branches?.code || ba.branch_id.slice(0, 8)}
-                            {ba.is_primary && " ★"}
-                          </span>
-                        ))
+                        <span className="text-xs font-mono bg-positive-100 text-positive-950 px-2 py-0.5 rounded">
+                          {user.branches.find(b => b.is_primary)?.branches?.code || user.branches[0]?.branches?.code || "—"}
+                        </span>
                       )}
                     </div>
                   </td>
                   <td className="py-3 px-4 whitespace-nowrap">
                     <span
-                      className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        user.is_active
-                          ? "bg-primary-100 text-positive-950"
-                          : "bg-neutral-100 text-neutral-950"
-                      }`}
+                      className={`px-3 py-1 rounded-full text-xs font-medium ${user.is_active
+                        ? "bg-primary-100 text-positive-950"
+                        : "bg-neutral-100 text-neutral-950"
+                        }`}
                     >
                       {user.is_active ? "Active" : "Inactive"}
                     </span>
@@ -683,27 +692,27 @@ export function UserManagement() {
               <ModalInput
                 type="text"
                 value={viewUser.full_name}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Full Name"
                 disabled
               />
               <ModalInput
                 type="email"
                 value={viewUser.email}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Email Address"
                 disabled
               />
               <ModalInput
                 type="tel"
                 value={viewUser.phone || "-"}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Phone"
                 disabled
               />
               <ModalSelect
                 value={viewUser.is_active ? "active" : "inactive"}
-                onChange={() => {}}
+                onChange={() => { }}
                 options={[
                   { value: "active", label: "Active" },
                   { value: "inactive", label: "Inactive" },
@@ -712,15 +721,17 @@ export function UserManagement() {
               />
             </ModalSection>
 
-            <ModalSection title="Roles">
+            <ModalSection title="Roles Assignments">
               <div className="flex flex-wrap gap-2">
                 {viewUser.roles.map((role) => (
-                  <span
+                  <button
                     key={role}
-                    className="px-3 py-1.5 bg-neutral-100 text-neutral-900 rounded-lg text-sm font-medium"
+                    type="button"
+                    disabled
+                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all bg-neutral-100 text-neutral opacity-50 cursor-not-allowed"
                   >
                     {role}
-                  </span>
+                  </button>
                 ))}
               </div>
             </ModalSection>
@@ -731,17 +742,14 @@ export function UserManagement() {
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {viewUser.branches.map((ba) => (
-                    <span
+                    <button
                       key={ba.branch_id}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
-                        ba.is_primary
-                          ? "bg-primary-100 text-positive-950"
-                          : "bg-neutral-100 text-neutral-950"
-                      }`}
+                      type="button"
+                      disabled
+                      className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all bg-neutral-100 text-neutral opacity-50 cursor-not-allowed"
                     >
                       {ba.branches?.name || ba.branches?.code || ba.branch_id.slice(0, 8)}
-                      {ba.is_primary && " (Primary)"}
-                    </span>
+                    </button>
                   ))}
                 </div>
               )}
@@ -766,7 +774,7 @@ export function UserManagement() {
               placeholder="Full Name"
               required
             />
-            
+
             <ModalInput
               type="email"
               value={addUserForm.email}
@@ -774,16 +782,16 @@ export function UserManagement() {
               placeholder="Email Address"
               required
             />
-            
+
             <ModalInput
               type="password"
               value={addUserForm.password}
               onChange={(v) => setAddUserForm(prev => ({ ...prev, password: v }))}
-              placeholder="Password (min 8 characters)"
+              placeholder="Password"
               required
               minLength={8}
             />
-            
+
             <ModalInput
               type="tel"
               value={addUserForm.phone}
@@ -802,11 +810,10 @@ export function UserManagement() {
                   key={role.code}
                   type="button"
                   onClick={() => toggleRole(role.code)}
-                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                    addUserForm.roles.includes(role.code)
-                      ? "bg-primary text-white"
-                      : "bg-neutral-100 text-neutral hover:bg-neutral-200"
-                  }`}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${addUserForm.roles.includes(role.code)
+                    ? "bg-primary text-white"
+                    : "bg-neutral-100 text-neutral hover:bg-neutral-200"
+                    }`}
                 >
                   {role.name}
                 </button>
@@ -821,11 +828,10 @@ export function UserManagement() {
                   key={branch.id}
                   type="button"
                   onClick={() => toggleBranchInForm(branch.id)}
-                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                    addUserForm.branch_ids.includes(branch.id)
-                      ? "bg-primary text-white"
-                      : "bg-neutral-100 text-neutral hover:bg-neutral-200"
-                  }`}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${addUserForm.branch_ids.includes(branch.id)
+                    ? "bg-primary text-white"
+                    : "bg-neutral-100 text-neutral hover:bg-neutral-200"
+                    }`}
                 >
                   {branch.name} ({branch.code})
                 </button>
@@ -865,7 +871,7 @@ export function UserManagement() {
               required
               disabled={!isEditingEditable}
             />
-            
+
             <ModalInput
               type="tel"
               value={editUserForm.phone}
@@ -876,27 +882,36 @@ export function UserManagement() {
               title="Please enter a valid phone number (7-20 digits)"
               disabled={!isEditingEditable}
             />
-
-            <div className="flex items-center gap-3 mt-2">
-              <button
-                type="button"
-                onClick={() => isEditingEditable && setEditUserForm(prev => ({ ...prev, is_active: !prev.is_active }))}
-                disabled={!isEditingEditable}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  editUserForm.is_active ? "bg-primary" : "bg-neutral-200"
-                } ${!isEditingEditable ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    editUserForm.is_active ? "translate-x-6" : "translate-x-1"
-                  }`}
-                />
-              </button>
-              <span className="text-sm text-neutral-900">
-                {editUserForm.is_active ? "Active" : "Inactive"}
-              </span>
-            </div>
           </ModalSection>
+
+          {/* Reset Password Section - right after User Information */}
+          {isEditingEditable && editUserForm.id !== currentUser?.id && (
+            <ModalSection title="Reset Password">
+              <ModalInput
+                type="password"
+                value={resetTempPassword}
+                onChange={(val) => { setResetTempPassword(val); setEditUserError(null); }}
+                placeholder="Enter temporary password"
+              />
+              <div className="flex items-center gap-3 mt-2">
+                <button
+                  type="button"
+                  onClick={() => isEditingEditable && setEditUserForm(prev => ({ ...prev, is_active: !prev.is_active }))}
+                  disabled={!isEditingEditable}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${editUserForm.is_active ? "bg-primary" : "bg-neutral-200"
+                    } ${!isEditingEditable ? "opacity-50 cursor-not-allowed" : ""}`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editUserForm.is_active ? "translate-x-6" : "translate-x-1"
+                      }`}
+                  />
+                </button>
+                <span className="text-sm text-neutral-900">
+                  {editUserForm.is_active ? "Active" : "Inactive"}
+                </span>
+              </div>
+            </ModalSection>
+          )}
 
           <ModalSection title={isEditingEditable ? "Assign Roles" : "Current Roles"}>
             <div className="flex flex-wrap gap-2">
@@ -910,11 +925,10 @@ export function UserManagement() {
                     type="button"
                     onClick={() => canToggle && toggleEditRole(role.code)}
                     disabled={!canToggle}
-                    className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                      isSelected
-                        ? "bg-primary text-white"
-                        : "bg-neutral-100 text-neutral"
-                    } ${!canToggle ? "opacity-50 cursor-not-allowed" : "hover:bg-neutral-200"}`}
+                    className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${isSelected
+                      ? "bg-primary text-white"
+                      : "bg-neutral-100 text-neutral"
+                      } ${!canToggle ? "opacity-50 cursor-not-allowed" : "hover:bg-neutral-200"}`}
                   >
                     {role.name}
                     {isSelected && !canToggle && " (locked)"}
@@ -937,11 +951,10 @@ export function UserManagement() {
                   type="button"
                   onClick={() => isEditingEditable && toggleEditBranch(branch.id)}
                   disabled={!isEditingEditable}
-                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                    editUserForm.branch_ids.includes(branch.id)
-                      ? "bg-primary text-white"
-                      : "bg-neutral-100 text-neutral"
-                  } ${!isEditingEditable ? "opacity-50 cursor-not-allowed" : "hover:bg-neutral-200"}`}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${editUserForm.branch_ids.includes(branch.id)
+                    ? "bg-primary text-white"
+                    : "bg-neutral-100 text-neutral"
+                    } ${!isEditingEditable ? "opacity-50 cursor-not-allowed" : "hover:bg-neutral-200"}`}
                 >
                   {branch.name} ({branch.code})
                 </button>

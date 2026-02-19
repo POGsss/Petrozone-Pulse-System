@@ -84,8 +84,21 @@ router.post("/users", requireUserManager, async (req: Request, res: Response): P
       return;
     }
 
+    // Password complexity validation per AuthenticationRules spec (Section 3.2)
     if (password.length < 8) {
       res.status(400).json({ error: "Password must be at least 8 characters" });
+      return;
+    }
+    if (!/[A-Z]/.test(password)) {
+      res.status(400).json({ error: "Password must contain at least one uppercase letter" });
+      return;
+    }
+    if (!/[a-z]/.test(password)) {
+      res.status(400).json({ error: "Password must contain at least one lowercase letter" });
+      return;
+    }
+    if (!/[0-9]/.test(password)) {
+      res.status(400).json({ error: "Password must contain at least one number" });
       return;
     }
 
@@ -108,9 +121,10 @@ router.post("/users", requireUserManager, async (req: Request, res: Response): P
     }
 
     // Update profile (created automatically by trigger, but we update with full info)
+    // Set must_change_password = true for first-login temp password flow
     const { error: profileError } = await supabaseAdmin
       .from("user_profiles")
-      .update({ full_name, phone })
+      .update({ full_name, phone, must_change_password: true })
       .eq("id", authUser.user.id);
 
     if (profileError) {
@@ -167,7 +181,7 @@ router.post("/users", requireUserManager, async (req: Request, res: Response): P
     const adminPrimaryBranch = req.user!.branchIds[0] || "";
     await supabaseAdmin.rpc("log_admin_action", {
       p_action: "CREATE",
-      p_entity_type: "user_profile",
+      p_entity_type: "USER_PROFILE",
       p_entity_id: authUser.user.id,
       p_performed_by_user_id: req.user!.id,
       p_performed_by_branch_id: adminPrimaryBranch,
@@ -221,6 +235,20 @@ router.put("/users/:userId/roles", requireUserManager, async (req: Request, res:
     }
 
     res.json({ message: "Roles updated successfully", roles });
+
+    // Log role update
+    try {
+      await supabaseAdmin.rpc("log_admin_action", {
+        p_action: "UPDATE",
+        p_entity_type: "USER_ROLES",
+        p_entity_id: userId,
+        p_performed_by_user_id: req.user!.id,
+        p_performed_by_branch_id: req.user!.branchIds[0] || null,
+        p_new_values: { roles },
+      });
+    } catch (auditErr) {
+      console.error("Audit log error:", auditErr);
+    }
   } catch (error) {
     console.error("Update roles error:", error);
     res.status(500).json({ error: "Failed to update roles" });
@@ -257,6 +285,20 @@ router.put("/users/:userId/branches", requireUserManager, async (req: Request, r
     }
 
     res.json({ message: "Branch assignments updated successfully", branch_ids });
+
+    // Log branch assignment update
+    try {
+      await supabaseAdmin.rpc("log_admin_action", {
+        p_action: "UPDATE",
+        p_entity_type: "USER_BRANCHES",
+        p_entity_id: userId,
+        p_performed_by_user_id: req.user!.id,
+        p_performed_by_branch_id: req.user!.branchIds[0] || null,
+        p_new_values: { branch_ids, primary_branch_id },
+      });
+    } catch (auditErr) {
+      console.error("Audit log error:", auditErr);
+    }
   } catch (error) {
     console.error("Update branches error:", error);
     res.status(500).json({ error: "Failed to update branch assignments" });
@@ -295,6 +337,20 @@ router.put("/users/:userId/status", requireUserManager, async (req: Request, res
     }
 
     res.json({ message: `User ${is_active ? "activated" : "deactivated"} successfully` });
+
+    // Log status change
+    try {
+      await supabaseAdmin.rpc("log_admin_action", {
+        p_action: "UPDATE",
+        p_entity_type: "USER_STATUS",
+        p_entity_id: userId,
+        p_performed_by_user_id: req.user!.id,
+        p_performed_by_branch_id: req.user!.branchIds[0] || null,
+        p_new_values: { is_active },
+      });
+    } catch (auditErr) {
+      console.error("Audit log error:", auditErr);
+    }
   } catch (error) {
     console.error("Update status error:", error);
     res.status(500).json({ error: "Failed to update user status" });
@@ -345,7 +401,7 @@ router.put("/users/:userId", requireUserManager, async (req: Request, res: Respo
     const adminPrimaryBranch = req.user!.branchIds[0] || "";
     await supabaseAdmin.rpc("log_admin_action", {
       p_action: "UPDATE",
-      p_entity_type: "user_profile",
+      p_entity_type: "USER_PROFILE",
       p_entity_id: userId,
       p_performed_by_user_id: req.user!.id,
       p_performed_by_branch_id: adminPrimaryBranch,
@@ -386,7 +442,7 @@ router.delete("/users/:userId", requireUserManager, async (req: Request, res: Re
     const adminPrimaryBranch = req.user!.branchIds[0] || "";
     await supabaseAdmin.rpc("log_admin_action", {
       p_action: "DELETE",
-      p_entity_type: "user_profile",
+      p_entity_type: "USER_PROFILE",
       p_entity_id: userId,
       p_performed_by_user_id: req.user!.id,
       p_performed_by_branch_id: adminPrimaryBranch,
@@ -396,6 +452,89 @@ router.delete("/users/:userId", requireUserManager, async (req: Request, res: Re
   } catch (error) {
     console.error("Delete user error:", error);
     res.status(500).json({ error: "Failed to delete user" });
+  }
+});
+
+/**
+ * POST /api/rbac/users/:userId/reset-password
+ * Admin-initiated password reset with temporary password
+ * HM, POC, JS can reset (US12)
+ */
+router.post("/users/:userId/reset-password", requireUserManager, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.params.userId as string;
+    const { temp_password } = req.body;
+
+    // Prevent resetting your own password through admin endpoint
+    if (req.user!.id === userId) {
+      res.status(400).json({ error: "Cannot reset your own password. Use the profile settings instead." });
+      return;
+    }
+
+    // Validate temp password complexity
+    if (!temp_password || temp_password.length < 8) {
+      res.status(400).json({ error: "Temporary password must be at least 8 characters" });
+      return;
+    }
+    if (!/[A-Z]/.test(temp_password)) {
+      res.status(400).json({ error: "Temporary password must contain at least one uppercase letter" });
+      return;
+    }
+    if (!/[a-z]/.test(temp_password)) {
+      res.status(400).json({ error: "Temporary password must contain at least one lowercase letter" });
+      return;
+    }
+    if (!/[0-9]/.test(temp_password)) {
+      res.status(400).json({ error: "Temporary password must contain at least one number" });
+      return;
+    }
+
+    // Verify target user exists
+    const { data: targetUser, error: fetchError } = await supabaseAdmin
+      .from("user_profiles")
+      .select("id, full_name, email")
+      .eq("id", userId)
+      .single();
+
+    if (fetchError || !targetUser) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    // Update the user's password via Supabase Auth Admin
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+      userId,
+      { password: temp_password }
+    );
+
+    if (updateError) {
+      res.status(500).json({ error: "Failed to reset password" });
+      return;
+    }
+
+    // Set must_change_password flag so user must change on next login
+    await supabaseAdmin
+      .from("user_profiles")
+      .update({ must_change_password: true })
+      .eq("id", userId);
+
+    // Log the admin-initiated password reset
+    const adminPrimaryBranch = req.user!.branchIds[0] || "";
+    await supabaseAdmin.rpc("log_admin_action", {
+      p_action: "UPDATE",
+      p_entity_type: "PASSWORD",
+      p_entity_id: userId,
+      p_performed_by_user_id: req.user!.id,
+      p_performed_by_branch_id: adminPrimaryBranch,
+      p_new_values: { action: "admin_password_reset", target_user: targetUser.email },
+    });
+
+    res.json({ 
+      message: `Password has been reset for ${targetUser.full_name}. They will be required to change it on next login.` 
+    });
+  } catch (error) {
+    console.error("Admin password reset error:", error);
+    res.status(500).json({ error: "Failed to reset user password" });
   }
 });
 
