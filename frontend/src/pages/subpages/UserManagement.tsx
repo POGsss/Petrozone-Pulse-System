@@ -577,14 +577,13 @@ export function UserManagement() {
                   <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap">{user.email}</td>
                   <td className="py-3 px-4">
                     <div className="flex flex-wrap gap-1">
-                      {user.roles.map((role) => (
-                        <span
-                          key={role}
-                          className="px-2 py-0.5 bg-neutral-100 text-neutral-900 rounded text-xs font-medium"
-                        >
-                          {role}
+                      {user.roles.length === 0 ? (
+                        <span className="text-sm text-neutral-400">-</span>
+                      ) : (
+                        <span className="text-xs font-mono bg-positive-100 text-positive-950 px-2 py-0.5 rounded">
+                          {user.roles.find(r => (ROLE_LEVELS[r] || 0) === getHighestRoleLevel(user.roles)) || user.roles[0]}
                         </span>
-                      ))}
+                      )}
                     </div>
                   </td>
                   <td className="py-3 px-4">
