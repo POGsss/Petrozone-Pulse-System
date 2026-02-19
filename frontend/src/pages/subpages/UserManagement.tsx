@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import { LuPlus, LuCircleAlert, LuRefreshCw, LuSearch, LuPencil, LuTrash2, LuUsers, LuUserCheck, LuUserX, LuChevronLeft, LuChevronRight, LuEye } from "react-icons/lu";
+import { LuPlus, LuCircleAlert, LuRefreshCw, LuSearch, LuPencil, LuTrash2, LuUsers, LuUserCheck, LuUserX, LuChevronLeft, LuChevronRight, LuEye, LuLock, LuLockOpen } from "react-icons/lu";
 import { showToast } from "../../lib/toast";
-import { rbacApi, branchesApi } from "../../lib/api";
+import { rbacApi, branchesApi, authApi } from "../../lib/api";
 import { Modal, ModalSection, ModalInput, ModalSelect, ModalButtons, ModalError } from "../../components";
 import { useAuth } from "../../auth";
 import type { Branch, UserProfile, BranchAssignment, RoleInfo } from "../../types";
@@ -94,6 +94,23 @@ export function UserManagement() {
     const targetLevel = getHighestRoleLevel(targetUser.roles);
     return targetLevel <= currentUserRoleLevel;
   };
+
+  // Check if a user account is currently locked
+  const isUserLocked = (user: User): boolean => {
+    if (!user.locked_until) return false;
+    return new Date(user.locked_until) > new Date();
+  };
+
+  // Unlock account handler
+  async function handleUnlockAccount(userId: string) {
+    try {
+      await authApi.unlockAccount(userId);
+      showToast.success("Account unlocked successfully");
+      fetchData();
+    } catch (err) {
+      showToast.error(err instanceof Error ? err.message : "Failed to unlock account");
+    }
+  }
 
   // Computed stats
   const stats = useMemo(() => {
@@ -497,14 +514,21 @@ export function UserManagement() {
                       )}
                     </div>
                   </div>
-                  <span
-                    className={`px-2 py-1 rounded text-xs font-medium ${user.is_active
-                      ? "bg-positive-100 text-positive"
-                      : "bg-negative-100 text-negative"
-                      }`}
-                  >
-                    {user.is_active ? "Active" : "Inactive"}
-                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    <span
+                      className={`px-2 py-1 rounded text-xs font-medium ${user.is_active
+                        ? "bg-positive-100 text-positive"
+                        : "bg-negative-100 text-negative"
+                        }`}
+                    >
+                      {user.is_active ? "Active" : "Inactive"}
+                    </span>
+                    {isUserLocked(user) && (
+                      <span className="px-2 py-1 rounded text-xs font-medium bg-negative-100 text-negative flex items-center gap-1">
+                        <LuLock className="w-3 h-3" /> Locked
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* User details */}
@@ -598,14 +622,17 @@ export function UserManagement() {
                     </div>
                   </td>
                   <td className="py-3 px-4 whitespace-nowrap">
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-medium ${user.is_active
-                        ? "bg-primary-100 text-positive-950"
-                        : "bg-neutral-100 text-neutral-950"
-                        }`}
-                    >
-                      {user.is_active ? "Active" : "Inactive"}
-                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {isUserLocked(user) ? (
+                        <span className="px-3 py-1 rounded-full text-xs font-medium bg-negative-100 text-negative-950 flex items-center gap-1">
+                          <LuLock className="w-3 h-3" /> Locked
+                        </span>
+                      ) : (
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${user.is_active ? "bg-positive-100 text-positive-950" : "bg-negative-100 text-negative-950"}`}>
+                          {user.is_active ? "Active" : "Inactive"}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="py-3 px-4 whitespace-nowrap">
                     <div className="flex items-center justify-center gap-2">
@@ -836,11 +863,6 @@ export function UserManagement() {
                 </button>
               ))}
             </div>
-            {addUserForm.branch_ids.length > 0 && (
-              <p className="text-xs text-neutral-900 mt-2">
-                First selected branch will be the primary branch.
-              </p>
-            )}
           </ModalSection>
 
           <ModalError message={addUserError} />
@@ -881,6 +903,29 @@ export function UserManagement() {
               title="Please enter a valid phone number (7-20 digits)"
               disabled={!isEditingEditable}
             />
+
+            {isEditingEditable && editUserForm.id !== currentUser?.id && (() => {
+              const targetUser = users.find(u => u.id === editUserForm.id);
+              return targetUser && isUserLocked(targetUser) ? (
+                <div className="flex items-center gap-4 p-4 bg-negative-100 border border-negative rounded-lg">
+                  <LuLock className="w-5 h-5 text-negative-950 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-negative-950">This account is locked.</p>
+                    <p className="text-xs text-negative-900 mt-0.5">
+                      Due to too many failed login attempts. <br />Locked until: {new Date(targetUser.locked_until!).toLocaleString()}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleUnlockAccount(targetUser.id)}
+                    className="flex items-center gap-1.5 px-8 py-4 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-950 transition-colors"
+                  >
+                    <LuLockOpen className="w-4 h-4" />
+                    Unlock
+                  </button>
+                </div>
+              ) : null;
+            })()}
           </ModalSection>
 
           {/* Reset Password Section - right after User Information */}
@@ -959,11 +1004,6 @@ export function UserManagement() {
                 </button>
               ))}
             </div>
-            {isEditingEditable && editUserForm.branch_ids.length > 0 && (
-              <p className="text-xs text-neutral-900 mt-2">
-                First selected branch will be the primary branch.
-              </p>
-            )}
           </ModalSection>
 
           <ModalError message={editUserError} />

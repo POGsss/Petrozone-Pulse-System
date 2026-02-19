@@ -22,6 +22,8 @@ export interface UserProfile {
   full_name: string;
   phone?: string;
   is_active: boolean;
+  failed_login_attempts?: number;
+  locked_until?: string | null;
   created_at: string;
   updated_at: string;
 }
