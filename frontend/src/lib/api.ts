@@ -559,6 +559,16 @@ export const pricingApi = {
     );
   },
 
+  resolveBulk: async (branchId: string, catalogItemIds: string[]) => {
+    return fetchWithAuth<Record<string, import("../types").ResolvedPricing>>(
+      "/api/pricing/resolve-bulk",
+      {
+        method: "POST",
+        body: JSON.stringify({ branch_id: branchId, catalog_item_ids: catalogItemIds }),
+      }
+    );
+  },
+
   create: async (data: {
     catalog_item_id: string;
     pricing_type: string;
@@ -666,6 +676,36 @@ export const jobOrdersApi = {
       method: "PATCH",
       body: JSON.stringify(data),
     });
+  },
+
+  cancel: async (id: string) => {
+    return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/cancel`, {
+      method: "PATCH",
+    });
+  },
+
+  addItem: async (id: string, data: { catalog_item_id: string; quantity: number }) => {
+    return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/items`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  updateItem: async (id: string, itemId: string, data: { quantity: number }) => {
+    return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/items/${itemId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  removeItem: async (id: string, itemId: string) => {
+    return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/items/${itemId}`, {
+      method: "DELETE",
+    });
+  },
+
+  getHistory: async (id: string) => {
+    return fetchWithAuth<import("../types").JobOrderHistory[]>(`/api/job-orders/${id}/history`);
   },
 };
 

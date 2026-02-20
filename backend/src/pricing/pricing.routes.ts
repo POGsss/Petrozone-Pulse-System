@@ -216,6 +216,80 @@ router.get(
 );
 
 /**
+ * POST /api/pricing/resolve-bulk
+ * Resolve pricing for multiple catalog items at a given branch in one call
+ * Body: { branch_id, catalog_item_ids: string[] }
+ */
+router.post(
+  "/resolve-bulk",
+  requireRoles("HM", "POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { branch_id, catalog_item_ids } = req.body;
+
+      if (!branch_id) {
+        res.status(400).json({ error: "branch_id is required" });
+        return;
+      }
+      if (!Array.isArray(catalog_item_ids) || catalog_item_ids.length === 0) {
+        res.status(400).json({ error: "catalog_item_ids must be a non-empty array" });
+        return;
+      }
+
+      // Get all active pricing rules for these catalog items at this branch
+      const { data: pricingRules, error } = await supabaseAdmin
+        .from("pricing_matrices")
+        .select("*")
+        .in("catalog_item_id", catalog_item_ids)
+        .eq("branch_id", branch_id)
+        .eq("status", "active");
+
+      if (error) {
+        res.status(500).json({ error: error.message });
+        return;
+      }
+
+      // Get catalog items
+      const { data: catalogItems, error: catError } = await supabaseAdmin
+        .from("catalog_items")
+        .select("id, name, type, base_price")
+        .in("id", catalog_item_ids);
+
+      if (catError) {
+        res.status(500).json({ error: catError.message });
+        return;
+      }
+
+      // Build results map
+      const results: Record<string, {
+        catalog_item: { id: string; name: string; type: string; base_price: number } | null;
+        pricing_rules: typeof pricingRules;
+        resolved_prices: { base_price: number | null; labor: number | null; packaging: number | null };
+      }> = {};
+
+      for (const itemId of catalog_item_ids) {
+        const catItem = catalogItems?.find((c: any) => c.id === itemId) || null;
+        const rules = pricingRules?.filter((r: any) => r.catalog_item_id === itemId) || [];
+        results[itemId] = {
+          catalog_item: catItem,
+          pricing_rules: rules,
+          resolved_prices: {
+            base_price: catItem?.base_price ?? null,
+            labor: rules.find((r: any) => r.pricing_type === "labor")?.price ?? null,
+            packaging: rules.find((r: any) => r.pricing_type === "packaging")?.price ?? null,
+          },
+        };
+      }
+
+      res.json(results);
+    } catch (error) {
+      console.error("Bulk resolve pricing error:", error);
+      res.status(500).json({ error: "Failed to resolve bulk pricing" });
+    }
+  }
+);
+
+/**
  * POST /api/pricing
  * Create a new pricing matrix
  * HM, POC, JS, R can create

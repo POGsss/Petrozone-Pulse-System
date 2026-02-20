@@ -209,7 +209,7 @@ export interface ResolvedPricing {
 }
 
 // Job Order types
-export type JobOrderStatus = "created" | "pending_approval" | "approved" | "rejected";
+export type JobOrderStatus = "created" | "pending_approval" | "approved" | "rejected" | "cancelled";
 
 export interface JobOrderItem {
   id: string;
@@ -223,6 +223,18 @@ export interface JobOrderItem {
   packaging_price: number | null;
   line_total: number;
   created_at: string;
+}
+
+export interface JobOrderHistory {
+  id: string;
+  user_id: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
+  created_at: string;
+  user_profiles?: { full_name: string; email: string } | null;
 }
 
 export interface JobOrder {

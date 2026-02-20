@@ -424,8 +424,8 @@ router.put(
 
 /**
  * DELETE /api/customers/:customerId
- * Delete a customer
- * POC, JS, R can delete
+ * Soft-delete a customer (set status to inactive)
+ * POC, JS, R can deactivate
  */
 router.delete(
   "/:customerId",
@@ -456,9 +456,10 @@ router.delete(
         return;
       }
 
+      // Soft delete: set status to inactive
       const { error } = await supabaseAdmin
         .from("customers")
-        .delete()
+        .update({ status: "inactive" as "active" | "inactive" })
         .eq("id", customerId);
 
       if (error) {
@@ -472,16 +473,16 @@ router.delete(
         .update({ user_id: req.user!.id })
         .eq("entity_type", "CUSTOMER")
         .eq("entity_id", customerId)
-        .eq("action", "DELETE")
+        .eq("action", "UPDATE")
         .is("user_id", null)
         .order("created_at", { ascending: false })
         .limit(1);
 
-      res.json({ message: "Customer deleted successfully" });
+      res.json({ message: "Customer deactivated successfully" });
     } catch (error) {
       console.error("Delete customer error:", error);
-      await logFailedAction(req, "DELETE", "CUSTOMER", req.params.customerId || null, error instanceof Error ? error.message : "Failed to delete customer");
-      res.status(500).json({ error: "Failed to delete customer" });
+      await logFailedAction(req, "DELETE", "CUSTOMER", req.params.customerId || null, error instanceof Error ? error.message : "Failed to deactivate customer");
+      res.status(500).json({ error: "Failed to deactivate customer" });
     }
   }
 );

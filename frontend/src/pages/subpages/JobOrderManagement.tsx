@@ -14,6 +14,8 @@ import {
   LuSend,
   LuShieldCheck,
   LuShieldX,
+  LuBan,
+  LuHistory,
 } from "react-icons/lu";
 import { jobOrdersApi, branchesApi, customersApi, vehiclesApi, catalogApi, pricingApi, thirdPartyRepairsApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
@@ -28,7 +30,7 @@ import {
   SearchFilter,
 } from "../../components";
 import type { FilterGroup } from "../../components";
-import type { JobOrder, Branch, Customer, Vehicle, CatalogItem, ResolvedPricing, ThirdPartyRepair } from "../../types";
+import type { JobOrder, JobOrderHistory, Branch, Customer, Vehicle, CatalogItem, ResolvedPricing, ThirdPartyRepair } from "../../types";
 
 const ITEMS_PER_PAGE = 12;
 
@@ -64,6 +66,7 @@ function getStatusLabel(status: string): string {
     pending_approval: "Pending Approval",
     approved: "Approved",
     rejected: "Rejected",
+    cancelled: "Cancelled",
   };
   return labels[status] || status.charAt(0).toUpperCase() + status.slice(1);
 }
@@ -74,6 +77,7 @@ function getStatusColors(status: string): string {
     pending_approval: "bg-yellow-100 text-yellow-800",
     approved: "bg-positive-100 text-positive",
     rejected: "bg-negative-100 text-negative",
+    cancelled: "bg-neutral-200 text-neutral-600",
   };
   return colors[status] || "bg-neutral-100 text-neutral-950";
 }
@@ -187,6 +191,13 @@ export function JobOrderManagement() {
   // Approval processing state
   const [processingApproval, setProcessingApproval] = useState(false);
 
+  // Cancel processing state
+  const [processingCancel, setProcessingCancel] = useState(false);
+
+  // History state
+  const [history, setHistory] = useState<JobOrderHistory[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
   // Filter groups for SearchFilter
   const filterGroups: FilterGroup[] = useMemo(() => {
     const branchFilterOptions = branches.map((b) => ({
@@ -202,6 +213,7 @@ export function JobOrderManagement() {
           { value: "pending_approval", label: "Pending Approval" },
           { value: "approved", label: "Approved" },
           { value: "rejected", label: "Rejected" },
+          { value: "cancelled", label: "Cancelled" },
         ],
       },
       {
@@ -407,6 +419,14 @@ export function JobOrderManagement() {
       }
 
       const { resolved_prices, catalog_item } = resolved;
+
+      // Fix 6: Warn if no pricing rules found for this item at this branch
+      if (resolved_prices.labor === null && resolved_prices.packaging === null) {
+        showToast.warning(
+          `No labor or packaging pricing found for "${catalog_item.name}" at this branch. Only the base price will be used.`
+        );
+      }
+
       const lineTotal =
         (resolved_prices.base_price + (resolved_prices.labor || 0) + (resolved_prices.packaging || 0)) * qty;
 
@@ -522,18 +542,23 @@ export function JobOrderManagement() {
     setShowViewModal(true);
     setRepairs([]);
     setLoadingRepairs(true);
+    setHistory([]);
+    setLoadingHistory(true);
     try {
-      const [full, repairsRes] = await Promise.all([
+      const [full, repairsRes, historyRes] = await Promise.all([
         jobOrdersApi.getById(order.id),
         thirdPartyRepairsApi.getAll({ job_order_id: order.id }),
+        jobOrdersApi.getHistory(order.id),
       ]);
       setViewOrder(full);
       setRepairs(repairsRes.data);
+      setHistory(historyRes);
     } catch {
       // Keep showing list data if fetch fails
     } finally {
       setLoadingView(false);
       setLoadingRepairs(false);
+      setLoadingHistory(false);
     }
   }
 
@@ -596,6 +621,22 @@ export function JobOrderManagement() {
       fetchData();
     } catch (err) {
       showToast.error(err instanceof Error ? err.message : "Failed to request approval");
+    }
+  }
+
+  // --- Cancel ---
+  async function handleCancelOrder(order: JobOrder) {
+    try {
+      setProcessingCancel(true);
+      await jobOrdersApi.cancel(order.id);
+      showToast.success("Job order cancelled");
+      setShowViewModal(false);
+      setViewOrder(null);
+      fetchData();
+    } catch (err) {
+      showToast.error(err instanceof Error ? err.message : "Failed to cancel job order");
+    } finally {
+      setProcessingCancel(false);
     }
   }
 
@@ -883,6 +924,15 @@ export function JobOrderManagement() {
                 >
                   <LuTrash2 className="w-4 h-4" />
                   Delete
+                </button>
+              )}
+              {canCreate && ["created", "pending_approval", "rejected"].includes(order.status) && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleCancelOrder(order); }}
+                  className="flex items-center gap-1 text-sm text-neutral-600 hover:text-neutral-950"
+                >
+                  <LuBan className="w-4 h-4" />
+                  Cancel
                 </button>
               )}
             </div>
@@ -1316,6 +1366,18 @@ export function JobOrderManagement() {
               )}
             </ModalSection>
 
+            {/* Grand Total (items + repairs) */}
+            {(viewOrder.job_order_items && viewOrder.job_order_items.length > 0) && (
+              <ModalSection title="Grand Total">
+                <div className="flex justify-between items-center px-4 py-4 bg-primary-200 rounded-xl">
+                  <span className="font-bold text-neutral-950 text-lg">Grand Total</span>
+                  <span className="font-bold text-primary text-xl">
+                    {formatPrice(viewOrder.total_amount + repairs.reduce((sum, r) => sum + r.cost, 0))}
+                  </span>
+                </div>
+              </ModalSection>
+            )}
+
             {viewOrder.notes && (
               <ModalSection title="Notes">
                 <textarea
@@ -1347,7 +1409,7 @@ export function JobOrderManagement() {
               </div>
             </ModalSection>
 
-            {canApproval && (viewOrder.status === "created" || viewOrder.status === "pending_approval") && (
+            {canApproval && (viewOrder.status === "created" || viewOrder.status === "pending_approval" || viewOrder.status === "rejected") && (
               <ModalSection title="Actions">
                 {viewOrder.status === "pending_approval" && (
                   <div className="grid grid-row gap-4">
@@ -1414,8 +1476,73 @@ export function JobOrderManagement() {
                     </button>
                   </div>
                 )}
+
+                {viewOrder.status === "rejected" && (
+                  <div className="grid grid-cols-1 gap-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleRequestApproval(viewOrder);
+                        setShowViewModal(false);
+                        setViewOrder(null);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 transition-colors"
+                    >
+                      <LuSend className="w-5 h-5" />
+                      Re-Request Customer Approval
+                    </button>
+                  </div>
+                )}
               </ModalSection>
             )}
+
+            {/* Cancel button — visible for cancellable statuses */}
+            {canCreate && ["created", "pending_approval", "rejected"].includes(viewOrder.status) && (
+              <ModalSection title="">
+                <button
+                  type="button"
+                  disabled={processingCancel}
+                  onClick={() => handleCancelOrder(viewOrder)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3.5 border-2 border-neutral-400 text-neutral-600 rounded-xl font-semibold hover:bg-neutral-100 transition-colors"
+                >
+                  <LuBan className="w-5 h-5" />
+                  {processingCancel ? "Cancelling..." : "Cancel Job Order"}
+                </button>
+              </ModalSection>
+            )}
+
+            {/* History section */}
+            <ModalSection title="History">
+              {loadingHistory ? (
+                <div className="space-y-4">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
+                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
+                    </div>
+                  ))}
+                </div>
+              ) : history.length > 0 ? (
+                <div className="space-y-3 max-h-60 overflow-y-auto">
+                  {history.map((entry) => (
+                    <div key={entry.id} className="bg-neutral-100 rounded-xl px-4 py-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <LuHistory className="w-3.5 h-3.5 text-neutral-600" />
+                        <span className="text-xs font-semibold text-neutral-950 uppercase">{entry.action}</span>
+                        <span className="text-xs text-neutral-600 ml-auto">{formatDateTime(entry.created_at)}</span>
+                      </div>
+                      {entry.user_profiles && (
+                        <p className="text-xs text-neutral-900">
+                          By: {entry.user_profiles.full_name || entry.user_profiles.email}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-neutral-900 text-center py-3">No history available.</p>
+              )}
+            </ModalSection>
           </div>
         )}
       </Modal>

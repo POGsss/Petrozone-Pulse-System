@@ -766,7 +766,7 @@ export type Database = {
     Enums: {
       customer_status: "active" | "inactive"
       customer_type: "individual" | "company"
-      job_order_status: "created" | "pending_approval" | "approved" | "rejected"
+      job_order_status: "created" | "pending_approval" | "approved" | "rejected" | "cancelled"
       pricing_matrix_status: "active" | "inactive"
       pricing_type: "labor" | "packaging"
       user_role: "HM" | "POC" | "JS" | "R" | "T" | "ADMIN"
@@ -911,7 +911,7 @@ export const Constants = {
     Enums: {
       customer_status: ["active", "inactive"],
       customer_type: ["individual", "company"],
-      job_order_status: ["created", "pending_approval", "approved", "rejected"],
+      job_order_status: ["created", "pending_approval", "approved", "rejected", "cancelled"],
       pricing_matrix_status: ["active", "inactive"],
       pricing_type: ["labor", "packaging"],
       user_role: ["HM", "POC", "JS", "R", "T", "ADMIN"],

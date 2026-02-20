@@ -1,11 +1,12 @@
 import { toast } from "react-toastify";
 
-type ToastType = "success" | "error" | "info";
+type ToastType = "success" | "error" | "info" | "warning";
 
 const titleConfig: Record<ToastType, string> = {
   success: "Success",
   error: "Error",
   info: "Info",
+  warning: "Warning",
 };
 
 function CustomToastContent({ type, message }: { type: ToastType; message: string }) {
@@ -31,6 +32,11 @@ export const showToast = {
   },
   info: (message: string) => {
     toast.info(<CustomToastContent type="info" message={message} />, {
+      icon: false,
+    });
+  },
+  warning: (message: string) => {
+    toast.warning(<CustomToastContent type="warning" message={message} />, {
       icon: false,
     });
   },

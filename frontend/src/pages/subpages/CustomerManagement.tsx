@@ -13,7 +13,7 @@ import {
   LuUserX,
   LuFilter,
 } from "react-icons/lu";
-import { customersApi, branchesApi } from "../../lib/api";
+import { customersApi, branchesApi, vehiclesApi, jobOrdersApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
 import { useAuth } from "../../auth";
 import {
@@ -24,7 +24,7 @@ import {
   ModalButtons,
   ModalError,
 } from "../../components";
-import type { Customer, Branch } from "../../types";
+import type { Customer, Branch, Vehicle, JobOrder } from "../../types";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -94,6 +94,9 @@ export function CustomerManagement() {
   // View customer modal state
   const [showViewModal, setShowViewModal] = useState(false);
   const [viewCustomer, setViewCustomer] = useState<Customer | null>(null);
+  const [linkedVehicles, setLinkedVehicles] = useState<Vehicle[]>([]);
+  const [linkedJobOrders, setLinkedJobOrders] = useState<JobOrder[]>([]);
+  const [loadingLinked, setLoadingLinked] = useState(false);
 
   // Delete confirmation modal
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -255,10 +258,25 @@ export function CustomerManagement() {
     }
   }
 
-  // Open view modal
-  function openViewModal(customer: Customer) {
+  // Open view modal — also load linked vehicles and JOs
+  async function openViewModal(customer: Customer) {
     setViewCustomer(customer);
     setShowViewModal(true);
+    setLinkedVehicles([]);
+    setLinkedJobOrders([]);
+    setLoadingLinked(true);
+    try {
+      const [vehRes, joRes] = await Promise.all([
+        vehiclesApi.getAll({ customer_id: customer.id, limit: 100 }),
+        jobOrdersApi.getAll({ customer_id: customer.id, limit: 100 }),
+      ]);
+      setLinkedVehicles(vehRes.data);
+      setLinkedJobOrders(joRes.data);
+    } catch {
+      // Silently fail
+    } finally {
+      setLoadingLinked(false);
+    }
   }
 
   // Open edit modal
@@ -908,6 +926,64 @@ export function CustomerManagement() {
                   disabled
                 />
               </div>
+            </ModalSection>
+
+            {/* Linked Vehicles */}
+            <ModalSection title="Linked Vehicles">
+              {loadingLinked ? (
+                <div className="space-y-2">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
+                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
+                    </div>
+                  ))}
+                </div>
+              ) : linkedVehicles.length > 0 ? (
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {linkedVehicles.map((v) => (
+                    <div key={v.id} className="bg-neutral-100 rounded-xl px-4 py-3">
+                      <p className="font-medium text-neutral-950 text-sm">
+                        {v.plate_number} — {v.model}
+                      </p>
+                      <p className="text-xs text-neutral-900">
+                        {v.vehicle_type} · {v.status}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-neutral-900 text-center py-3">No vehicles linked.</p>
+              )}
+            </ModalSection>
+
+            {/* Linked Job Orders */}
+            <ModalSection title="Linked Job Orders">
+              {loadingLinked ? (
+                <div className="space-y-2">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
+                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
+                    </div>
+                  ))}
+                </div>
+              ) : linkedJobOrders.length > 0 ? (
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {linkedJobOrders.map((jo) => (
+                    <div key={jo.id} className="bg-neutral-100 rounded-xl px-4 py-3">
+                      <p className="font-medium text-neutral-950 text-sm">
+                        {jo.order_number}
+                      </p>
+                      <p className="text-xs text-neutral-900">
+                        {jo.status} · {formatDate(jo.created_at)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-neutral-900 text-center py-3">No job orders linked.</p>
+              )}
             </ModalSection>
           </div>
         )}

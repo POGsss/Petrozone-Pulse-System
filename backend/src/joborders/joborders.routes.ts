@@ -349,7 +349,8 @@ router.post(
 
 /**
  * PUT /api/job-orders/:id
- * Update a job order (notes only — items are immutable after creation)
+ * Update a job order (notes, and items when status allows)
+ * Items can be modified when status is "created" or "rejected"
  * Roles: POC, JS, R, T
  */
 router.put(
@@ -550,10 +551,10 @@ router.patch(
         return;
       }
 
-      // Validate status transition: only "created" → "pending_approval"
-      if (existing.status !== "created") {
+      // Validate status transition: "created" or "rejected" → "pending_approval"
+      if (existing.status !== "created" && existing.status !== "rejected") {
         res.status(400).json({
-          error: `Cannot request approval for a job order with status "${existing.status}". Only "created" orders can be sent for approval.`,
+          error: `Cannot request approval for a job order with status "${existing.status}". Only "created" or "rejected" orders can be sent for approval.`,
         });
         return;
       }
@@ -666,14 +667,16 @@ router.patch(
       }
 
       // Update status and approval fields
+      const updatePayload: Record<string, unknown> = {
+        status: decision,
+        approved_at: new Date().toISOString(),
+        approved_by: req.user!.id,
+        approval_notes: notes?.trim() || null,
+      };
+
       const { error: updateError } = await supabaseAdmin
         .from("job_orders")
-        .update({
-          status: decision,
-          approved_at: new Date().toISOString(),
-          approved_by: req.user!.id,
-          approval_notes: notes?.trim() || null,
-        })
+        .update(updatePayload)
         .eq("id", orderId);
 
       if (updateError) {
@@ -725,6 +728,522 @@ router.patch(
       const action = typeof decision === "string" && decision === "approved" ? "APPROVE" : "REJECT";
       await logFailedAction(req, action, "JOB_ORDER", req.params.id || null, error instanceof Error ? error.message : "Failed to record approval");
       res.status(500).json({ error: "Failed to record approval" });
+    }
+  }
+);
+
+/**
+ * PATCH /api/job-orders/:id/cancel
+ * Cancel a job order (status → "cancelled")
+ * Only "created", "pending_approval", or "rejected" orders can be cancelled
+ * Roles: POC, JS, R
+ */
+router.patch(
+  "/:id/cancel",
+  requireRoles("POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const orderId = req.params.id as string;
+
+      // Get existing order
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select("id, branch_id, status, order_number")
+        .eq("id", orderId)
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === "PGRST116") {
+          res.status(404).json({ error: "Job order not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError.message });
+        return;
+      }
+
+      // Branch access check
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(existing.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this job order's branch" });
+        return;
+      }
+
+      // Validate status: only created, pending_approval, or rejected can be cancelled
+      const cancellableStatuses = ["created", "pending_approval", "rejected"];
+      if (!cancellableStatuses.includes(existing.status)) {
+        res.status(400).json({
+          error: `Cannot cancel a job order with status "${existing.status}". Only created, pending approval, or rejected orders can be cancelled.`,
+        });
+        return;
+      }
+
+      // Update status
+      const { error: updateError } = await supabaseAdmin
+        .from("job_orders")
+        .update({ status: "cancelled" })
+        .eq("id", orderId);
+
+      if (updateError) {
+        res.status(500).json({ error: updateError.message });
+        return;
+      }
+
+      // Fetch updated order
+      const { data: updated, error: refetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select(
+          `
+          *,
+          customers(id, full_name, contact_number, email),
+          vehicles(id, plate_number, model, vehicle_type),
+          branches(id, name, code),
+          job_order_items(*)
+        `
+        )
+        .eq("id", orderId)
+        .single();
+
+      if (refetchError) {
+        res.status(500).json({ error: refetchError.message });
+        return;
+      }
+
+      // Audit log
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "CANCEL",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: orderId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { order_number: existing.order_number, status: "cancelled" },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Cancel job order error:", error);
+      await logFailedAction(req, "CANCEL", "JOB_ORDER", req.params.id || null, error instanceof Error ? error.message : "Failed to cancel job order");
+      res.status(500).json({ error: "Failed to cancel job order" });
+    }
+  }
+);
+
+/**
+ * POST /api/job-orders/:id/items
+ * Add an item to an existing job order and recalculate totals
+ * Only "created" or "rejected" orders can be modified
+ * Roles: POC, JS, R
+ */
+router.post(
+  "/:id/items",
+  requireRoles("POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const orderId = req.params.id as string;
+      const { catalog_item_id, quantity } = req.body;
+
+      if (!catalog_item_id) {
+        res.status(400).json({ error: "Catalog item ID is required" });
+        return;
+      }
+      const qty = quantity || 1;
+      if (qty < 1) {
+        res.status(400).json({ error: "Quantity must be at least 1" });
+        return;
+      }
+
+      // Get existing order
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select("id, branch_id, status, total_amount")
+        .eq("id", orderId)
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === "PGRST116") {
+          res.status(404).json({ error: "Job order not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError.message });
+        return;
+      }
+
+      // Branch access check
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(existing.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this job order's branch" });
+        return;
+      }
+
+      // Only editable statuses
+      const editableStatuses = ["created", "rejected"];
+      if (!editableStatuses.includes(existing.status)) {
+        res.status(400).json({
+          error: `Cannot modify items on a job order with status "${existing.status}". Only "created" or "rejected" orders can be edited.`,
+        });
+        return;
+      }
+
+      // Resolve pricing
+      const { data: catalogItem, error: catError } = await supabaseAdmin
+        .from("catalog_items")
+        .select("id, name, type, base_price")
+        .eq("id", catalog_item_id)
+        .single();
+
+      if (catError || !catalogItem) {
+        res.status(400).json({ error: `Catalog item not found: ${catalog_item_id}` });
+        return;
+      }
+
+      const { data: pricingRules } = await supabaseAdmin
+        .from("pricing_matrices")
+        .select("*")
+        .eq("catalog_item_id", catalog_item_id)
+        .eq("branch_id", existing.branch_id)
+        .eq("status", "active");
+
+      const laborRule = pricingRules?.find((r: { pricing_type: string }) => r.pricing_type === "labor");
+      const packagingRule = pricingRules?.find((r: { pricing_type: string }) => r.pricing_type === "packaging");
+
+      const basePrice = catalogItem.base_price;
+      const laborPrice = laborRule ? laborRule.price : null;
+      const packagingPrice = packagingRule ? packagingRule.price : null;
+      const lineTotal = (basePrice + (laborPrice || 0) + (packagingPrice || 0)) * qty;
+
+      // Insert the item
+      const { data: newItem, error: insertError } = await supabaseAdmin
+        .from("job_order_items")
+        .insert({
+          job_order_id: orderId,
+          catalog_item_id: catalogItem.id,
+          catalog_item_name: catalogItem.name,
+          catalog_item_type: catalogItem.type,
+          quantity: qty,
+          base_price: basePrice,
+          labor_price: laborPrice,
+          packaging_price: packagingPrice,
+          line_total: lineTotal,
+        })
+        .select("*")
+        .single();
+
+      if (insertError) {
+        res.status(500).json({ error: insertError.message });
+        return;
+      }
+
+      // Recalculate total
+      const { data: allItems } = await supabaseAdmin
+        .from("job_order_items")
+        .select("line_total")
+        .eq("job_order_id", orderId);
+
+      const newTotal = (allItems || []).reduce((sum: number, item: { line_total: number }) => sum + item.line_total, 0);
+
+      await supabaseAdmin
+        .from("job_orders")
+        .update({ total_amount: newTotal })
+        .eq("id", orderId);
+
+      // Return updated order
+      const { data: updated, error: refetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select(
+          `
+          *,
+          customers(id, full_name, contact_number, email),
+          vehicles(id, plate_number, model, vehicle_type),
+          branches(id, name, code),
+          job_order_items(*)
+        `
+        )
+        .eq("id", orderId)
+        .single();
+
+      if (refetchError) {
+        res.status(500).json({ error: refetchError.message });
+        return;
+      }
+
+      res.status(201).json(updated);
+    } catch (error) {
+      console.error("Add job order item error:", error);
+      res.status(500).json({ error: "Failed to add item to job order" });
+    }
+  }
+);
+
+/**
+ * PUT /api/job-orders/:id/items/:itemId
+ * Update an item's quantity on an existing job order and recalculate
+ * Only "created" or "rejected" orders can be modified
+ * Roles: POC, JS, R
+ */
+router.put(
+  "/:id/items/:itemId",
+  requireRoles("POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const orderId = req.params.id as string;
+      const itemId = req.params.itemId as string;
+      const { quantity } = req.body;
+
+      if (!quantity || quantity < 1) {
+        res.status(400).json({ error: "Quantity must be at least 1" });
+        return;
+      }
+
+      // Get existing order
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select("id, branch_id, status")
+        .eq("id", orderId)
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === "PGRST116") {
+          res.status(404).json({ error: "Job order not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError.message });
+        return;
+      }
+
+      // Branch access check
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(existing.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this job order's branch" });
+        return;
+      }
+
+      // Only editable statuses
+      const editableStatuses = ["created", "rejected"];
+      if (!editableStatuses.includes(existing.status)) {
+        res.status(400).json({
+          error: `Cannot modify items on a job order with status "${existing.status}".`,
+        });
+        return;
+      }
+
+      // Get existing item
+      const { data: item, error: itemError } = await supabaseAdmin
+        .from("job_order_items")
+        .select("*")
+        .eq("id", itemId)
+        .eq("job_order_id", orderId)
+        .single();
+
+      if (itemError || !item) {
+        res.status(404).json({ error: "Item not found in this job order" });
+        return;
+      }
+
+      // Recalculate line total with new quantity
+      const unitPrice = item.base_price + (item.labor_price || 0) + (item.packaging_price || 0);
+      const newLineTotal = unitPrice * quantity;
+
+      await supabaseAdmin
+        .from("job_order_items")
+        .update({ quantity, line_total: newLineTotal })
+        .eq("id", itemId);
+
+      // Recalculate order total
+      const { data: allItems } = await supabaseAdmin
+        .from("job_order_items")
+        .select("line_total")
+        .eq("job_order_id", orderId);
+
+      const newTotal = (allItems || []).reduce((sum: number, i: { line_total: number }) => sum + i.line_total, 0);
+
+      await supabaseAdmin
+        .from("job_orders")
+        .update({ total_amount: newTotal })
+        .eq("id", orderId);
+
+      // Return updated order
+      const { data: updated, error: refetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select(
+          `
+          *,
+          customers(id, full_name, contact_number, email),
+          vehicles(id, plate_number, model, vehicle_type),
+          branches(id, name, code),
+          job_order_items(*)
+        `
+        )
+        .eq("id", orderId)
+        .single();
+
+      if (refetchError) {
+        res.status(500).json({ error: refetchError.message });
+        return;
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Update job order item error:", error);
+      res.status(500).json({ error: "Failed to update job order item" });
+    }
+  }
+);
+
+/**
+ * DELETE /api/job-orders/:id/items/:itemId
+ * Remove an item from an existing job order and recalculate
+ * Only "created" or "rejected" orders can be modified
+ * Must have at least 1 item remaining
+ * Roles: POC, JS, R
+ */
+router.delete(
+  "/:id/items/:itemId",
+  requireRoles("POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const orderId = req.params.id as string;
+      const itemId = req.params.itemId as string;
+
+      // Get existing order
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select("id, branch_id, status")
+        .eq("id", orderId)
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === "PGRST116") {
+          res.status(404).json({ error: "Job order not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError.message });
+        return;
+      }
+
+      // Branch access check
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(existing.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this job order's branch" });
+        return;
+      }
+
+      // Only editable statuses
+      const editableStatuses = ["created", "rejected"];
+      if (!editableStatuses.includes(existing.status)) {
+        res.status(400).json({
+          error: `Cannot modify items on a job order with status "${existing.status}".`,
+        });
+        return;
+      }
+
+      // Check item count — must have at least 1 remaining
+      const { count } = await supabaseAdmin
+        .from("job_order_items")
+        .select("id", { count: "exact", head: true })
+        .eq("job_order_id", orderId);
+
+      if ((count || 0) <= 1) {
+        res.status(400).json({ error: "Cannot remove the last item. A job order must have at least one item." });
+        return;
+      }
+
+      // Delete the item
+      const { error: deleteError } = await supabaseAdmin
+        .from("job_order_items")
+        .delete()
+        .eq("id", itemId)
+        .eq("job_order_id", orderId);
+
+      if (deleteError) {
+        res.status(500).json({ error: deleteError.message });
+        return;
+      }
+
+      // Recalculate order total
+      const { data: remainingItems } = await supabaseAdmin
+        .from("job_order_items")
+        .select("line_total")
+        .eq("job_order_id", orderId);
+
+      const newTotal = (remainingItems || []).reduce((sum: number, i: { line_total: number }) => sum + i.line_total, 0);
+
+      await supabaseAdmin
+        .from("job_orders")
+        .update({ total_amount: newTotal })
+        .eq("id", orderId);
+
+      // Return updated order
+      const { data: updated, error: refetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select(
+          `
+          *,
+          customers(id, full_name, contact_number, email),
+          vehicles(id, plate_number, model, vehicle_type),
+          branches(id, name, code),
+          job_order_items(*)
+        `
+        )
+        .eq("id", orderId)
+        .single();
+
+      if (refetchError) {
+        res.status(500).json({ error: refetchError.message });
+        return;
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Delete job order item error:", error);
+      res.status(500).json({ error: "Failed to remove item from job order" });
+    }
+  }
+);
+
+/**
+ * GET /api/job-orders/:id/history
+ * Get audit history for a specific job order
+ * Roles: HM, POC, JS, R, T
+ */
+router.get(
+  "/:id/history",
+  requireRoles("HM", "POC", "JS", "R", "T"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const orderId = req.params.id as string;
+
+      const { data: logs, error } = await supabaseAdmin
+        .from("audit_logs")
+        .select(
+          `
+          *,
+          user_profiles:user_id(id, full_name, email)
+        `
+        )
+        .eq("entity_type", "JOB_ORDER")
+        .eq("entity_id", orderId)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        res.status(500).json({ error: error.message });
+        return;
+      }
+
+      res.json(logs || []);
+    } catch (error) {
+      console.error("Get job order history error:", error);
+      res.status(500).json({ error: "Failed to fetch job order history" });
     }
   }
 );
