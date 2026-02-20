@@ -139,8 +139,8 @@ export function AuditLogs() {
       setStats({
         total_events: statsData.total_events,
         logins: statsData.logins,
-        successful: 0,
-        failed: 0,
+        successful: statsData.successful || 0,
+        failed: statsData.failed || 0,
         actions: statsData.actions,
       });
     } catch (err) {
