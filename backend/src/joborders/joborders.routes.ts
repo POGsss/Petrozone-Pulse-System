@@ -59,7 +59,7 @@ router.get(
         query = query.eq("vehicle_id", vehicle_id as string);
       }
       if (status) {
-        query = query.eq("status", status as "created");
+        query = query.eq("status", status as string);
       }
       if (search) {
         const searchTerm = `%${search}%`;
@@ -508,6 +508,223 @@ router.delete(
       console.error("Delete job order error:", error);
       await logFailedAction(req, "DELETE", "JOB_ORDER", req.params.id || null, error instanceof Error ? error.message : "Failed to delete job order");
       res.status(500).json({ error: "Failed to delete job order" });
+    }
+  }
+);
+
+/**
+ * PATCH /api/job-orders/:id/request-approval
+ * Request customer approval for a job order
+ * Changes status from "created" to "pending_approval"
+ * Roles: R, T (and POC, JS for flexibility)
+ */
+router.patch(
+  "/:id/request-approval",
+  requireRoles("POC", "JS", "R", "T"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const orderId = req.params.id as string;
+
+      // Get existing order
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select("id, branch_id, status, order_number")
+        .eq("id", orderId)
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === "PGRST116") {
+          res.status(404).json({ error: "Job order not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError.message });
+        return;
+      }
+
+      // Branch access check
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(existing.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this job order's branch" });
+        return;
+      }
+
+      // Validate status transition: only "created" → "pending_approval"
+      if (existing.status !== "created") {
+        res.status(400).json({
+          error: `Cannot request approval for a job order with status "${existing.status}". Only "created" orders can be sent for approval.`,
+        });
+        return;
+      }
+
+      // Update status
+      const { error: updateError } = await supabaseAdmin
+        .from("job_orders")
+        .update({ status: "pending_approval" })
+        .eq("id", orderId);
+
+      if (updateError) {
+        res.status(500).json({ error: updateError.message });
+        return;
+      }
+
+      // Fetch updated order
+      const { data: updated, error: refetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select(
+          `
+          *,
+          customers(id, full_name, contact_number, email),
+          vehicles(id, plate_number, model, vehicle_type),
+          branches(id, name, code),
+          job_order_items(*)
+        `
+        )
+        .eq("id", orderId)
+        .single();
+
+      if (refetchError) {
+        res.status(500).json({ error: refetchError.message });
+        return;
+      }
+
+      // Audit log
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "REQUEST_APPROVAL",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: orderId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { order_number: existing.order_number, status: "pending_approval" },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Request approval error:", error);
+      await logFailedAction(req, "REQUEST_APPROVAL", "JOB_ORDER", req.params.id || null, error instanceof Error ? error.message : "Failed to request approval");
+      res.status(500).json({ error: "Failed to request approval" });
+    }
+  }
+);
+
+/**
+ * PATCH /api/job-orders/:id/record-approval
+ * Record customer approval or rejection for a job order
+ * Changes status from "pending_approval" to "approved" or "rejected"
+ * Roles: R, T (and POC, JS for flexibility)
+ */
+router.patch(
+  "/:id/record-approval",
+  requireRoles("POC", "JS", "R", "T"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const orderId = req.params.id as string;
+      const { decision, notes } = req.body;
+
+      // Validate decision
+      if (!decision || !["approved", "rejected"].includes(decision)) {
+        res.status(400).json({ error: 'Decision must be either "approved" or "rejected"' });
+        return;
+      }
+
+      // Get existing order
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select("id, branch_id, status, order_number")
+        .eq("id", orderId)
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === "PGRST116") {
+          res.status(404).json({ error: "Job order not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError.message });
+        return;
+      }
+
+      // Branch access check
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(existing.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this job order's branch" });
+        return;
+      }
+
+      // Validate status transition: only "pending_approval" → "approved" / "rejected"
+      if (existing.status !== "pending_approval") {
+        res.status(400).json({
+          error: `Cannot record approval for a job order with status "${existing.status}". Only "pending_approval" orders can be approved or rejected.`,
+        });
+        return;
+      }
+
+      // Update status and approval fields
+      const { error: updateError } = await supabaseAdmin
+        .from("job_orders")
+        .update({
+          status: decision,
+          approved_at: new Date().toISOString(),
+          approved_by: req.user!.id,
+          approval_notes: notes?.trim() || null,
+        })
+        .eq("id", orderId);
+
+      if (updateError) {
+        res.status(500).json({ error: updateError.message });
+        return;
+      }
+
+      // Fetch updated order
+      const { data: updated, error: refetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select(
+          `
+          *,
+          customers(id, full_name, contact_number, email),
+          vehicles(id, plate_number, model, vehicle_type),
+          branches(id, name, code),
+          job_order_items(*)
+        `
+        )
+        .eq("id", orderId)
+        .single();
+
+      if (refetchError) {
+        res.status(500).json({ error: refetchError.message });
+        return;
+      }
+
+      // Audit log
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: decision === "approved" ? "APPROVE" : "REJECT",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: orderId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: {
+            order_number: existing.order_number,
+            status: decision,
+            approval_notes: notes?.trim() || null,
+          },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Record approval error:", error);
+      const action = typeof decision === "string" && decision === "approved" ? "APPROVE" : "REJECT";
+      await logFailedAction(req, action, "JOB_ORDER", req.params.id || null, error instanceof Error ? error.message : "Failed to record approval");
+      res.status(500).json({ error: "Failed to record approval" });
     }
   }
 );

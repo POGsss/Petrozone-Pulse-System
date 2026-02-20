@@ -136,9 +136,15 @@ export function AuditLogs() {
   async function fetchStats() {
     try {
       const statsData = await auditApi.getStats(30);
-      setStats(statsData);
+      setStats({
+        total_events: statsData.total_events,
+        logins: statsData.logins,
+        successful: 0,
+        failed: 0,
+        actions: statsData.actions,
+      });
     } catch (err) {
-      console.error("Failed to fetch stats:", err);
+      // Stats fetch failed silently — non-critical
     }
   }
 

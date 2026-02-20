@@ -472,7 +472,7 @@ router.put(
       res.json(item);
     } catch (error) {
       console.error("Update catalog item error:", error);
-      await logFailedAction(req, "UPDATE", "CATALOG_ITEM", req.params.itemId || null, error instanceof Error ? error.message : "Failed to update catalog item");
+      await logFailedAction(req, "UPDATE", "CATALOG_ITEM", (req.params.itemId as string) || null, error instanceof Error ? error.message : "Failed to update catalog item");
       res.status(500).json({ error: "Failed to update catalog item" });
     }
   }
@@ -526,12 +526,14 @@ router.delete(
       }
 
       // Try hard delete first
-      const { error: deleteError } = await supabaseAdmin
+      const { data: deletedRows, error: deleteError } = await supabaseAdmin
         .from("catalog_items")
         .delete()
-        .eq("id", itemId);
+        .eq("id", itemId)
+        .select();
 
       if (deleteError) {
+        console.error("Delete error:", deleteError.code, deleteError.message);
         // If FK constraint violation, fall back to soft delete (deactivate)
         if (deleteError.code === "23503") {
           const { error: updateError } = await supabaseAdmin
@@ -580,7 +582,7 @@ router.delete(
       res.json({ message: "Catalog item deleted successfully" });
     } catch (error) {
       console.error("Delete catalog item error:", error);
-      await logFailedAction(req, "DELETE", "CATALOG_ITEM", req.params.itemId || null, error instanceof Error ? error.message : "Failed to delete catalog item");
+      await logFailedAction(req, "DELETE", "CATALOG_ITEM", (req.params.itemId as string) || null, error instanceof Error ? error.message : "Failed to delete catalog item");
       res.status(500).json({ error: "Failed to delete catalog item" });
     }
   }

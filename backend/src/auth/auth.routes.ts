@@ -258,7 +258,6 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
       p_user_id: data.user.id,
     });
 
-    console.log("User data from RPC:", userData);
     if (userDataError) {
       console.error("User data RPC error:", userDataError);
     }

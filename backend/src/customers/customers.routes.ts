@@ -269,7 +269,7 @@ router.post(
  */
 router.put(
   "/:customerId",
-  requireRoles("POC", "JS", "R", "T"),
+  requireRoles("HM", "POC", "JS", "R", "T"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const customerId = req.params.customerId as string;
@@ -429,7 +429,7 @@ router.put(
  */
 router.delete(
   "/:customerId",
-  requireRoles("POC", "JS", "R"),
+  requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const customerId = req.params.customerId as string;
@@ -450,8 +450,8 @@ router.delete(
         return;
       }
 
-      // Branch access check
-      if (!req.user!.branchIds.includes(existing.branch_id)) {
+      // Branch access check (HM can access all branches)
+      if (!req.user!.roles.includes("HM") && !req.user!.branchIds.includes(existing.branch_id)) {
         res.status(403).json({ error: "No access to this customer's branch" });
         return;
       }

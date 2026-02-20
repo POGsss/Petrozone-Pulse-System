@@ -335,7 +335,7 @@ export function CatalogManagement() {
     }
   }
 
-  // --- Delete (soft) ---
+  // --- Delete ---
   function openDeleteConfirmModal(item: CatalogItem) {
     setItemToDelete(item);
     setShowDeleteConfirm(true);
@@ -345,10 +345,14 @@ export function CatalogManagement() {
     if (!itemToDelete) return;
     try {
       setDeletingItem(true);
-      await catalogApi.delete(itemToDelete.id);
+      const result = await catalogApi.delete(itemToDelete.id);
       setShowDeleteConfirm(false);
       setItemToDelete(null);
-      showToast.success("Catalog item deleted successfully");
+      if (result.deactivated) {
+        showToast.info("Catalog item is referenced by job orders and has been deactivated instead");
+      } else {
+        showToast.success("Catalog item deleted successfully");
+      }
       fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete catalog item");

@@ -518,7 +518,7 @@ export const catalogApi = {
   },
 
   delete: async (id: string) => {
-    return fetchWithAuth<{ message: string }>(`/api/catalog/${id}`, {
+    return fetchWithAuth<{ message: string; deactivated?: boolean }>(`/api/catalog/${id}`, {
       method: "DELETE",
     });
   },
@@ -652,6 +652,19 @@ export const jobOrdersApi = {
   delete: async (id: string) => {
     return fetchWithAuth<{ message: string }>(`/api/job-orders/${id}`, {
       method: "DELETE",
+    });
+  },
+
+  requestApproval: async (id: string) => {
+    return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/request-approval`, {
+      method: "PATCH",
+    });
+  },
+
+  recordApproval: async (id: string, data: { decision: "approved" | "rejected"; notes?: string }) => {
+    return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/record-approval`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
     });
   },
 };

@@ -9,11 +9,7 @@ if (!supabaseUrl || !supabaseServiceKey) {
   throw new Error("Missing Supabase environment variables");
 }
 
-// console.log("Supabase URL:", supabaseUrl);
-// console.log("Service key loaded:", supabaseServiceKey ? "YES (length: " + supabaseServiceKey.length + ")" : "NO");
-
 // Service role client for admin operations (bypasses RLS)
-// Using global headers to ensure service role is properly set
 export const supabaseAdmin: SupabaseClient<Database> = createClient<Database>(
   supabaseUrl,
   supabaseServiceKey,
@@ -29,12 +25,6 @@ export const supabaseAdmin: SupabaseClient<Database> = createClient<Database>(
       },
     },
   }
-);
-
-// Anon client for public operations (respects RLS)
-export const supabaseAnon: SupabaseClient<Database> = createClient<Database>(
-  supabaseUrl,
-  supabaseAnonKey
 );
 
 // Create a client with user's JWT for authenticated operations

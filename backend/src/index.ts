@@ -1,5 +1,7 @@
 // Load environment variables FIRST - this must be the first import
 import "./config/env.js";
+import { verifyEnv } from "./config/env.js";
+verifyEnv();
 
 import express from "express";
 import cors from "cors";

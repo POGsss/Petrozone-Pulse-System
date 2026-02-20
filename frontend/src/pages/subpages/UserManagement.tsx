@@ -368,7 +368,6 @@ export function UserManagement() {
       showToast.success("User deleted successfully");
       fetchData();
     } catch (err) {
-      console.error("Failed to delete user:", err);
       showToast.error(err instanceof Error ? err.message : "Failed to delete user");
     } finally {
       setDeletingUser(false);

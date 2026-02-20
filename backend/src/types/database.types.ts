@@ -286,6 +286,9 @@ export type Database = {
       }
       job_orders: {
         Row: {
+          approval_notes: string | null
+          approved_at: string | null
+          approved_by: string | null
           branch_id: string
           created_at: string
           created_by: string | null
@@ -299,6 +302,9 @@ export type Database = {
           vehicle_id: string
         }
         Insert: {
+          approval_notes?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
           branch_id: string
           created_at?: string
           created_by?: string | null
@@ -312,6 +318,9 @@ export type Database = {
           vehicle_id: string
         }
         Update: {
+          approval_notes?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
           branch_id?: string
           created_at?: string
           created_by?: string | null
@@ -757,7 +766,7 @@ export type Database = {
     Enums: {
       customer_status: "active" | "inactive"
       customer_type: "individual" | "company"
-      job_order_status: "created"
+      job_order_status: "created" | "pending_approval" | "approved" | "rejected"
       pricing_matrix_status: "active" | "inactive"
       pricing_type: "labor" | "packaging"
       user_role: "HM" | "POC" | "JS" | "R" | "T" | "ADMIN"
@@ -902,7 +911,7 @@ export const Constants = {
     Enums: {
       customer_status: ["active", "inactive"],
       customer_type: ["individual", "company"],
-      job_order_status: ["created"],
+      job_order_status: ["created", "pending_approval", "approved", "rejected"],
       pricing_matrix_status: ["active", "inactive"],
       pricing_type: ["labor", "packaging"],
       user_role: ["HM", "POC", "JS", "R", "T", "ADMIN"],
@@ -934,4 +943,7 @@ export interface UserProfile {
   updated_at: string;
 }
 
-export type UserRole = "HM" | "POC" | "JS" | "R" | "T" | "ADMIN";
+export type UserRole = "HM" | "POC" | "JS" | "R" | "T";
+
+export type BranchInsert = TablesInsert<"branches">;
+export type BranchUpdate = TablesUpdate<"branches">;

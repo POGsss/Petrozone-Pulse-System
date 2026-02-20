@@ -53,18 +53,6 @@ Ensure system remains stable under expected concurrent users.
 
 ---
 
-## Configuration of Mandatory Fields
-Validate enforcement of required fields across modules.
-
-### Steps
-1. Attempt to save job order without required fields  
-
-### Expected Result
-- System prevents saving  
-- Mandatory fields are highlighted  
-
----
-
 ## Environment Configuration Validation
 Verify correct setup across environments (Dev, Test, Prod).
 

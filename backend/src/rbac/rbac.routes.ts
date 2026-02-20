@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
-import { requireAuth, requireAdmin, requireUserManager } from "../middleware/auth.middleware.js";
+import { requireAuth, requireUserManager } from "../middleware/auth.middleware.js";
 import type { UserRole } from "../types/database.types.js";
 import { logFailedAction } from "../lib/auditLogger.js";
 
@@ -224,7 +224,7 @@ router.put("/users/:userId/roles", requireUserManager, async (req: Request, res:
 
     // Use atomic RPC function that checks permissions BEFORE deleting
     // Pass the calling user ID explicitly for permission check
-    const { data, error } = await supabaseAdmin.rpc("update_user_roles", {
+    const { error } = await supabaseAdmin.rpc("update_user_roles", {
       p_user_id: userId,
       p_roles: roles,
       p_calling_user_id: req.user!.id,
@@ -274,7 +274,7 @@ router.put("/users/:userId/branches", requireUserManager, async (req: Request, r
     }
 
     // Use atomic RPC function that checks permissions BEFORE deleting
-    const { data, error } = await supabaseAdmin.rpc("update_user_branches", {
+    const { error } = await supabaseAdmin.rpc("update_user_branches", {
       p_user_id: userId,
       p_branch_ids: branch_ids,
       p_primary_branch_id: primary_branch_id || null,

@@ -11,6 +11,9 @@ import {
   LuPencil,
   LuWrench,
   LuCheck,
+  LuSend,
+  LuShieldCheck,
+  LuShieldX,
 } from "react-icons/lu";
 import { jobOrdersApi, branchesApi, customersApi, vehiclesApi, catalogApi, pricingApi, thirdPartyRepairsApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
@@ -54,6 +57,27 @@ function formatPrice(price: number): string {
   }).format(price);
 }
 
+// Status display helpers
+function getStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    created: "Created",
+    pending_approval: "Pending Approval",
+    approved: "Approved",
+    rejected: "Rejected",
+  };
+  return labels[status] || status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function getStatusColors(status: string): string {
+  const colors: Record<string, string> = {
+    created: "bg-neutral-100 text-neutral-950",
+    pending_approval: "bg-yellow-100 text-yellow-800",
+    approved: "bg-positive-100 text-positive",
+    rejected: "bg-negative-100 text-negative",
+  };
+  return colors[status] || "bg-neutral-100 text-neutral-950";
+}
+
 // Item being added to the order (before submission)
 interface DraftItem {
   catalog_item_id: string;
@@ -84,6 +108,7 @@ export function JobOrderManagement() {
   const canUpdate = userRoles.some((r) => ["POC", "JS", "R", "T"].includes(r));
   const canDelete = userRoles.some((r) => ["POC", "JS", "R"].includes(r));
   const canRepair = userRoles.some((r) => ["HM", "POC", "JS", "R", "T"].includes(r));
+  const canApproval = userRoles.some((r) => ["R", "T"].includes(r));
 
   // Data state
   const [allOrders, setAllOrders] = useState<JobOrder[]>([]);
@@ -159,6 +184,9 @@ export function JobOrderManagement() {
   const [actionRepairError, setActionRepairError] = useState<string | null>(null);
   const [editingActionRepairId, setEditingActionRepairId] = useState<string | null>(null);
 
+  // Approval processing state
+  const [processingApproval, setProcessingApproval] = useState(false);
+
   // Filter groups for SearchFilter
   const filterGroups: FilterGroup[] = useMemo(() => {
     const branchFilterOptions = branches.map((b) => ({
@@ -166,6 +194,16 @@ export function JobOrderManagement() {
       label: b.name,
     }));
     return [
+      {
+        key: "status",
+        label: "Status",
+        options: [
+          { value: "created", label: "Created" },
+          { value: "pending_approval", label: "Pending Approval" },
+          { value: "approved", label: "Approved" },
+          { value: "rejected", label: "Rejected" },
+        ],
+      },
       {
         key: "branch",
         label: "Branch",
@@ -189,7 +227,11 @@ export function JobOrderManagement() {
       const matchBranch =
         !branchFilter || branchFilter === "all" || order.branch_id === branchFilter;
 
-      return matchSearch && matchBranch;
+      const statusFilter = activeFilters.status;
+      const matchStatus =
+        !statusFilter || statusFilter === "all" || order.status === statusFilter;
+
+      return matchSearch && matchBranch && matchStatus;
     });
     const pages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -546,6 +588,19 @@ export function JobOrderManagement() {
     }
   }
 
+  // --- Customer Approval ---
+  async function handleRequestApproval(order: JobOrder) {
+    try {
+      await jobOrdersApi.requestApproval(order.id);
+      showToast.success("Approval requested — status changed to Pending Approval");
+      fetchData();
+    } catch (err) {
+      showToast.error(err instanceof Error ? err.message : "Failed to request approval");
+    }
+  }
+
+
+
   // --- Repair Action Modal (wrench button) ---
   async function openRepairActionModal(order: JobOrder) {
     setRepairActionOrder(order);
@@ -588,12 +643,12 @@ export function JobOrderManagement() {
         prev.map((r) =>
           r.id === editingActionRepairId
             ? {
-                ...r,
-                provider_name: actionRepairProvider.trim(),
-                description: actionRepairDescription.trim(),
-                cost: Number(actionRepairCost),
-                repair_date: actionRepairDate,
-              }
+              ...r,
+              provider_name: actionRepairProvider.trim(),
+              description: actionRepairDescription.trim(),
+              cost: Number(actionRepairCost),
+              repair_date: actionRepairDate,
+            }
             : r
         )
       );
@@ -784,8 +839,8 @@ export function JobOrderManagement() {
                   )}
                 </div>
               </div>
-              <span className="px-2 py-1 rounded text-xs font-medium bg-positive-100 text-positive">
-                {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+              <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColors(order.status)}`}>
+                {getStatusLabel(order.status)}
               </span>
             </div>
 
@@ -799,9 +854,10 @@ export function JobOrderManagement() {
 
             {/* Actions */}
             <div
-              className={`flex items-center justify-end ${canRepair || canUpdate || canDelete ? "gap-4 pt-3 border-t border-neutral-200" : ""
+              className={`flex items-center justify-end flex-wrap ${canRepair || canUpdate || canDelete || canApproval ? "gap-4 pt-3 border-t border-neutral-200" : ""
                 }`}
             >
+
               {canRepair && (
                 <button
                   onClick={(e) => { e.stopPropagation(); openRepairActionModal(order); }}
@@ -1102,7 +1158,7 @@ export function JobOrderManagement() {
               <div className="grid grid-cols-2 gap-4">
                 <ModalInput
                   type="text"
-                  value={viewOrder.status.charAt(0).toUpperCase() + viewOrder.status.slice(1)}
+                  value={getStatusLabel(viewOrder.status)}
                   onChange={() => { }}
                   placeholder="Status"
                   disabled
@@ -1115,6 +1171,24 @@ export function JobOrderManagement() {
                   disabled
                 />
               </div>
+              {(viewOrder.status === "approved" || viewOrder.status === "rejected") && (
+                <div className="grid grid-cols-2 gap-4">
+                  <ModalInput
+                    type="text"
+                    value={viewOrder.approved_at ? formatDateTime(viewOrder.approved_at) : "—"}
+                    onChange={() => { }}
+                    placeholder={viewOrder.status === "approved" ? "Approved At" : "Rejected At"}
+                    disabled
+                  />
+                  <ModalInput
+                    type="text"
+                    value={viewOrder.approval_notes || "—"}
+                    onChange={() => { }}
+                    placeholder="Approval Notes"
+                    disabled
+                  />
+                </div>
+              )}
             </ModalSection>
 
             <ModalSection title="Customer & Vehicle">
@@ -1272,6 +1346,76 @@ export function JobOrderManagement() {
                 />
               </div>
             </ModalSection>
+
+            {canApproval && (viewOrder.status === "created" || viewOrder.status === "pending_approval") && (
+              <ModalSection title="Actions">
+                {viewOrder.status === "pending_approval" && (
+                  <div className="grid grid-row gap-4">
+                    <button
+                      type="button"
+                      disabled={processingApproval}
+                      onClick={async () => {
+                        try {
+                          setProcessingApproval(true);
+                          await jobOrdersApi.recordApproval(viewOrder.id, { decision: "approved" });
+                          setShowViewModal(false);
+                          setViewOrder(null);
+                          showToast.success("Customer approved the job order");
+                          fetchData();
+                        } catch (err) {
+                          showToast.error(err instanceof Error ? err.message : "Failed to record approval");
+                        } finally {
+                          setProcessingApproval(false);
+                        }
+                      }}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 bg-positive text-white rounded-xl font-semibold hover:bg-positive-950 transition-colors"
+                    >
+                      <LuShieldCheck className="w-5 h-5" />
+                      {processingApproval ? "Processing..." : "Accept Customer Approval"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={processingApproval}
+                      onClick={async () => {
+                        try {
+                          setProcessingApproval(true);
+                          await jobOrdersApi.recordApproval(viewOrder.id, { decision: "rejected" });
+                          setShowViewModal(false);
+                          setViewOrder(null);
+                          showToast.success("Customer rejected the job order");
+                          fetchData();
+                        } catch (err) {
+                          showToast.error(err instanceof Error ? err.message : "Failed to record approval");
+                        } finally {
+                          setProcessingApproval(false);
+                        }
+                      }}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 transition-colors"
+                    >
+                      <LuShieldX className="w-5 h-5" />
+                      {processingApproval ? "Processing..." : "Reject Customer Approval"}
+                    </button>
+                  </div>
+                )}
+
+                {viewOrder.status === "created" && (
+                  <div className="grid grid-cols-1 gap-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleRequestApproval(viewOrder);
+                        setShowViewModal(false);
+                        setViewOrder(null);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 transition-colors"
+                    >
+                      <LuSend className="w-5 h-5" />
+                      Request Customer Approval
+                    </button>
+                  </div>
+                )}
+              </ModalSection>
+            )}
           </div>
         )}
       </Modal>
@@ -1499,6 +1643,8 @@ export function JobOrderManagement() {
           </div>
         )}
       </Modal>
+
+
     </div>
   );
 }

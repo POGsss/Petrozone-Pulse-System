@@ -324,7 +324,6 @@ export function PricingManagement() {
       showToast.success("Pricing rule deleted successfully");
       fetchData();
     } catch (err) {
-      console.error("Failed to delete pricing matrix:", err);
       showToast.error(err instanceof Error ? err.message : "Failed to delete pricing rule");
     } finally {
       setDeletingItem(false);
