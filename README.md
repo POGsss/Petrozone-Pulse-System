@@ -2,13 +2,10 @@
 
 A multi-branch Auto-Repair Order Management System designed to streamline operations across multiple automotive service branches with role-based access control, comprehensive audit logging, and branch-isolated data management.
 
----
-
-> **Development Branch**
->
-> This is the `development` branch. It contains features and changes that are actively being developed and **may not be stable**. Code here has not been fully tested or reviewed for production use.
->
-> **Do not deploy this branch to production.** For the latest stable release, switch to the [`main`](../../tree/main) branch.
+## Development Branch
+This is the `development` branch. It contains features and changes that are actively being developed and **may not be stable**.
+Code here has not been fully tested or reviewed for production use.
+Do not deploy this branch to production. For the latest stable release, switch to the [`main`](../../tree/main) branch.
 
 ---
 
@@ -19,7 +16,9 @@ A multi-branch Auto-Repair Order Management System designed to streamline operat
 | `main` | Production-ready code. Deployed to live environment. | Stable |
 | `development` | Active development. New features, bug fixes, and experiments. | Unstable |
 
-### Workflow
+---
+
+## Workflow
 
 1. All new features and fixes are developed on the `development` branch
 2. Once a module/sprint is complete and tested, `development` is merged into `main`
