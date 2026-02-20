@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
+import { logFailedAction } from "../lib/auditLogger.js";
 
 const router = Router();
 
@@ -110,6 +111,7 @@ router.put(
       }
     } catch (err) {
       console.error("PUT /api/settings error:", err);
+      await logFailedAction(req, "UPDATE", "SYSTEM_SETTINGS", null, err instanceof Error ? err.message : "Failed to update settings");
       res.status(500).json({ error: "Failed to update settings" });
     }
   }

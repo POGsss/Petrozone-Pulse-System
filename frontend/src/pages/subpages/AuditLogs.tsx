@@ -100,10 +100,14 @@ export function AuditLogs() {
     fetchStats();
   }, []);
 
-  // Refetch when page or filters change
+  // Track applied date filters separately so they only take effect on "Apply"
+  const [appliedStartDate, setAppliedStartDate] = useState("");
+  const [appliedEndDate, setAppliedEndDate] = useState("");
+
+  // Refetch when page, action, or applied dates change
   useEffect(() => {
     fetchData();
-  }, [currentPage, filters.action]);
+  }, [currentPage, filters.action, appliedStartDate, appliedEndDate]);
 
   async function fetchData() {
     try {
@@ -116,8 +120,8 @@ export function AuditLogs() {
       };
 
       if (filters.action) params.action = filters.action;
-      if (filters.startDate) params.start_date = filters.startDate;
-      if (filters.endDate) params.end_date = filters.endDate;
+      if (appliedStartDate) params.start_date = appliedStartDate + "T00:00:00";
+      if (appliedEndDate) params.end_date = appliedEndDate + "T23:59:59";
 
       const response: PaginatedResponse<AuditLog> = await auditApi.getLogs(params);
       setLogs(response.data);
@@ -153,14 +157,16 @@ export function AuditLogs() {
   // Apply date filter
   function handleApplyFilters() {
     setCurrentPage(1);
-    fetchData();
+    setAppliedStartDate(filters.startDate);
+    setAppliedEndDate(filters.endDate);
   }
 
   // Reset filters
   function handleResetFilters() {
     setFilters({ action: "", search: "", startDate: "", endDate: "" });
+    setAppliedStartDate("");
+    setAppliedEndDate("");
     setCurrentPage(1);
-    fetchData();
   }
 
   if (loading && logs.length === 0) {

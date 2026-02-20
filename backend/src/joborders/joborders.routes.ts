@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
+import { logFailedAction } from "../lib/auditLogger.js";
 
 const router = Router();
 
@@ -340,6 +341,7 @@ router.post(
       });
     } catch (error) {
       console.error("Create job order error:", error);
+      await logFailedAction(req, "CREATE", "JOB_ORDER", null, error instanceof Error ? error.message : "Failed to create job order");
       res.status(500).json({ error: "Failed to create job order" });
     }
   }
@@ -427,6 +429,7 @@ router.put(
       res.json(updated);
     } catch (error) {
       console.error("Update job order error:", error);
+      await logFailedAction(req, "UPDATE", "JOB_ORDER", req.params.id || null, error instanceof Error ? error.message : "Failed to update job order");
       res.status(500).json({ error: "Failed to update job order" });
     }
   }
@@ -503,6 +506,7 @@ router.delete(
       }
     } catch (error) {
       console.error("Delete job order error:", error);
+      await logFailedAction(req, "DELETE", "JOB_ORDER", req.params.id || null, error instanceof Error ? error.message : "Failed to delete job order");
       res.status(500).json({ error: "Failed to delete job order" });
     }
   }

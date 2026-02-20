@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireBranchManager, requireBranchAccess } from "../middleware/auth.middleware.js";
 import type { BranchInsert, BranchUpdate } from "../types/database.types.js";
+import { logFailedAction } from "../lib/auditLogger.js";
 
 const router = Router();
 
@@ -146,6 +147,7 @@ router.post("/", requireBranchManager, async (req: Request, res: Response): Prom
     res.status(201).json(branch);
   } catch (error) {
     console.error("Create branch error:", error);
+    await logFailedAction(req, "CREATE", "BRANCH", null, error instanceof Error ? error.message : "Failed to create branch");
     res.status(500).json({ error: "Failed to create branch" });
   }
 });
@@ -221,6 +223,7 @@ router.put("/:branchId", requireBranchManager, async (req: Request, res: Respons
     res.json(branch);
   } catch (error) {
     console.error("Update branch error:", error);
+    await logFailedAction(req, "UPDATE", "BRANCH", req.params.branchId as string || null, error instanceof Error ? error.message : "Failed to update branch");
     res.status(500).json({ error: "Failed to update branch" });
   }
 });
@@ -299,6 +302,7 @@ router.delete("/:branchId", requireBranchManager, async (req: Request, res: Resp
     res.json({ message: "Branch deleted successfully" });
   } catch (error) {
     console.error("Delete branch error:", error);
+    await logFailedAction(req, "DELETE", "BRANCH", req.params.branchId as string || null, error instanceof Error ? error.message : "Failed to delete branch");
     res.status(500).json({ error: "Failed to delete branch" });
   }
 });

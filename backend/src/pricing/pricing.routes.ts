@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
+import { logFailedAction } from "../lib/auditLogger.js";
 
 const router = Router();
 
@@ -376,6 +377,7 @@ router.post(
       res.status(201).json(item);
     } catch (error) {
       console.error("Create pricing matrix error:", error);
+      await logFailedAction(req, "CREATE", "PRICING_MATRIX", null, error instanceof Error ? error.message : "Failed to create pricing matrix");
       res.status(500).json({ error: "Failed to create pricing matrix" });
     }
   }
@@ -574,6 +576,7 @@ router.put(
       res.json(item);
     } catch (error) {
       console.error("Update pricing matrix error:", error);
+      await logFailedAction(req, "UPDATE", "PRICING_MATRIX", req.params.id || null, error instanceof Error ? error.message : "Failed to update pricing matrix");
       res.status(500).json({ error: "Failed to update pricing matrix" });
     }
   }
@@ -670,6 +673,7 @@ router.delete(
       res.json({ message: "Pricing matrix deleted successfully" });
     } catch (error) {
       console.error("Delete pricing matrix error:", error);
+      await logFailedAction(req, "DELETE", "PRICING_MATRIX", req.params.id || null, error instanceof Error ? error.message : "Failed to delete pricing matrix");
       res.status(500).json({ error: "Failed to delete pricing matrix" });
     }
   }

@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireUserManager } from "../middleware/auth.middleware.js";
+import { logFailedAction } from "../lib/auditLogger.js";
 
 const router = Router();
 
@@ -448,6 +449,7 @@ router.post("/change-password", requireAuth, async (req: Request, res: Response)
     res.json({ message: "Password changed successfully" });
   } catch (error) {
     console.error("Change password error:", error);
+    await logFailedAction(req, "UPDATE", "PASSWORD", req.user?.id || null, error instanceof Error ? error.message : "Failed to change password");
     res.status(500).json({ error: "Failed to change password" });
   }
 });
@@ -521,6 +523,7 @@ router.put("/profile", requireAuth, async (req: Request, res: Response): Promise
     });
   } catch (error) {
     console.error("Profile update error:", error);
+    await logFailedAction(req, "UPDATE", "USER_PROFILE", req.user?.id || null, error instanceof Error ? error.message : "Failed to update profile");
     res.status(500).json({ error: "Failed to update profile" });
   }
 });
@@ -590,6 +593,7 @@ router.post("/unlock-account", requireAuth, requireUserManager, async (req: Requ
     res.json({ message: "Account unlocked successfully" });
   } catch (error) {
     console.error("Unlock account error:", error);
+    await logFailedAction(req, "UPDATE", "USER_PROFILE", req.body?.user_id || null, error instanceof Error ? error.message : "Failed to unlock account");
     res.status(500).json({ error: "Failed to unlock account" });
   }
 });

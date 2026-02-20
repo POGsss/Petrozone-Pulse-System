@@ -83,6 +83,7 @@ export function JobOrderManagement() {
   const canCreate = userRoles.some((r) => ["POC", "JS", "R"].includes(r));
   const canUpdate = userRoles.some((r) => ["POC", "JS", "R", "T"].includes(r));
   const canDelete = userRoles.some((r) => ["POC", "JS", "R"].includes(r));
+  const canRepair = userRoles.some((r) => ["HM", "POC", "JS", "R", "T"].includes(r));
 
   // Data state
   const [allOrders, setAllOrders] = useState<JobOrder[]>([]);
@@ -798,10 +799,10 @@ export function JobOrderManagement() {
 
             {/* Actions */}
             <div
-              className={`flex items-center justify-end ${canUpdate || canDelete ? "gap-4 pt-3 border-t border-neutral-200" : ""
+              className={`flex items-center justify-end ${canRepair || canUpdate || canDelete ? "gap-4 pt-3 border-t border-neutral-200" : ""
                 }`}
             >
-              {canUpdate && (
+              {canRepair && (
                 <button
                   onClick={(e) => { e.stopPropagation(); openRepairActionModal(order); }}
                   className="flex items-center gap-1 text-sm text-positive hover:text-positive-900"

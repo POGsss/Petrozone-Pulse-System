@@ -36,22 +36,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const userData = await authApi.getMe();
         setUser(userData);
         setMustChangePassword(userData.must_change_password || false);
-      } catch (error) {
-        // Token invalid or expired, try refresh
-        const refreshToken = localStorage.getItem("refresh_token");
-        if (refreshToken) {
-          try {
-            const { session } = await authApi.refreshToken(refreshToken);
-            setTokens(session.access_token, session.refresh_token);
-            const userData = await authApi.getMe();
-            setUser(userData);
-            setMustChangePassword(userData.must_change_password || false);
-          } catch {
-            clearTokens();
-          }
-        } else {
-          clearTokens();
-        }
+      } catch {
+        // Token invalid, expired, or user deactivated/locked — clean up silently
+        // (fetchWithAuth already handles redirect for 401/403/423)
+        clearTokens();
+        setUser(null);
       } finally {
         setIsLoading(false);
       }

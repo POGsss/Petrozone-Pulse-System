@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
+import { logFailedAction } from "../lib/auditLogger.js";
 
 const router = Router();
 
@@ -241,6 +242,7 @@ router.post(
       res.status(201).json(repair);
     } catch (error) {
       console.error("Create third-party repair error:", error);
+      await logFailedAction(req, "CREATE", "THIRD_PARTY_REPAIR", null, error instanceof Error ? error.message : "Failed to create third-party repair");
       res.status(500).json({ error: "Failed to create third-party repair" });
     }
   }
@@ -344,6 +346,7 @@ router.put(
       res.json(updated);
     } catch (error) {
       console.error("Update third-party repair error:", error);
+      await logFailedAction(req, "UPDATE", "THIRD_PARTY_REPAIR", req.params.id || null, error instanceof Error ? error.message : "Failed to update third-party repair");
       res.status(500).json({ error: "Failed to update third-party repair" });
     }
   }
@@ -424,6 +427,7 @@ router.delete(
       }
     } catch (error) {
       console.error("Delete third-party repair error:", error);
+      await logFailedAction(req, "DELETE", "THIRD_PARTY_REPAIR", req.params.id || null, error instanceof Error ? error.message : "Failed to delete third-party repair");
       res.status(500).json({ error: "Failed to delete third-party repair" });
     }
   }

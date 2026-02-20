@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
+import { logFailedAction } from "../lib/auditLogger.js";
 
 const router = Router();
 
@@ -316,6 +317,7 @@ router.post(
       res.status(201).json(vehicle);
     } catch (error) {
       console.error("Create vehicle error:", error);
+      await logFailedAction(req, "CREATE", "VEHICLE", null, error instanceof Error ? error.message : "Failed to create vehicle");
       res.status(500).json({ error: "Failed to create vehicle" });
     }
   }
@@ -521,6 +523,7 @@ router.put(
       res.json(vehicle);
     } catch (error) {
       console.error("Update vehicle error:", error);
+      await logFailedAction(req, "UPDATE", "VEHICLE", req.params.vehicleId || null, error instanceof Error ? error.message : "Failed to update vehicle");
       res.status(500).json({ error: "Failed to update vehicle" });
     }
   }
@@ -588,6 +591,7 @@ router.delete(
       res.json({ message: "Vehicle deactivated successfully" });
     } catch (error) {
       console.error("Delete vehicle error:", error);
+      await logFailedAction(req, "DELETE", "VEHICLE", req.params.vehicleId || null, error instanceof Error ? error.message : "Failed to deactivate vehicle");
       res.status(500).json({ error: "Failed to deactivate vehicle" });
     }
   }

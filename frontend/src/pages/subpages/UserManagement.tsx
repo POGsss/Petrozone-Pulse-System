@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { LuPlus, LuCircleAlert, LuRefreshCw, LuSearch, LuPencil, LuTrash2, LuUsers, LuUserCheck, LuUserX, LuChevronLeft, LuChevronRight, LuEye, LuLock, LuLockOpen } from "react-icons/lu";
+import { LuPlus, LuCircleAlert, LuRefreshCw, LuSearch, LuPencil, LuTrash2, LuUsers, LuUserCheck, LuUserX, LuChevronLeft, LuChevronRight, LuEye, LuLock, LuLockOpen, LuFilter } from "react-icons/lu";
 import { showToast } from "../../lib/toast";
 import { rbacApi, branchesApi, authApi } from "../../lib/api";
 import { Modal, ModalSection, ModalInput, ModalSelect, ModalButtons, ModalError } from "../../components";
@@ -35,8 +35,12 @@ export function UserManagement() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Search and pagination state
+  // Search, filters and pagination state
   const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterRole, setFilterRole] = useState<string>("all");
+  const [filterBranch, setFilterBranch] = useState<string>("all");
+  const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
   // Add user modal state
@@ -122,26 +126,48 @@ export function UserManagement() {
 
   // Filtered and paginated users
   const { filteredUsers, paginatedUsers, totalPages } = useMemo(() => {
-    const filtered = users.filter(user =>
-      user.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.phone?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const q = searchQuery.toLowerCase();
+    const filtered = users.filter((user) => {
+      const matchSearch =
+        !q ||
+        user.full_name.toLowerCase().includes(q) ||
+        user.email.toLowerCase().includes(q) ||
+        user.phone?.toLowerCase().includes(q);
+
+      const matchStatus =
+        filterStatus === "all" ||
+        (filterStatus === "active" && user.is_active) ||
+        (filterStatus === "inactive" && !user.is_active) ||
+        (filterStatus === "locked" && isUserLocked(user));
+
+      const matchRole = filterRole === "all" || user.roles.includes(filterRole);
+      const matchBranch = filterBranch === "all" || user.branches.some(b => b.branch_id === filterBranch);
+
+      return matchSearch && matchStatus && matchRole && matchBranch;
+    });
     const total = Math.ceil(filtered.length / ITEMS_PER_PAGE);
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
     const paginated = filtered.slice(start, start + ITEMS_PER_PAGE);
     return { filteredUsers: filtered, paginatedUsers: paginated, totalPages: total };
-  }, [users, searchQuery, currentPage]);
+  }, [users, searchQuery, filterStatus, filterRole, filterBranch, currentPage]);
 
   // Fetch data on mount
   useEffect(() => {
     fetchData();
   }, []);
 
-  // Reset to page 1 when search changes
+  // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery]);
+  }, [searchQuery, filterStatus, filterRole, filterBranch]);
+
+  function handleResetFilters() {
+    setFilterStatus("all");
+    setFilterRole("all");
+    setFilterBranch("all");
+    setSearchQuery("");
+    setCurrentPage(1);
+  }
 
   async function fetchData() {
     try {
@@ -476,18 +502,103 @@ export function UserManagement() {
 
       {/* Table Section */}
       <div className="bg-white border border-neutral-200 rounded-xl">
-        {/* Table Header with Search */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 border-b border-neutral-200">
-          <div className="relative">
-            <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-            <input
-              type="text"
-              placeholder="Search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 pr-4 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-primary w-full sm:w-64"
-            />
+        {/* Table Header with Search and Filters */}
+        <div className="p-4 border-b border-neutral-200 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="relative flex-1 max-w-md">
+              <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-900" />
+              <input
+                type="text"
+                placeholder="Search users..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-4 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-primary w-full sm:w-64"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={filterStatus}
+                onChange={(e) => {
+                  setFilterStatus(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="appearance-none px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+              >
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="locked">Locked</option>
+              </select>
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm font-medium transition-colors ${showFilters ? "border-primary bg-primary-100 text-primary" : "border-neutral-200 text-neutral-950 hover:bg-neutral-100"
+                  }`}
+              >
+                <LuFilter className="w-4 h-4" />
+                <span className="hidden sm:inline">Filters</span>
+              </button>
+              <button
+                onClick={fetchData}
+                disabled={loading}
+                className="p-2 border border-neutral-200 rounded-lg text-neutral-950 hover:bg-neutral-100 disabled:opacity-100"
+                title="Refresh"
+              >
+                <LuRefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+              </button>
+            </div>
           </div>
+
+          {/* Advanced Filters */}
+          {showFilters && (
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1">
+                <label className="block text-xs text-neutral-900 mb-1">Role</label>
+                <select
+                  value={filterRole}
+                  onChange={(e) => {
+                    setFilterRole(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                >
+                  <option value="all">All Roles</option>
+                  {roles.map((r) => (
+                    <option key={r.code} value={r.code}>{r.code} - {r.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-neutral-900 mb-1">Branch</label>
+                <select
+                  value={filterBranch}
+                  onChange={(e) => {
+                    setFilterBranch(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                >
+                  <option value="all">All Branches</option>
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-end gap-2">
+                <button
+                  onClick={fetchData}
+                  className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-950 transition-colors"
+                >
+                  Apply
+                </button>
+                <button
+                  onClick={handleResetFilters}
+                  className="px-4 py-2 border border-neutral-200 rounded-lg text-sm font-medium text-neutral-950 hover:bg-neutral-100 transition-colors"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Mobile Card View */}
@@ -573,7 +684,9 @@ export function UserManagement() {
 
             {paginatedUsers.length === 0 && (
               <div className="col-span-full text-center py-12 text-neutral-900">
-                {searchQuery ? "No users match your search." : 'No users found. Click "Add a New User" to create one.'}
+                {searchQuery || filterStatus !== "all" || filterRole !== "all" || filterBranch !== "all"
+                  ? "No users match your filters."
+                  : 'No users found. Click "Add a New User" to create one.'}
               </div>
             )}
           </div>
@@ -671,7 +784,9 @@ export function UserManagement() {
 
           {paginatedUsers.length === 0 && (
             <div className="text-center py-12 text-neutral-900">
-              {searchQuery ? "No users match your search." : "No users found. Click \"Add a New User\" to create one."}
+              {searchQuery || filterStatus !== "all" || filterRole !== "all" || filterBranch !== "all"
+                ? "No users match your filters."
+                : "No users found. Click \"Add a New User\" to create one."}
             </div>
           )}
         </div>

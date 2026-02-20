@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles, requireBranchAccess } from "../middleware/auth.middleware.js";
+import { logFailedAction } from "../lib/auditLogger.js";
 
 const router = Router();
 
@@ -255,6 +256,7 @@ router.post(
       res.status(201).json(customer);
     } catch (error) {
       console.error("Create customer error:", error);
+      await logFailedAction(req, "CREATE", "CUSTOMER", null, error instanceof Error ? error.message : "Failed to create customer");
       res.status(500).json({ error: "Failed to create customer" });
     }
   }
@@ -414,6 +416,7 @@ router.put(
       res.json(customer);
     } catch (error) {
       console.error("Update customer error:", error);
+      await logFailedAction(req, "UPDATE", "CUSTOMER", req.params.customerId || null, error instanceof Error ? error.message : "Failed to update customer");
       res.status(500).json({ error: "Failed to update customer" });
     }
   }
@@ -477,6 +480,7 @@ router.delete(
       res.json({ message: "Customer deleted successfully" });
     } catch (error) {
       console.error("Delete customer error:", error);
+      await logFailedAction(req, "DELETE", "CUSTOMER", req.params.customerId || null, error instanceof Error ? error.message : "Failed to delete customer");
       res.status(500).json({ error: "Failed to delete customer" });
     }
   }

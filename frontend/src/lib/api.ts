@@ -17,6 +17,15 @@ export function clearTokens(): void {
   localStorage.removeItem("refresh_token");
 }
 
+// Force logout: clear tokens and redirect to login page
+function forceLogout(): void {
+  clearTokens();
+  // Only redirect if not already on login/reset-password page
+  if (!window.location.pathname.startsWith("/login") && !window.location.pathname.startsWith("/reset-password")) {
+    window.location.href = "/login";
+  }
+}
+
 // Generic fetch wrapper with auth
 async function fetchWithAuth<T>(
   endpoint: string,
@@ -40,6 +49,17 @@ async function fetchWithAuth<T>(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: "Request failed" }));
+
+    // Auto-logout on auth failures (skip for login/refresh/change-password endpoints)
+    const isAuthEndpoint = endpoint === "/api/auth/login" || endpoint === "/api/auth/refresh" || endpoint === "/api/auth/change-password";
+    if (!isAuthEndpoint) {
+      // 401 = expired/invalid token, 403 = deactivated account, 423 = locked account
+      if (response.status === 401 || response.status === 403 || response.status === 423) {
+        forceLogout();
+        return new Promise(() => {}); // Never resolves — page is redirecting
+      }
+    }
+
     throw new Error(error.error || `HTTP ${response.status}`);
   }
 

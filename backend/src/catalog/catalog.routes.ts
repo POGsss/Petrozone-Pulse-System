@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
+import { logFailedAction } from "../lib/auditLogger.js";
 
 const router = Router();
 
@@ -288,6 +289,7 @@ router.post(
       res.status(201).json(item);
     } catch (error) {
       console.error("Create catalog item error:", error);
+      await logFailedAction(req, "CREATE", "CATALOG_ITEM", null, error instanceof Error ? error.message : "Failed to create catalog item");
       res.status(500).json({ error: "Failed to create catalog item" });
     }
   }
@@ -470,6 +472,7 @@ router.put(
       res.json(item);
     } catch (error) {
       console.error("Update catalog item error:", error);
+      await logFailedAction(req, "UPDATE", "CATALOG_ITEM", req.params.itemId || null, error instanceof Error ? error.message : "Failed to update catalog item");
       res.status(500).json({ error: "Failed to update catalog item" });
     }
   }
@@ -577,6 +580,7 @@ router.delete(
       res.json({ message: "Catalog item deleted successfully" });
     } catch (error) {
       console.error("Delete catalog item error:", error);
+      await logFailedAction(req, "DELETE", "CATALOG_ITEM", req.params.itemId || null, error instanceof Error ? error.message : "Failed to delete catalog item");
       res.status(500).json({ error: "Failed to delete catalog item" });
     }
   }

@@ -11,6 +11,7 @@ import {
   LuUsers,
   LuUserCheck,
   LuUserX,
+  LuFilter,
 } from "react-icons/lu";
 import { customersApi, branchesApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
@@ -53,8 +54,12 @@ export function CustomerManagement() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Search and pagination
+  // Search, filters and pagination
   const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterType, setFilterType] = useState<string>("all");
+  const [filterBranch, setFilterBranch] = useState<string>("all");
+  const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
   // Add customer modal state
@@ -103,30 +108,46 @@ export function CustomerManagement() {
     return { total, active, inactive };
   }, [allCustomers]);
 
-  // Filtered and paginated customers (client-side like UserManagement)
-  const { paginatedCustomers, totalPages } = useMemo(() => {
-    const filtered = allCustomers.filter(
-      (c) =>
-        c.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.contact_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.address?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+  // Filtered and paginated customers (client-side like PricingManagement)
+  const { filteredCustomers, paginatedCustomers, totalPages } = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    const filtered = allCustomers.filter((c) => {
+      const matchSearch =
+        !q ||
+        c.full_name.toLowerCase().includes(q) ||
+        c.email?.toLowerCase().includes(q) ||
+        c.contact_number?.toLowerCase().includes(q) ||
+        c.address?.toLowerCase().includes(q);
+
+      const matchStatus = filterStatus === "all" || c.status === filterStatus;
+      const matchType = filterType === "all" || c.customer_type === filterType;
+      const matchBranch = filterBranch === "all" || c.branch_id === filterBranch;
+
+      return matchSearch && matchStatus && matchType && matchBranch;
+    });
     const total = Math.ceil(filtered.length / ITEMS_PER_PAGE);
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
     const paginated = filtered.slice(start, start + ITEMS_PER_PAGE);
-    return { paginatedCustomers: paginated, totalPages: total, filteredCount: filtered.length };
-  }, [allCustomers, searchQuery, currentPage]);
+    return { filteredCustomers: filtered, paginatedCustomers: paginated, totalPages: total };
+  }, [allCustomers, searchQuery, filterStatus, filterType, filterBranch, currentPage]);
 
   // Fetch data on mount
   useEffect(() => {
     fetchData();
   }, []);
 
-  // Reset to page 1 when search changes
+  // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery]);
+  }, [searchQuery, filterStatus, filterType, filterBranch]);
+
+  function handleResetFilters() {
+    setFilterStatus("all");
+    setFilterType("all");
+    setFilterBranch("all");
+    setSearchQuery("");
+    setCurrentPage(1);
+  }
 
   async function fetchData() {
     try {
@@ -414,18 +435,101 @@ export function CustomerManagement() {
 
       {/* Table Section */}
       <div className="bg-white border border-neutral-200 rounded-xl">
-        {/* Table Header with Search */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 border-b border-neutral-200">
-          <div className="relative">
-            <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-            <input
-              type="text"
-              placeholder="Search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 pr-4 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-primary w-full sm:w-64"
-            />
+        {/* Table Header with Search and Filters */}
+        <div className="p-4 border-b border-neutral-200 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="relative flex-1 max-w-md">
+              <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-900" />
+              <input
+                type="text"
+                placeholder="Search customers..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-4 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-primary w-full sm:w-64"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={filterStatus}
+                onChange={(e) => {
+                  setFilterStatus(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="appearance-none px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+              >
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm font-medium transition-colors ${showFilters ? "border-primary bg-primary-100 text-primary" : "border-neutral-200 text-neutral-950 hover:bg-neutral-100"
+                  }`}
+              >
+                <LuFilter className="w-4 h-4" />
+                <span className="hidden sm:inline">Filters</span>
+              </button>
+              <button
+                onClick={fetchData}
+                disabled={loading}
+                className="p-2 border border-neutral-200 rounded-lg text-neutral-950 hover:bg-neutral-100 disabled:opacity-100"
+                title="Refresh"
+              >
+                <LuRefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+              </button>
+            </div>
           </div>
+
+          {/* Advanced Filters */}
+          {showFilters && (
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1">
+                <label className="block text-xs text-neutral-900 mb-1">Customer Type</label>
+                <select
+                  value={filterType}
+                  onChange={(e) => {
+                    setFilterType(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                >
+                  <option value="all">All Types</option>
+                  <option value="individual">Individual</option>
+                  <option value="company">Company</option>
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-neutral-900 mb-1">Branch</label>
+                <select
+                  value={filterBranch}
+                  onChange={(e) => {
+                    setFilterBranch(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                >
+                  <option value="all">All Branches</option>
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-end gap-2">
+                <button
+                  onClick={fetchData}
+                  className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-950 transition-colors"
+                >
+                  Apply
+                </button>
+                <button
+                  onClick={handleResetFilters}
+                  className="px-4 py-2 border border-neutral-200 rounded-lg text-sm font-medium text-neutral-950 hover:bg-neutral-100 transition-colors"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Mobile Card View */}
@@ -496,8 +600,8 @@ export function CustomerManagement() {
 
             {paginatedCustomers.length === 0 && (
               <div className="col-span-full text-center py-12 text-neutral-900">
-                {searchQuery
-                  ? "No customers match your search."
+                {searchQuery || filterStatus !== "all" || filterType !== "all" || filterBranch !== "all"
+                  ? "No customers match your filters."
                   : 'No customers found. Click "Add a New Customer" to create one.'}
               </div>
             )}
@@ -594,8 +698,8 @@ export function CustomerManagement() {
 
           {paginatedCustomers.length === 0 && (
             <div className="text-center py-12 text-neutral-900">
-              {searchQuery
-                ? "No customers match your search."
+              {searchQuery || filterStatus !== "all" || filterType !== "all" || filterBranch !== "all"
+                ? "No customers match your filters."
                 : 'No customers found. Click "Add a New Customer" to create one.'}
             </div>
           )}
@@ -605,7 +709,7 @@ export function CustomerManagement() {
         {totalPages > 1 && (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border-t border-neutral-200">
             <p className="text-sm text-neutral-900">
-              Page {currentPage} of {totalPages}
+              {(currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredCustomers.length)} of {filteredCustomers.length} customers
             </p>
             <div className="flex items-center gap-2">
               <button
