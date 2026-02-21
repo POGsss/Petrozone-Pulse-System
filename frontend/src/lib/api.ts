@@ -305,6 +305,8 @@ export const auditApi = {
       total_events: number;
       actions: Record<string, number>;
       logins: number;
+      successful: number;
+      failed: number;
     }>(`/api/audit/stats${query}`);
   },
 };
