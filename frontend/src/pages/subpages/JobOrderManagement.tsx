@@ -31,6 +31,7 @@ import {
 } from "../../components";
 import type { FilterGroup } from "../../components";
 import type { JobOrder, JobOrderHistory, Branch, Customer, Vehicle, CatalogItem, ResolvedPricing, ThirdPartyRepair } from "../../types";
+import { set } from "zod";
 
 const ITEMS_PER_PAGE = 12;
 
@@ -197,6 +198,7 @@ export function JobOrderManagement() {
   // History state
   const [history, setHistory] = useState<JobOrderHistory[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   // Filter groups for SearchFilter
   const filterGroups: FilterGroup[] = useMemo(() => {
@@ -926,15 +928,6 @@ export function JobOrderManagement() {
                   Delete
                 </button>
               )}
-              {canCreate && ["created", "pending_approval", "rejected"].includes(order.status) && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleCancelOrder(order); }}
-                  className="flex items-center gap-1 text-sm text-neutral-600 hover:text-neutral-950"
-                >
-                  <LuBan className="w-4 h-4" />
-                  Cancel
-                </button>
-              )}
             </div>
           </div>
         ))}
@@ -1321,60 +1314,48 @@ export function JobOrderManagement() {
             </ModalSection>
 
             {/* Third-Party Repairs section */}
-            <ModalSection title="Third-Party Repairs">
-              {loadingRepairs ? (
-                <div className="space-y-4">
-                  {[1, 2].map((i) => (
-                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
-                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
-                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
-                    </div>
-                  ))}
-                </div>
-              ) : repairs.length > 0 ? (
-                <div className="space-y-4">
-                  {repairs.map((repair) => (
-                    <div
-                      key={repair.id}
-                      className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-neutral-950 text-sm truncate">
-                          {repair.provider_name}
-                        </p>
-                        <p className="text-xs text-neutral-900 line-clamp-1">
-                          {repair.description}
-                        </p>
-                        <p className="text-xs text-neutral-900">
-                          {formatDate(repair.repair_date)}
-                        </p>
+            {repairs.length > 0 && (
+              <ModalSection title="Third-Party Repairs">
+                {loadingRepairs ? (
+                  <div className="space-y-4">
+                    {[1, 2].map((i) => (
+                      <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
+                        <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
+                        <div className="h-3 bg-neutral-200 rounded w-1/2" />
                       </div>
-                      <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap ml-3">
-                        {formatPrice(repair.cost)}
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {repairs.map((repair) => (
+                      <div
+                        key={repair.id}
+                        className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-neutral-950 text-sm truncate">
+                            {repair.provider_name}
+                          </p>
+                          <p className="text-xs text-neutral-900 line-clamp-1">
+                            {repair.description}
+                          </p>
+                          <p className="text-xs text-neutral-900">
+                            {formatDate(repair.repair_date)}
+                          </p>
+                        </div>
+                        <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap ml-3">
+                          {formatPrice(repair.cost)}
+                        </span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
+                      <span className="font-semibold text-neutral-950">Repairs Total</span>
+                      <span className="font-bold text-primary text-lg">
+                        {formatPrice(repairs.reduce((sum, r) => sum + r.cost, 0))}
                       </span>
                     </div>
-                  ))}
-                  <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
-                    <span className="font-semibold text-neutral-950">Repairs Total</span>
-                    <span className="font-bold text-primary text-lg">
-                      {formatPrice(repairs.reduce((sum, r) => sum + r.cost, 0))}
-                    </span>
                   </div>
-                </div>
-              ) : (
-                <p className="text-sm text-neutral-900 text-center py-3">No third-party repairs.</p>
-              )}
-            </ModalSection>
-
-            {/* Grand Total (items + repairs) */}
-            {(viewOrder.job_order_items && viewOrder.job_order_items.length > 0) && (
-              <ModalSection title="Grand Total">
-                <div className="flex justify-between items-center px-4 py-4 bg-primary-200 rounded-xl">
-                  <span className="font-bold text-neutral-950 text-lg">Grand Total</span>
-                  <span className="font-bold text-primary text-xl">
-                    {formatPrice(viewOrder.total_amount + repairs.reduce((sum, r) => sum + r.cost, 0))}
-                  </span>
-                </div>
+                )}
               </ModalSection>
             )}
 
@@ -1415,53 +1396,80 @@ export function JobOrderManagement() {
                   <div className="grid grid-row gap-4">
                     <button
                       type="button"
-                      disabled={processingApproval}
-                      onClick={async () => {
-                        try {
-                          setProcessingApproval(true);
-                          await jobOrdersApi.recordApproval(viewOrder.id, { decision: "approved" });
-                          setShowViewModal(false);
-                          setViewOrder(null);
-                          showToast.success("Customer approved the job order");
-                          fetchData();
-                        } catch (err) {
-                          showToast.error(err instanceof Error ? err.message : "Failed to record approval");
-                        } finally {
-                          setProcessingApproval(false);
-                        }
-                      }}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 bg-positive text-white rounded-xl font-semibold hover:bg-positive-950 transition-colors"
+                      onClick={() => {setShowHistoryModal(true); setShowViewModal(false);}}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-neutral-100 transition-colors"
                     >
-                      <LuShieldCheck className="w-5 h-5" />
-                      {processingApproval ? "Processing..." : "Accept Customer Approval"}
+                      <LuHistory className="w-5 h-5" />
+                      Job Order History
                     </button>
+                    <div className="grid grid-cols-2 gap-4">
+                      <button
+                        type="button"
+                        disabled={processingApproval}
+                        onClick={async () => {
+                          try {
+                            setProcessingApproval(true);
+                            await jobOrdersApi.recordApproval(viewOrder.id, { decision: "rejected" });
+                            setShowViewModal(false);
+                            setViewOrder(null);
+                            showToast.success("Customer rejected the job order");
+                            fetchData();
+                          } catch (err) {
+                            showToast.error(err instanceof Error ? err.message : "Failed to record approval");
+                          } finally {
+                            setProcessingApproval(false);
+                          }
+                        }}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-neutral-100 transition-colors"
+                      >
+                        <LuShieldX className="w-5 h-5" />
+                        {processingApproval ? "Processing..." : "Reject"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={processingApproval}
+                        onClick={async () => {
+                          try {
+                            setProcessingApproval(true);
+                            await jobOrdersApi.recordApproval(viewOrder.id, { decision: "approved" });
+                            setShowViewModal(false);
+                            setViewOrder(null);
+                            showToast.success("Customer approved the job order");
+                            fetchData();
+                          } catch (err) {
+                            showToast.error(err instanceof Error ? err.message : "Failed to record approval");
+                          } finally {
+                            setProcessingApproval(false);
+                          }
+                        }}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 transition-colors"
+                      >
+                        <LuShieldCheck className="w-5 h-5" />
+                        {processingApproval ? "Processing..." : "Accept"}
+                      </button>
+                    </div>
                     <button
                       type="button"
-                      disabled={processingApproval}
-                      onClick={async () => {
-                        try {
-                          setProcessingApproval(true);
-                          await jobOrdersApi.recordApproval(viewOrder.id, { decision: "rejected" });
-                          setShowViewModal(false);
-                          setViewOrder(null);
-                          showToast.success("Customer rejected the job order");
-                          fetchData();
-                        } catch (err) {
-                          showToast.error(err instanceof Error ? err.message : "Failed to record approval");
-                        } finally {
-                          setProcessingApproval(false);
-                        }
-                      }}
+                      disabled={processingCancel}
+                      onClick={() => handleCancelOrder(viewOrder)}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 transition-colors"
                     >
-                      <LuShieldX className="w-5 h-5" />
-                      {processingApproval ? "Processing..." : "Reject Customer Approval"}
+                      <LuBan className="w-5 h-5" />
+                      {processingCancel ? "Cancelling..." : "Cancel Job Order"}
                     </button>
                   </div>
                 )}
 
                 {viewOrder.status === "created" && (
                   <div className="grid grid-cols-1 gap-4">
+                    <button
+                      type="button"
+                      onClick={() => {setShowHistoryModal(true); setShowViewModal(false);}}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-neutral-100 transition-colors"
+                    >
+                      <LuHistory className="w-5 h-5" />
+                      Job Order History
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -1474,11 +1482,28 @@ export function JobOrderManagement() {
                       <LuSend className="w-5 h-5" />
                       Request Customer Approval
                     </button>
+                    <button
+                      type="button"
+                      disabled={processingCancel}
+                      onClick={() => handleCancelOrder(viewOrder)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 transition-colors"
+                    >
+                      <LuBan className="w-5 h-5" />
+                      {processingCancel ? "Cancelling..." : "Cancel Job Order"}
+                    </button>
                   </div>
                 )}
 
                 {viewOrder.status === "rejected" && (
                   <div className="grid grid-cols-1 gap-4">
+                    <button
+                      type="button"
+                      onClick={() => {setShowHistoryModal(true); setShowViewModal(false);}}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-neutral-100 transition-colors"
+                    >
+                      <LuHistory className="w-5 h-5" />
+                      Job Order History
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -1491,27 +1516,50 @@ export function JobOrderManagement() {
                       <LuSend className="w-5 h-5" />
                       Re-Request Customer Approval
                     </button>
+                    <button
+                      type="button"
+                      disabled={processingCancel}
+                      onClick={() => handleCancelOrder(viewOrder)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 transition-colors"
+                    >
+                      <LuBan className="w-5 h-5" />
+                      {processingCancel ? "Cancelling..." : "Cancel Job Order"}
+                    </button>
                   </div>
                 )}
               </ModalSection>
             )}
 
-            {/* Cancel button — visible for cancellable statuses */}
-            {canCreate && ["created", "pending_approval", "rejected"].includes(viewOrder.status) && (
-              <ModalSection title="">
+            {/* History button for statuses without an actions section */}
+            {!(canApproval && (viewOrder.status === "created" || viewOrder.status === "pending_approval" || viewOrder.status === "rejected")) && (
+              <div className="mt-4">
                 <button
                   type="button"
-                  disabled={processingCancel}
-                  onClick={() => handleCancelOrder(viewOrder)}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3.5 border-2 border-neutral-400 text-neutral-600 rounded-xl font-semibold hover:bg-neutral-100 transition-colors"
+                  onClick={() => {setShowHistoryModal(true); setShowViewModal(false);}}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-neutral-100 transition-colors"
                 >
-                  <LuBan className="w-5 h-5" />
-                  {processingCancel ? "Cancelling..." : "Cancel Job Order"}
+                  <LuHistory className="w-5 h-5" />
+                  Job Order History
                 </button>
-              </ModalSection>
+              </div>
             )}
+          </div>
+        )}
+      </Modal>
 
-            {/* History section */}
+      {/* ========== Job Order History Modal ========== */}
+      <Modal
+        isOpen={showHistoryModal && !!viewOrder}
+        onClose={() => {setShowHistoryModal(false); setShowViewModal(true);}}
+        title="Job Order History"
+        maxWidth="lg"
+      >
+        {viewOrder && (
+          <div>
+            <ModalSection title="Order">
+              <ModalInput type="text" value={viewOrder.order_number} onChange={() => { }} placeholder="Order #" disabled />
+            </ModalSection>
+
             <ModalSection title="History">
               {loadingHistory ? (
                 <div className="space-y-4">
@@ -1523,7 +1571,7 @@ export function JobOrderManagement() {
                   ))}
                 </div>
               ) : history.length > 0 ? (
-                <div className="space-y-3 max-h-60 overflow-y-auto">
+                <div className="space-y-3">
                   {history.map((entry) => (
                     <div key={entry.id} className="bg-neutral-100 rounded-xl px-4 py-3">
                       <div className="flex items-center gap-2 mb-1">
@@ -1770,8 +1818,6 @@ export function JobOrderManagement() {
           </div>
         )}
       </Modal>
-
-
     </div>
   );
 }
