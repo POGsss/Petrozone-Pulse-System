@@ -43,7 +43,7 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// --- Helpers ---
 
 const clamp = (n: number) => Math.max(0, Math.min(255, Math.round(n)));
 const toHex = (c: number) => clamp(c).toString(16).padStart(2, "0");
@@ -107,7 +107,7 @@ function hexToDarkScale(hex: string) {
   };
 }
 
-// ── Apply functions ────────────────────────────────────────────────────────
+// --- Apply Functions ---
 
 function applyColorScale(prefix: string, hex: string, isDark: boolean) {
   const scale = isDark ? hexToDarkScale(hex) : hexToLightScale(hex);
@@ -147,7 +147,7 @@ function applyAllColors(primaryHex: string, isDark: boolean) {
   applyColorScale("negative", NEGATIVE_HEX, isDark);
 }
 
-// ── Provider ───────────────────────────────────────────────────────────────
+// --- Provider ---
 
 /** Convert DB row → ThemeSettings */
 function fromDb(row: {

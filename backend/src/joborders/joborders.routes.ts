@@ -60,7 +60,10 @@ router.get(
         query = query.eq("vehicle_id", vehicle_id as string);
       }
       if (status) {
-        query = query.eq("status", status as string);
+        query = query.eq(
+          "status",
+          status as "created" | "pending" | "approved" | "rejected" | "cancelled"
+        );
       }
       if (search) {
         const searchTerm = `%${search}%`;
@@ -431,7 +434,7 @@ router.put(
       res.json(updated);
     } catch (error) {
       console.error("Update job order error:", error);
-      await logFailedAction(req, "UPDATE", "JOB_ORDER", req.params.id || null, error instanceof Error ? error.message : "Failed to update job order");
+      await logFailedAction(req, "UPDATE", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to update job order");
       res.status(500).json({ error: "Failed to update job order" });
     }
   }
@@ -508,7 +511,7 @@ router.delete(
       }
     } catch (error) {
       console.error("Delete job order error:", error);
-      await logFailedAction(req, "DELETE", "JOB_ORDER", req.params.id || null, error instanceof Error ? error.message : "Failed to delete job order");
+      await logFailedAction(req, "DELETE", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to delete job order");
       res.status(500).json({ error: "Failed to delete job order" });
     }
   }
@@ -608,7 +611,7 @@ router.patch(
       res.json(updated);
     } catch (error) {
       console.error("Request approval error:", error);
-      await logFailedAction(req, "REQUEST_APPROVAL", "JOB_ORDER", req.params.id || null, error instanceof Error ? error.message : "Failed to request approval");
+      await logFailedAction(req, "REQUEST_APPROVAL", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to request approval");
       res.status(500).json({ error: "Failed to request approval" });
     }
   }
@@ -827,7 +830,7 @@ router.patch(
       res.json(updated);
     } catch (error) {
       console.error("Cancel job order error:", error);
-      await logFailedAction(req, "CANCEL", "JOB_ORDER", req.params.id || null, error instanceof Error ? error.message : "Failed to cancel job order");
+      await logFailedAction(req, "CANCEL", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to cancel job order");
       res.status(500).json({ error: "Failed to cancel job order" });
     }
   }
@@ -1222,7 +1225,6 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const orderId = req.params.id as string;
-
       const { data: logs, error } = await supabaseAdmin
         .from("audit_logs")
         .select(
@@ -1236,8 +1238,6 @@ router.get(
         .order("created_at", { ascending: true });
 
       if (error) {
-        res.status(500).json({ error: error.message });
-        return;
       }
 
       res.json(logs || []);

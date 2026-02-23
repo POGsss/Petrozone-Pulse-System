@@ -31,7 +31,6 @@ import {
 } from "../../components";
 import type { FilterGroup } from "../../components";
 import type { JobOrder, JobOrderItem, JobOrderHistory, Branch, Customer, Vehicle, CatalogItem, ResolvedPricing, ThirdPartyRepair } from "../../types";
-import { set } from "zod";
 
 const ITEMS_PER_PAGE = 12;
 
@@ -571,22 +570,24 @@ export function JobOrderManagement() {
     setLoadingRepairs(true);
     setHistory([]);
     setLoadingHistory(true);
-    try {
-      const [full, repairsRes, historyRes] = await Promise.all([
-        jobOrdersApi.getById(order.id),
-        thirdPartyRepairsApi.getAll({ job_order_id: order.id }),
-        jobOrdersApi.getHistory(order.id),
-      ]);
-      setViewOrder(full);
-      setRepairs(repairsRes.data);
-      setHistory(historyRes);
-    } catch {
-      // Keep showing list data if fetch fails
-    } finally {
-      setLoadingView(false);
-      setLoadingRepairs(false);
-      setLoadingHistory(false);
-    }
+
+    // Fetch each resource independently so one failure doesn't block the others
+    const fullPromise = jobOrdersApi.getById(order.id)
+      .then((full) => { setViewOrder(full); })
+      .catch(() => { /* Keep showing list data */ })
+      .finally(() => { setLoadingView(false); });
+
+    const repairsPromise = thirdPartyRepairsApi.getAll({ job_order_id: order.id })
+      .then((res) => { setRepairs(res.data); })
+      .catch(() => { /* Repairs unavailable */ })
+      .finally(() => { setLoadingRepairs(false); });
+
+    const historyPromise = jobOrdersApi.getHistory(order.id)
+      .then((res) => { setHistory(res); })
+      .catch(() => { /* History unavailable */ })
+      .finally(() => { setLoadingHistory(false); });
+
+    await Promise.allSettled([fullPromise, repairsPromise, historyPromise]);
   }
 
   // --- Edit ---
@@ -621,7 +622,7 @@ export function JobOrderManagement() {
       setOrigEditItems(items);
       setEditCatalogItems(catRes.data);
     } catch {
-      // fail silently — items section won't populate
+      // Fail silently — items section won't populate
     } finally {
       setEditLoadingItems(false);
     }
@@ -1162,7 +1163,7 @@ export function JobOrderManagement() {
         </div>
       )}
 
-      {/* ========== Create Job Order Modal ========== */}
+      {/* --- Create Job Order Modal --- */}
       <Modal
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
@@ -1380,7 +1381,7 @@ export function JobOrderManagement() {
         </form>
       </Modal>
 
-      {/* ========== View Job Order Modal ========== */}
+      {/* --- View Job Order Modal --- */}
       <Modal
         isOpen={showViewModal && !!viewOrder}
         onClose={() => { setShowViewModal(false); setViewOrder(null); }}
@@ -1731,7 +1732,7 @@ export function JobOrderManagement() {
         )}
       </Modal>
 
-      {/* ========== Job Order History Modal ========== */}
+      {/* --- Job Order History Modal --- */}
       <Modal
         isOpen={showHistoryModal && !!viewOrder}
         onClose={() => {setShowHistoryModal(false); setShowViewModal(true);}}
@@ -1779,7 +1780,7 @@ export function JobOrderManagement() {
         )}
       </Modal>
 
-      {/* ========== Manage Repairs Modal (wrench action) ========== */}
+      {/* --- Manage Repairs Modal (wrench action) --- */}
       <Modal
         isOpen={showRepairActionModal && !!repairActionOrder}
         onClose={() => { setShowRepairActionModal(false); setRepairActionOrder(null); }}
@@ -1927,7 +1928,7 @@ export function JobOrderManagement() {
         )}
       </Modal>
 
-      {/* ========== Edit Job Order Modal ========== */}
+      {/* --- Edit Job Order Modal --- */}
       <Modal
         isOpen={showEditModal && !!editOrder}
         onClose={() => setShowEditModal(false)}
@@ -2096,7 +2097,7 @@ export function JobOrderManagement() {
         </form>
       </Modal>
 
-      {/* ========== Delete Confirmation Modal ========== */}
+      {/* --- Delete Confirmation Modal --- */}
       <Modal
         isOpen={showDeleteConfirm && !!orderToDelete}
         onClose={() => setShowDeleteConfirm(false)}

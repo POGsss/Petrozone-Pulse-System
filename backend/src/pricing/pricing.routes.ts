@@ -650,7 +650,7 @@ router.put(
       res.json(item);
     } catch (error) {
       console.error("Update pricing matrix error:", error);
-      await logFailedAction(req, "UPDATE", "PRICING_MATRIX", req.params.id || null, error instanceof Error ? error.message : "Failed to update pricing matrix");
+      await logFailedAction(req, "UPDATE", "PRICING_MATRIX", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to update pricing matrix");
       res.status(500).json({ error: "Failed to update pricing matrix" });
     }
   }
@@ -747,7 +747,7 @@ router.delete(
       res.json({ message: "Pricing matrix deleted successfully" });
     } catch (error) {
       console.error("Delete pricing matrix error:", error);
-      await logFailedAction(req, "DELETE", "PRICING_MATRIX", req.params.id || null, error instanceof Error ? error.message : "Failed to delete pricing matrix");
+      await logFailedAction(req, "DELETE", "PRICING_MATRIX", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to delete pricing matrix");
       res.status(500).json({ error: "Failed to delete pricing matrix" });
     }
   }

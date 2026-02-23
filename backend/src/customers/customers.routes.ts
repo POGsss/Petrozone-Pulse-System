@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
-import { requireAuth, requireRoles, requireBranchAccess } from "../middleware/auth.middleware.js";
+import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
 import { logFailedAction } from "../lib/auditLogger.js";
 
 const router = Router();
@@ -416,7 +416,7 @@ router.put(
       res.json(customer);
     } catch (error) {
       console.error("Update customer error:", error);
-      await logFailedAction(req, "UPDATE", "CUSTOMER", req.params.customerId || null, error instanceof Error ? error.message : "Failed to update customer");
+      await logFailedAction(req, "UPDATE", "CUSTOMER", (req.params.customerId as string) || null, error instanceof Error ? error.message : "Failed to update customer");
       res.status(500).json({ error: "Failed to update customer" });
     }
   }
@@ -481,7 +481,7 @@ router.delete(
       res.json({ message: "Customer deactivated successfully" });
     } catch (error) {
       console.error("Delete customer error:", error);
-      await logFailedAction(req, "DELETE", "CUSTOMER", req.params.customerId || null, error instanceof Error ? error.message : "Failed to deactivate customer");
+      await logFailedAction(req, "DELETE", "CUSTOMER", (req.params.customerId as string) || null, error instanceof Error ? error.message : "Failed to deactivate customer");
       res.status(500).json({ error: "Failed to deactivate customer" });
     }
   }

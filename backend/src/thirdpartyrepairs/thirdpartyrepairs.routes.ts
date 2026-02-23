@@ -346,7 +346,7 @@ router.put(
       res.json(updated);
     } catch (error) {
       console.error("Update third-party repair error:", error);
-      await logFailedAction(req, "UPDATE", "THIRD_PARTY_REPAIR", req.params.id || null, error instanceof Error ? error.message : "Failed to update third-party repair");
+      await logFailedAction(req, "UPDATE", "THIRD_PARTY_REPAIR", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to update third-party repair");
       res.status(500).json({ error: "Failed to update third-party repair" });
     }
   }
@@ -427,7 +427,7 @@ router.delete(
       }
     } catch (error) {
       console.error("Delete third-party repair error:", error);
-      await logFailedAction(req, "DELETE", "THIRD_PARTY_REPAIR", req.params.id || null, error instanceof Error ? error.message : "Failed to delete third-party repair");
+      await logFailedAction(req, "DELETE", "THIRD_PARTY_REPAIR", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to delete third-party repair");
       res.status(500).json({ error: "Failed to delete third-party repair" });
     }
   }

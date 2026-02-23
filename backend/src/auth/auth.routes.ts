@@ -1,5 +1,6 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
+import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireUserManager } from "../middleware/auth.middleware.js";
 import { logFailedAction } from "../lib/auditLogger.js";
@@ -183,7 +184,13 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
       }
     }
 
-    const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+    // Use a disposable client to avoid corrupting the singleton's auth state
+    const disposableAuth = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+    const { data, error } = await disposableAuth.auth.signInWithPassword({
       email,
       password,
     });
@@ -303,12 +310,17 @@ router.post("/logout", requireAuth, async (req: Request, res: Response): Promise
       p_status: "SUCCESS",
     });
 
-    // Sign out the user
+    // Sign out the user using a disposable client to avoid corrupting the singleton
     const authHeader = req.headers.authorization;
     const token = authHeader?.split(" ")[1];
 
     if (token) {
-      await supabaseAdmin.auth.admin.signOut(token);
+      const disposableAdmin = createClient(
+        process.env.SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        { auth: { autoRefreshToken: false, persistSession: false } }
+      );
+      await disposableAdmin.auth.admin.signOut(token);
     }
 
     res.json({ message: "Logged out successfully" });
@@ -331,7 +343,13 @@ router.post("/refresh", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const { data, error } = await supabaseAdmin.auth.refreshSession({
+    // Use a disposable client to avoid corrupting the singleton's auth state
+    const disposableAuth = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+    const { data, error } = await disposableAuth.auth.refreshSession({
       refresh_token,
     });
 
@@ -407,8 +425,13 @@ router.post("/change-password", requireAuth, async (req: Request, res: Response)
       return;
     }
 
-    // Verify current password by attempting to sign in
-    const { error: verifyError } = await supabaseAdmin.auth.signInWithPassword({
+    // Verify current password using a disposable client to avoid corrupting the singleton
+    const disposableAuth = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+    const { error: verifyError } = await disposableAuth.auth.signInWithPassword({
       email: req.user!.email,
       password: currentPassword,
     });

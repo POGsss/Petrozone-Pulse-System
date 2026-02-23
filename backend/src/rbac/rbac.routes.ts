@@ -253,7 +253,7 @@ router.put("/users/:userId/roles", requireUserManager, async (req: Request, res:
     }
   } catch (error) {
     console.error("Update roles error:", error);
-    await logFailedAction(req, "UPDATE", "USER_ROLES", req.params.userId || null, error instanceof Error ? error.message : "Failed to update roles");
+    await logFailedAction(req, "UPDATE", "USER_ROLES", (req.params.userId as string) || null, error instanceof Error ? error.message : "Failed to update roles");
     res.status(500).json({ error: "Failed to update roles" });
   }
 });
@@ -304,7 +304,7 @@ router.put("/users/:userId/branches", requireUserManager, async (req: Request, r
     }
   } catch (error) {
     console.error("Update branches error:", error);
-    await logFailedAction(req, "UPDATE", "USER_BRANCHES", req.params.userId || null, error instanceof Error ? error.message : "Failed to update branch assignments");
+    await logFailedAction(req, "UPDATE", "USER_BRANCHES", (req.params.userId as string) || null, error instanceof Error ? error.message : "Failed to update branch assignments");
     res.status(500).json({ error: "Failed to update branch assignments" });
   }
 });
@@ -357,7 +357,7 @@ router.put("/users/:userId/status", requireUserManager, async (req: Request, res
     }
   } catch (error) {
     console.error("Update status error:", error);
-    await logFailedAction(req, "UPDATE", "USER_STATUS", req.params.userId || null, error instanceof Error ? error.message : "Failed to update user status");
+    await logFailedAction(req, "UPDATE", "USER_STATUS", (req.params.userId as string) || null, error instanceof Error ? error.message : "Failed to update user status");
     res.status(500).json({ error: "Failed to update user status" });
   }
 });
@@ -416,7 +416,7 @@ router.put("/users/:userId", requireUserManager, async (req: Request, res: Respo
     res.json(user);
   } catch (error) {
     console.error("Update user error:", error);
-    await logFailedAction(req, "UPDATE", "USER_PROFILE", req.params.userId || null, error instanceof Error ? error.message : "Failed to update user");
+    await logFailedAction(req, "UPDATE", "USER_PROFILE", (req.params.userId as string) || null, error instanceof Error ? error.message : "Failed to update user");
     res.status(500).json({ error: "Failed to update user" });
   }
 });
@@ -457,7 +457,7 @@ router.delete("/users/:userId", requireUserManager, async (req: Request, res: Re
     res.json({ message: "User deleted successfully" });
   } catch (error) {
     console.error("Delete user error:", error);
-    await logFailedAction(req, "DELETE", "USER_PROFILE", req.params.userId || null, error instanceof Error ? error.message : "Failed to delete user");
+    await logFailedAction(req, "DELETE", "USER_PROFILE", (req.params.userId as string) || null, error instanceof Error ? error.message : "Failed to delete user");
     res.status(500).json({ error: "Failed to delete user" });
   }
 });
@@ -541,7 +541,7 @@ router.post("/users/:userId/reset-password", requireUserManager, async (req: Req
     });
   } catch (error) {
     console.error("Admin password reset error:", error);
-    await logFailedAction(req, "UPDATE", "PASSWORD", req.params.userId || null, error instanceof Error ? error.message : "Failed to reset user password");
+    await logFailedAction(req, "UPDATE", "PASSWORD", (req.params.userId as string) || null, error instanceof Error ? error.message : "Failed to reset user password");
     res.status(500).json({ error: "Failed to reset user password" });
   }
 });

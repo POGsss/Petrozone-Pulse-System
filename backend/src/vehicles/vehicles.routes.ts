@@ -523,7 +523,7 @@ router.put(
       res.json(vehicle);
     } catch (error) {
       console.error("Update vehicle error:", error);
-      await logFailedAction(req, "UPDATE", "VEHICLE", req.params.vehicleId || null, error instanceof Error ? error.message : "Failed to update vehicle");
+      await logFailedAction(req, "UPDATE", "VEHICLE", (req.params.vehicleId as string) || null, error instanceof Error ? error.message : "Failed to update vehicle");
       res.status(500).json({ error: "Failed to update vehicle" });
     }
   }
@@ -591,7 +591,7 @@ router.delete(
       res.json({ message: "Vehicle deactivated successfully" });
     } catch (error) {
       console.error("Delete vehicle error:", error);
-      await logFailedAction(req, "DELETE", "VEHICLE", req.params.vehicleId || null, error instanceof Error ? error.message : "Failed to deactivate vehicle");
+      await logFailedAction(req, "DELETE", "VEHICLE", (req.params.vehicleId as string) || null, error instanceof Error ? error.message : "Failed to deactivate vehicle");
       res.status(500).json({ error: "Failed to deactivate vehicle" });
     }
   }

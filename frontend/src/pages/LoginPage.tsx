@@ -159,7 +159,7 @@ export function LoginPage() {
                 title="Forgot Password"
             >
                 {forgotSuccess ? (
-                    /* Success state */
+                    // Success state
                     <div className="text-center py-4">
                         <div className="w-16 h-16 bg-positive-100 rounded-full flex items-center justify-center mx-auto mb-4">
                             <LuCheck className="w-8 h-8 text-positive-950" />
@@ -176,7 +176,7 @@ export function LoginPage() {
                         </button>
                     </div>
                 ) : (
-                    /* Form state */
+                    // Form state
                     <form onSubmit={handleForgotPassword}>
                         <ModalError message={forgotError} />
                         
