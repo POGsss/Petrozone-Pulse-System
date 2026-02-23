@@ -209,7 +209,7 @@ export interface ResolvedPricing {
 }
 
 // Job Order types
-export type JobOrderStatus = "created" | "pending_approval" | "approved" | "rejected" | "cancelled";
+export type JobOrderStatus = "created" | "pending" | "approved" | "rejected" | "cancelled";
 
 export interface JobOrderItem {
   id: string;
@@ -249,7 +249,6 @@ export interface JobOrder {
   created_by: string | null;
   approved_at: string | null;
   approved_by: string | null;
-  approval_notes: string | null;
   created_at: string;
   updated_at: string;
   customers?: {
@@ -266,6 +265,7 @@ export interface JobOrder {
   };
   branches?: Branch;
   job_order_items?: JobOrderItem[];
+  third_party_repairs?: { cost: number }[];
 }
 
 // Third-Party Repair types

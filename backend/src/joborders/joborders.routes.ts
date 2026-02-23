@@ -37,7 +37,8 @@ router.get(
           *,
           customers(id, full_name, contact_number, email),
           vehicles(id, plate_number, model, vehicle_type),
-          branches(id, name, code)
+          branches(id, name, code),
+          third_party_repairs(cost)
         `,
           { count: "exact" }
         )
@@ -516,7 +517,7 @@ router.delete(
 /**
  * PATCH /api/job-orders/:id/request-approval
  * Request customer approval for a job order
- * Changes status from "created" to "pending_approval"
+ * Changes status from "created" to "pending"
  * Roles: R, T (and POC, JS for flexibility)
  */
 router.patch(
@@ -551,7 +552,7 @@ router.patch(
         return;
       }
 
-      // Validate status transition: "created" or "rejected" → "pending_approval"
+      // Validate status transition: "created" or "rejected" → "pending"
       if (existing.status !== "created" && existing.status !== "rejected") {
         res.status(400).json({
           error: `Cannot request approval for a job order with status "${existing.status}". Only "created" or "rejected" orders can be sent for approval.`,
@@ -562,7 +563,7 @@ router.patch(
       // Update status
       const { error: updateError } = await supabaseAdmin
         .from("job_orders")
-        .update({ status: "pending_approval" })
+        .update({ status: "pending" })
         .eq("id", orderId);
 
       if (updateError) {
@@ -598,7 +599,7 @@ router.patch(
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
-          p_new_values: { order_number: existing.order_number, status: "pending_approval" },
+          p_new_values: { order_number: existing.order_number, status: "pending" },
         });
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);
@@ -616,7 +617,7 @@ router.patch(
 /**
  * PATCH /api/job-orders/:id/record-approval
  * Record customer approval or rejection for a job order
- * Changes status from "pending_approval" to "approved" or "rejected"
+ * Changes status from "pending" to "approved" or "rejected"
  * Roles: R, T (and POC, JS for flexibility)
  */
 router.patch(
@@ -625,7 +626,7 @@ router.patch(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const orderId = req.params.id as string;
-      const { decision, notes } = req.body;
+      const { decision } = req.body;
 
       // Validate decision
       if (!decision || !["approved", "rejected"].includes(decision)) {
@@ -658,10 +659,10 @@ router.patch(
         return;
       }
 
-      // Validate status transition: only "pending_approval" → "approved" / "rejected"
-      if (existing.status !== "pending_approval") {
+      // Validate status transition: only "pending" → "approved" / "rejected"
+      if (existing.status !== "pending") {
         res.status(400).json({
-          error: `Cannot record approval for a job order with status "${existing.status}". Only "pending_approval" orders can be approved or rejected.`,
+          error: `Cannot record approval for a job order with status "${existing.status}". Only "pending" orders can be approved or rejected.`,
         });
         return;
       }
@@ -671,7 +672,6 @@ router.patch(
         status: decision,
         approved_at: new Date().toISOString(),
         approved_by: req.user!.id,
-        approval_notes: notes?.trim() || null,
       };
 
       const { error: updateError } = await supabaseAdmin
@@ -715,7 +715,6 @@ router.patch(
           p_new_values: {
             order_number: existing.order_number,
             status: decision,
-            approval_notes: notes?.trim() || null,
           },
         });
       } catch (auditErr) {
@@ -725,8 +724,9 @@ router.patch(
       res.json(updated);
     } catch (error) {
       console.error("Record approval error:", error);
-      const action = typeof decision === "string" && decision === "approved" ? "APPROVE" : "REJECT";
-      await logFailedAction(req, action, "JOB_ORDER", req.params.id || null, error instanceof Error ? error.message : "Failed to record approval");
+      const bodyDecision = req.body?.decision;
+      const action = typeof bodyDecision === "string" && bodyDecision === "approved" ? "APPROVE" : "REJECT";
+      await logFailedAction(req, action, "JOB_ORDER", req.params.id as string || null, error instanceof Error ? error.message : "Failed to record approval");
       res.status(500).json({ error: "Failed to record approval" });
     }
   }
@@ -735,7 +735,7 @@ router.patch(
 /**
  * PATCH /api/job-orders/:id/cancel
  * Cancel a job order (status → "cancelled")
- * Only "created", "pending_approval", or "rejected" orders can be cancelled
+ * Only "created", "pending", or "rejected" orders can be cancelled
  * Roles: POC, JS, R
  */
 router.patch(
@@ -770,8 +770,8 @@ router.patch(
         return;
       }
 
-      // Validate status: only created, pending_approval, or rejected can be cancelled
-      const cancellableStatuses = ["created", "pending_approval", "rejected"];
+      // Validate status: only created, pending, or rejected can be cancelled
+      const cancellableStatuses = ["created", "pending", "rejected"];
       if (!cancellableStatuses.includes(existing.status)) {
         res.status(400).json({
           error: `Cannot cancel a job order with status "${existing.status}". Only created, pending approval, or rejected orders can be cancelled.`,

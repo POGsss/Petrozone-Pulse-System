@@ -30,7 +30,7 @@ import {
   SearchFilter,
 } from "../../components";
 import type { FilterGroup } from "../../components";
-import type { JobOrder, JobOrderHistory, Branch, Customer, Vehicle, CatalogItem, ResolvedPricing, ThirdPartyRepair } from "../../types";
+import type { JobOrder, JobOrderItem, JobOrderHistory, Branch, Customer, Vehicle, CatalogItem, ResolvedPricing, ThirdPartyRepair } from "../../types";
 import { set } from "zod";
 
 const ITEMS_PER_PAGE = 12;
@@ -64,7 +64,7 @@ function formatPrice(price: number): string {
 function getStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     created: "Created",
-    pending_approval: "Pending Approval",
+    pending: "Pending",
     approved: "Approved",
     rejected: "Rejected",
     cancelled: "Cancelled",
@@ -75,10 +75,10 @@ function getStatusLabel(status: string): string {
 function getStatusColors(status: string): string {
   const colors: Record<string, string> = {
     created: "bg-neutral-100 text-neutral-950",
-    pending_approval: "bg-yellow-100 text-yellow-800",
-    approved: "bg-positive-100 text-positive",
-    rejected: "bg-negative-100 text-negative",
-    cancelled: "bg-neutral-200 text-neutral-600",
+    pending: "bg-primary-100 text-primary-950",
+    approved: "bg-positive-100 text-positive-950",
+    rejected: "bg-negative-100 text-negative-950",
+    cancelled: "bg-neutral-200 text-neutral-950",
   };
   return colors[status] || "bg-neutral-100 text-neutral-950";
 }
@@ -159,19 +159,29 @@ export function JobOrderManagement() {
   const [selectedQty, setSelectedQty] = useState("1");
   const [resolvingPrice, setResolvingPrice] = useState(false);
 
-  // Edit modal (notes only)
+  // Edit modal
   const [showEditModal, setShowEditModal] = useState(false);
   const [editOrder, setEditOrder] = useState<JobOrder | null>(null);
   const [editNotes, setEditNotes] = useState("");
   const [editingOrder, setEditingOrder] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
+  // Edit modal items state (for created/rejected orders)
+  const [editItems, setEditItems] = useState<JobOrderItem[]>([]);
+  const [origEditItems, setOrigEditItems] = useState<JobOrderItem[]>([]);
+  const [editDraftItems, setEditDraftItems] = useState<DraftItem[]>([]);
+  const [editCatalogItems, setEditCatalogItems] = useState<CatalogItem[]>([]);
+  const [editLoadingItems, setEditLoadingItems] = useState(false);
+  const [editSelectedCatalogId, setEditSelectedCatalogId] = useState("");
+  const [editSelectedQty, setEditSelectedQty] = useState("1");
+  const [editResolvingPrice, setEditResolvingPrice] = useState(false);
+
   // Delete modal
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<JobOrder | null>(null);
 
-  // Third-party repairs (view modal)
+  // Third Party Repairs (view modal)
   const [repairs, setRepairs] = useState<ThirdPartyRepair[]>([]);
   const [loadingRepairs, setLoadingRepairs] = useState(false);
 
@@ -212,7 +222,7 @@ export function JobOrderManagement() {
         label: "Status",
         options: [
           { value: "created", label: "Created" },
-          { value: "pending_approval", label: "Pending Approval" },
+          { value: "pending", label: "Pending Approval" },
           { value: "approved", label: "Approved" },
           { value: "rejected", label: "Rejected" },
           { value: "cancelled", label: "Cancelled" },
@@ -331,6 +341,21 @@ export function JobOrderManagement() {
   const draftRepairsTotal = useMemo(
     () => draftRepairs.reduce((sum, r) => sum + r.cost, 0),
     [draftRepairs]
+  );
+
+  // Edit modal: catalog item options
+  const editCatalogItemOptions = useMemo(() => {
+    return editCatalogItems
+      .filter((i) => i.status === "active")
+      .map((i) => ({ value: i.id, label: `${i.name} (${i.type})` }));
+  }, [editCatalogItems]);
+
+  // Edit modal: items total
+  const editItemsTotal = useMemo(
+    () =>
+      editItems.reduce((sum, i) => sum + i.line_total, 0) +
+      editDraftItems.reduce((sum, d) => sum + d.line_total, 0),
+    [editItems, editDraftItems]
   );
 
   // Load lookups when add modal opens
@@ -564,12 +589,138 @@ export function JobOrderManagement() {
     }
   }
 
-  // --- Edit (notes only) ---
+  // --- Edit ---
+  const isEditableStatus = (status: string) => status === "created" || status === "rejected";
+
   function openEditModal(order: JobOrder) {
     setEditOrder(order);
     setEditNotes(order.notes || "");
     setEditError(null);
+    setEditItems([]);
+    setOrigEditItems([]);
+    setEditDraftItems([]);
+    setEditSelectedCatalogId("");
+    setEditSelectedQty("1");
     setShowEditModal(true);
+
+    // If status allows item editing, load items + catalog
+    if (isEditableStatus(order.status)) {
+      loadEditModalData(order);
+    }
+  }
+
+  async function loadEditModalData(order: JobOrder) {
+    setEditLoadingItems(true);
+    try {
+      const [fullOrder, catRes] = await Promise.all([
+        jobOrdersApi.getById(order.id),
+        catalogApi.getAll({ limit: 1000 }),
+      ]);
+      const items = fullOrder.job_order_items || [];
+      setEditItems(items);
+      setOrigEditItems(items);
+      setEditCatalogItems(catRes.data);
+    } catch {
+      // fail silently — items section won't populate
+    } finally {
+      setEditLoadingItems(false);
+    }
+  }
+
+  function handleEditItemQtyChange(itemId: string, newQty: number) {
+    if (newQty < 1) return;
+    setEditItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemId) return item;
+        const unitPrice =
+          item.base_price + (item.labor_price || 0) + (item.packaging_price || 0);
+        return { ...item, quantity: newQty, line_total: unitPrice * newQty };
+      })
+    );
+  }
+
+  function handleRemoveEditItem(itemId: string) {
+    if (editItems.length + editDraftItems.length <= 1) {
+      setEditError("Job order must have at least 1 item");
+      return;
+    }
+    setEditError(null);
+    setEditItems((prev) => prev.filter((i) => i.id !== itemId));
+  }
+
+  async function handleAddEditDraftItem() {
+    if (!editSelectedCatalogId || !editOrder) return;
+    const qty = parseInt(editSelectedQty) || 1;
+
+    // Check duplicates in both existing and draft
+    if (
+      editItems.some((i) => i.catalog_item_id === editSelectedCatalogId) ||
+      editDraftItems.some((d) => d.catalog_item_id === editSelectedCatalogId)
+    ) {
+      setEditError("This item is already in the order");
+      return;
+    }
+
+    try {
+      setEditResolvingPrice(true);
+      setEditError(null);
+
+      let resolved: ResolvedPricing;
+      try {
+        resolved = await pricingApi.resolve(editSelectedCatalogId, editOrder.branch_id);
+      } catch {
+        const catItem = editCatalogItems.find((c) => c.id === editSelectedCatalogId);
+        if (!catItem) {
+          setEditError("Catalog item not found");
+          return;
+        }
+        resolved = {
+          catalog_item: { id: catItem.id, name: catItem.name, type: catItem.type, base_price: catItem.base_price },
+          pricing_rules: [],
+          resolved_prices: { base_price: catItem.base_price, labor: null, packaging: null },
+        };
+      }
+
+      const { resolved_prices, catalog_item } = resolved;
+
+      if (resolved_prices.labor === null && resolved_prices.packaging === null) {
+        showToast.warning(
+          `No labor or packaging pricing found for "${catalog_item.name}" at this branch. Only the base price will be used.`
+        );
+      }
+
+      const lineTotal =
+        (resolved_prices.base_price + (resolved_prices.labor || 0) + (resolved_prices.packaging || 0)) * qty;
+
+      setEditDraftItems((prev) => [
+        ...prev,
+        {
+          catalog_item_id: catalog_item.id,
+          catalog_item_name: catalog_item.name,
+          catalog_item_type: catalog_item.type,
+          quantity: qty,
+          base_price: resolved_prices.base_price,
+          labor_price: resolved_prices.labor,
+          packaging_price: resolved_prices.packaging,
+          line_total: lineTotal,
+        },
+      ]);
+      setEditSelectedCatalogId("");
+      setEditSelectedQty("1");
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Failed to resolve pricing");
+    } finally {
+      setEditResolvingPrice(false);
+    }
+  }
+
+  function handleRemoveEditDraftItem(catalogItemId: string) {
+    if (editItems.length + editDraftItems.length <= 1) {
+      setEditError("Job order must have at least 1 item");
+      return;
+    }
+    setEditError(null);
+    setEditDraftItems((prev) => prev.filter((d) => d.catalog_item_id !== catalogItemId));
   }
 
   async function handleEditOrder(e: React.FormEvent) {
@@ -577,9 +728,51 @@ export function JobOrderManagement() {
     if (!editOrder) return;
     setEditError(null);
 
+    const canEditItems = isEditableStatus(editOrder.status);
+
+    // Validate: must have at least 1 item
+    if (canEditItems && editItems.length + editDraftItems.length === 0) {
+      setEditError("Job order must have at least 1 item");
+      return;
+    }
+
     try {
       setEditingOrder(true);
+
+      // Save notes
       await jobOrdersApi.update(editOrder.id, { notes: editNotes.trim() || null });
+
+      // Process item changes if status allows
+      if (canEditItems) {
+        // Find removed items
+        const currentIds = new Set(editItems.map((i) => i.id));
+        const removedItems = origEditItems.filter((i) => !currentIds.has(i.id));
+
+        // Find updated items (qty changed)
+        const updatedItems = editItems.filter((item) => {
+          const orig = origEditItems.find((o) => o.id === item.id);
+          return orig && orig.quantity !== item.quantity;
+        });
+
+        // Process removals
+        for (const item of removedItems) {
+          await jobOrdersApi.removeItem(editOrder.id, item.id);
+        }
+
+        // Process updates
+        for (const item of updatedItems) {
+          await jobOrdersApi.updateItem(editOrder.id, item.id, { quantity: item.quantity });
+        }
+
+        // Process new items
+        for (const draft of editDraftItems) {
+          await jobOrdersApi.addItem(editOrder.id, {
+            catalog_item_id: draft.catalog_item_id,
+            quantity: draft.quantity,
+          });
+        }
+      }
+
       setShowEditModal(false);
       setEditOrder(null);
       showToast.success("Job order updated successfully");
@@ -889,7 +1082,7 @@ export function JobOrderManagement() {
 
             {/* Order details */}
             <div className="space-y-1 text-sm text-neutral-900 mb-3">
-              <p className="text-neutral-900">{formatPrice(order.total_amount)}</p>
+              <p className="text-neutral-900">{formatPrice(order.total_amount + (order.third_party_repairs?.reduce((sum, r) => sum + r.cost, 0) || 0))}</p>
               <p className="text-neutral-900">{order.vehicles ? `${order.vehicles.plate_number} ${order.vehicles.model}` : "—"}</p>
               <p className="text-neutral-900">{order.customers?.full_name || "—"}</p>
               <p className="text-neutral-900">{formatDate(order.created_at)}</p>
@@ -1007,7 +1200,7 @@ export function JobOrderManagement() {
             />
           </ModalSection>
 
-          <ModalSection title="Items">
+          <ModalSection title="Items Lists">
             {/* Add item row */}
             <div className="flex gap-2 items-end">
               <div className="flex-1">
@@ -1091,7 +1284,7 @@ export function JobOrderManagement() {
             )}
           </ModalSection>
 
-          <ModalSection title="Third-Party Repairs">
+          <ModalSection title="Third Party Repairs">
             {/* Add repair inputs */}
             <ModalInput
               type="text"
@@ -1215,22 +1408,13 @@ export function JobOrderManagement() {
                 />
               </div>
               {(viewOrder.status === "approved" || viewOrder.status === "rejected") && (
-                <div className="grid grid-cols-2 gap-4">
-                  <ModalInput
-                    type="text"
-                    value={viewOrder.approved_at ? formatDateTime(viewOrder.approved_at) : "—"}
-                    onChange={() => { }}
-                    placeholder={viewOrder.status === "approved" ? "Approved At" : "Rejected At"}
-                    disabled
-                  />
-                  <ModalInput
-                    type="text"
-                    value={viewOrder.approval_notes || "—"}
-                    onChange={() => { }}
-                    placeholder="Approval Notes"
-                    disabled
-                  />
-                </div>
+                <ModalInput
+                  type="text"
+                  value={viewOrder.approved_at ? formatDateTime(viewOrder.approved_at) : "—"}
+                  onChange={() => { }}
+                  placeholder={viewOrder.status === "approved" ? "Approved At" : "Rejected At"}
+                  disabled
+                />
               )}
             </ModalSection>
 
@@ -1267,7 +1451,7 @@ export function JobOrderManagement() {
             </ModalSection>
 
             {/* Items section */}
-            <ModalSection title="Items">
+            <ModalSection title="Items Lists">
               {loadingView && !viewOrder.job_order_items ? (
                 <div className="space-y-4">
                   {[1, 2].map((i) => (
@@ -1313,9 +1497,9 @@ export function JobOrderManagement() {
               )}
             </ModalSection>
 
-            {/* Third-Party Repairs section */}
+            {/* Third Party Repairs section */}
             {repairs.length > 0 && (
-              <ModalSection title="Third-Party Repairs">
+              <ModalSection title="Third Party Repairs">
                 {loadingRepairs ? (
                   <div className="space-y-4">
                     {[1, 2].map((i) => (
@@ -1390,9 +1574,9 @@ export function JobOrderManagement() {
               </div>
             </ModalSection>
 
-            {canApproval && (viewOrder.status === "created" || viewOrder.status === "pending_approval" || viewOrder.status === "rejected") && (
+            {canApproval && (viewOrder.status === "created" || viewOrder.status === "pending" || viewOrder.status === "rejected") && (
               <ModalSection title="Actions">
-                {viewOrder.status === "pending_approval" && (
+                {viewOrder.status === "pending" && (
                   <div className="grid grid-row gap-4">
                     <button
                       type="button"
@@ -1531,12 +1715,12 @@ export function JobOrderManagement() {
             )}
 
             {/* History button for statuses without an actions section */}
-            {!(canApproval && (viewOrder.status === "created" || viewOrder.status === "pending_approval" || viewOrder.status === "rejected")) && (
+            {!(canApproval && (viewOrder.status === "created" || viewOrder.status === "pending" || viewOrder.status === "rejected")) && (
               <div className="mt-4">
                 <button
                   type="button"
                   onClick={() => {setShowHistoryModal(true); setShowViewModal(false);}}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-neutral-100 transition-colors"
+                  className="w-full flex-1 flex items-center justify-center gap-2 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-neutral-100 transition-colors"
                 >
                   <LuHistory className="w-5 h-5" />
                   Job Order History
@@ -1743,11 +1927,11 @@ export function JobOrderManagement() {
         )}
       </Modal>
 
-      {/* ========== Edit Job Order Modal (notes only) ========== */}
+      {/* ========== Edit Job Order Modal ========== */}
       <Modal
         isOpen={showEditModal && !!editOrder}
         onClose={() => setShowEditModal(false)}
-        title="Edit Job Order Notes"
+        title="Edit Job Order"
         maxWidth="lg"
       >
         <form onSubmit={handleEditOrder}>
@@ -1769,6 +1953,138 @@ export function JobOrderManagement() {
               className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
             />
           </ModalSection>
+
+          {/* Items section — only for created/rejected orders */}
+          {editOrder && isEditableStatus(editOrder.status) && (
+            <ModalSection title="Items Lists">
+              {editLoadingItems ? (
+                <p className="text-sm text-neutral-900 text-center py-4">Loading items...</p>
+              ) : (
+                <>
+                  {/* Existing items */}
+                  {editItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3 mb-2"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-neutral-950 text-sm truncate">
+                          {item.catalog_item_name}
+                          <span className="text-neutral-900 font-normal ml-1">({item.catalog_item_type})</span>
+                        </p>
+                        <p className="text-xs text-neutral-900">
+                          Base: {formatPrice(item.base_price)}
+                          {item.labor_price != null && ` + Labor: ${formatPrice(item.labor_price)}`}
+                          {item.packaging_price != null && ` + Pkg: ${formatPrice(item.packaging_price)}`}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 ml-3">
+                        <input
+                          type="number"
+                          min={1}
+                          value={item.quantity}
+                          onChange={(e) => handleEditItemQtyChange(item.id, parseInt(e.target.value) || 1)}
+                          className="w-16 px-2 py-1.5 bg-white rounded-lg text-center text-sm text-neutral-950 focus:outline-none focus:ring-2 focus:ring-primary"
+                        />
+                        <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap">
+                          {formatPrice(item.line_total)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveEditItem(item.id)}
+                          className="text-negative hover:text-negative-900 p-1"
+                          title="Remove item"
+                        >
+                          <LuX className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* New draft items */}
+                  {editDraftItems.map((item) => (
+                    <div
+                      key={item.catalog_item_id}
+                      className="flex items-center justify-between bg-primary-100 rounded-xl px-4 py-3 mb-2"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-neutral-950 text-sm truncate">
+                          {item.catalog_item_name}
+                          <span className="text-neutral-900 font-normal ml-1">({item.catalog_item_type})</span>
+                          <span className="text-primary text-xs ml-2">(new)</span>
+                        </p>
+                        <p className="text-xs text-neutral-900">
+                          Base: {formatPrice(item.base_price)}
+                          {item.labor_price != null && ` + Labor: ${formatPrice(item.labor_price)}`}
+                          {item.packaging_price != null && ` + Pkg: ${formatPrice(item.packaging_price)}`}
+                          {" \u00d7 "}{item.quantity}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3 ml-3">
+                        <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap">
+                          {formatPrice(item.line_total)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveEditDraftItem(item.catalog_item_id)}
+                          className="text-negative hover:text-negative-900 p-1"
+                          title="Remove item"
+                        >
+                          <LuX className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Add item row */}
+                  <div className="flex gap-2 items-end mt-2">
+                    <div className="flex-1">
+                      <ModalSelect
+                        value={editSelectedCatalogId}
+                        onChange={setEditSelectedCatalogId}
+                        placeholder="Select Catalog Item"
+                        options={editCatalogItemOptions}
+                      />
+                    </div>
+                    <div className="w-20">
+                      <ModalInput
+                        type="number"
+                        value={editSelectedQty}
+                        onChange={setEditSelectedQty}
+                        placeholder="Qty"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddEditDraftItem}
+                      disabled={!editSelectedCatalogId || editResolvingPrice}
+                      className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+                    >
+                      {editResolvingPrice ? (
+                        <LuRefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <LuPlus className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Total */}
+                  {(editItems.length > 0 || editDraftItems.length > 0) && (
+                    <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl mt-3">
+                      <span className="font-semibold text-neutral-950">Items Total</span>
+                      <span className="font-bold text-primary text-lg">{formatPrice(editItemsTotal)}</span>
+                    </div>
+                  )}
+
+                  {editItems.length === 0 && editDraftItems.length === 0 && (
+                    <p className="text-sm text-neutral-900 text-center py-4">
+                      No items. Select a catalog item and click + to add.
+                    </p>
+                  )}
+                </>
+              )}
+            </ModalSection>
+          )}
 
           <ModalError message={editError} />
 

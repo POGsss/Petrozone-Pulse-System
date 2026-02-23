@@ -673,7 +673,7 @@ export const jobOrdersApi = {
     });
   },
 
-  recordApproval: async (id: string, data: { decision: "approved" | "rejected"; notes?: string }) => {
+  recordApproval: async (id: string, data: { decision: "approved" | "rejected" }) => {
     return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/record-approval`, {
       method: "PATCH",
       body: JSON.stringify(data),
