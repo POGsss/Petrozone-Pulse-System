@@ -1,0 +1,1143 @@
+import { useState, useEffect, useMemo } from "react";
+import {
+  LuPlus,
+  LuCircleAlert,
+  LuRefreshCw,
+  LuSearch,
+  LuPencil,
+  LuTrash2,
+  LuBox,
+  LuChevronLeft,
+  LuChevronRight,
+  LuCircleArrowUp,
+  LuCircleArrowDown,
+  LuHistory,
+  LuTriangleAlert,
+  LuFilter,
+  LuPackageCheck,
+} from "react-icons/lu";
+import { inventoryApi, branchesApi } from "../../lib/api";
+import { showToast } from "../../lib/toast";
+import { useAuth } from "../../auth";
+import {
+  Modal,
+  ModalSection,
+  ModalInput,
+  ModalSelect,
+  ModalButtons,
+  ModalError,
+} from "../../components";
+import type { InventoryItem, Branch, StockMovement } from "../../types";
+
+const ITEMS_PER_PAGE = 10;
+
+const CATEGORY_PRESETS = [
+  { value: "Oil & Lubricants", label: "Oil & Lubricants" },
+  { value: "Filters", label: "Filters" },
+  { value: "Brake Parts", label: "Brake Parts" },
+  { value: "Engine Parts", label: "Engine Parts" },
+  { value: "Tires", label: "Tires" },
+  { value: "Batteries", label: "Batteries" },
+  { value: "Accessories", label: "Accessories" },
+  { value: "Cleaning Supplies", label: "Cleaning Supplies" },
+  { value: "Other", label: "Other" },
+];
+
+const UOM_OPTIONS = [
+  { value: "pcs", label: "Pieces (pcs)" },
+  { value: "liters", label: "Liters (L)" },
+  { value: "kg", label: "Kilograms (kg)" },
+  { value: "bottles", label: "Bottles" },
+  { value: "sets", label: "Sets" },
+  { value: "rolls", label: "Rolls" },
+  { value: "boxes", label: "Boxes" },
+];
+
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatDateTime(dateStr: string): string {
+  return new Date(dateStr).toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatPrice(price: number): string {
+  return new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+  }).format(price);
+}
+
+function movementTypeLabel(type: string): string {
+  switch (type) {
+    case "stock_in": return "Stock In";
+    case "stock_out": return "Stock Out";
+    case "adjustment": return "Adjustment";
+    default: return type;
+  }
+}
+
+function referenceTypeLabel(type: string): string {
+  switch (type) {
+    case "purchase_order": return "Purchase Order";
+    case "job_order": return "Job Order";
+    case "adjustment": return "Manual Adjustment";
+    default: return type;
+  }
+}
+
+export function InventoryManagement() {
+  const { user } = useAuth();
+  const userRoles = user?.roles || [];
+  const isHM = userRoles.includes("HM");
+
+  // Permission checks
+  const canCreate = userRoles.some((r) => ["HM", "POC", "JS"].includes(r));
+  const canUpdate = canCreate;
+  const canDelete = canCreate;
+  const canAdjust = userRoles.some((r) => ["HM", "POC"].includes(r));
+  const canStockIn = canCreate;
+
+  // Data state
+  const [allItems, setAllItems] = useState<InventoryItem[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Search, filters & pagination
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterCategory, setFilterCategory] = useState("all");
+  const [filterBranch, setFilterBranch] = useState("all");
+  const [showFilters, setShowFilters] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Add modal
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addingItem, setAddingItem] = useState(false);
+  const [addForm, setAddForm] = useState({
+    item_name: "",
+    sku_code: "",
+    category: "",
+    unit_of_measure: "pcs",
+    cost_price: "",
+    reorder_threshold: "5",
+    branch_id: "",
+    initial_stock: "",
+  });
+  const [addError, setAddError] = useState<string | null>(null);
+
+  // View modal
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [viewItem, setViewItem] = useState<InventoryItem | null>(null);
+
+  // Edit modal
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingItem, setEditingItem] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [editForm, setEditForm] = useState({
+    item_name: "",
+    sku_code: "",
+    category: "",
+    unit_of_measure: "pcs",
+    cost_price: "",
+    reorder_threshold: "",
+    status: "active",
+  });
+  const [editError, setEditError] = useState<string | null>(null);
+
+  // Delete modal
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingItem, setDeletingItem] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<InventoryItem | null>(null);
+
+  // Adjust modal
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [adjustingItem, setAdjustingItem] = useState(false);
+  const [adjustItem, setAdjustItem] = useState<InventoryItem | null>(null);
+  const [adjustForm, setAdjustForm] = useState({
+    adjustment_type: "increase" as "increase" | "decrease",
+    quantity: "",
+    reason: "",
+  });
+  const [adjustError, setAdjustError] = useState<string | null>(null);
+
+  // Stock-in modal
+  const [showStockInModal, setShowStockInModal] = useState(false);
+  const [stockInLoading, setStockInLoading] = useState(false);
+  const [stockInItem, setStockInItem] = useState<InventoryItem | null>(null);
+  const [stockInForm, setStockInForm] = useState({
+    quantity: "",
+    reason: "",
+  });
+  const [stockInError, setStockInError] = useState<string | null>(null);
+
+  // Movement history modal
+  const [showMovementsModal, setShowMovementsModal] = useState(false);
+  const [movementsItem, setMovementsItem] = useState<InventoryItem | null>(null);
+  const [movements, setMovements] = useState<StockMovement[]>([]);
+  const [movementsLoading, setMovementsLoading] = useState(false);
+
+  // Computed stats
+  const stats = useMemo(() => {
+    const active = allItems.filter((i) => i.status === "active");
+    const lowStock = active.filter((i) => i.is_low_stock);
+    return {
+      total: allItems.length,
+      active: active.length,
+      lowStock: lowStock.length,
+    };
+  }, [allItems]);
+
+  // Filtered + paginated
+  const { filteredItems, paginatedItems, totalPages } = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    const filtered = allItems.filter((item) => {
+      const matchSearch =
+        !q ||
+        item.item_name.toLowerCase().includes(q) ||
+        item.sku_code.toLowerCase().includes(q) ||
+        item.category.toLowerCase().includes(q);
+
+      const matchStatus =
+        filterStatus === "all" || item.status === filterStatus;
+
+      const matchCategory =
+        filterCategory === "all" || item.category === filterCategory;
+
+      const matchBranch =
+        filterBranch === "all" || item.branch_id === filterBranch;
+
+      return matchSearch && matchStatus && matchCategory && matchBranch;
+    });
+    const total = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    const paginated = filtered.slice(start, start + ITEMS_PER_PAGE);
+    return { filteredItems: filtered, paginatedItems: paginated, totalPages: total };
+  }, [allItems, searchQuery, filterStatus, filterCategory, filterBranch, currentPage]);
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterStatus, filterCategory, filterBranch]);
+
+  function handleResetFilters() {
+    setFilterStatus("all");
+    setFilterCategory("all");
+    setFilterBranch("all");
+    setSearchQuery("");
+    setCurrentPage(1);
+  }
+
+  async function fetchData() {
+    try {
+      setLoading(true);
+      setError(null);
+      const [inventoryRes, branchesData] = await Promise.all([
+        inventoryApi.getAll({ limit: 1000 }),
+        branchesApi.getAll(),
+      ]);
+      setAllItems(inventoryRes.data);
+      setBranches(branchesData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch data");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Default branch
+  const defaultBranchId = useMemo(() => {
+    if (!isHM && user?.branches?.length) {
+      const primary = user.branches.find((b) => b.is_primary);
+      return primary?.branch_id || user.branches[0]?.branch_id || "";
+    }
+    return "";
+  }, [user, isHM]);
+
+  // Branch options
+  const branchOptions = useMemo(() => {
+    if (!isHM && user?.branches) {
+      return user.branches.map((ba) => ({
+        value: ba.branch_id,
+        label: ba.branches.name,
+      }));
+    }
+    return branches.map((b) => ({ value: b.id, label: b.name }));
+  }, [branches, user, isHM]);
+
+  // --- Add ---
+  function openAddModal() {
+    setAddForm({
+      item_name: "",
+      sku_code: "",
+      category: "",
+      unit_of_measure: "pcs",
+      cost_price: "",
+      reorder_threshold: "5",
+      branch_id: defaultBranchId,
+      initial_stock: "",
+    });
+    setAddError(null);
+    setShowAddModal(true);
+  }
+
+  async function handleAddItem(e: React.FormEvent) {
+    e.preventDefault();
+    setAddError(null);
+
+    if (!addForm.item_name.trim()) { setAddError("Item name is required"); return; }
+    if (!addForm.sku_code.trim()) { setAddError("SKU code is required"); return; }
+    if (!addForm.category) { setAddError("Category is required"); return; }
+    if (!addForm.cost_price || isNaN(parseFloat(addForm.cost_price)) || parseFloat(addForm.cost_price) < 0) {
+      setAddError("Cost price must be a valid non-negative number"); return;
+    }
+    if (!addForm.branch_id) { setAddError("Branch is required"); return; }
+
+    try {
+      setAddingItem(true);
+      await inventoryApi.create({
+        item_name: addForm.item_name.trim(),
+        sku_code: addForm.sku_code.trim(),
+        category: addForm.category,
+        unit_of_measure: addForm.unit_of_measure,
+        cost_price: parseFloat(addForm.cost_price),
+        reorder_threshold: parseInt(addForm.reorder_threshold) || 0,
+        branch_id: addForm.branch_id,
+        initial_stock: addForm.initial_stock ? parseInt(addForm.initial_stock) : undefined,
+      });
+      setShowAddModal(false);
+      showToast.success("Inventory item created successfully");
+      fetchData();
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "Failed to create inventory item");
+      showToast.error(err instanceof Error ? err.message : "Failed to create inventory item");
+    } finally {
+      setAddingItem(false);
+    }
+  }
+
+  // --- View ---
+  function openViewModal(item: InventoryItem) {
+    setViewItem(item);
+    setShowViewModal(true);
+  }
+
+  // --- Edit ---
+  function openEditModal(item: InventoryItem) {
+    setSelectedItem(item);
+    setEditForm({
+      item_name: item.item_name,
+      sku_code: item.sku_code,
+      category: item.category,
+      unit_of_measure: item.unit_of_measure,
+      cost_price: item.cost_price.toString(),
+      reorder_threshold: item.reorder_threshold.toString(),
+      status: item.status,
+    });
+    setEditError(null);
+    setShowEditModal(true);
+  }
+
+  async function handleEditItem(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedItem) return;
+    setEditError(null);
+
+    if (!editForm.item_name.trim()) { setEditError("Item name cannot be empty"); return; }
+    if (!editForm.sku_code.trim()) { setEditError("SKU code cannot be empty"); return; }
+    if (!editForm.cost_price || isNaN(parseFloat(editForm.cost_price)) || parseFloat(editForm.cost_price) < 0) {
+      setEditError("Cost price must be a valid non-negative number"); return;
+    }
+
+    try {
+      setEditingItem(true);
+      await inventoryApi.update(selectedItem.id, {
+        item_name: editForm.item_name.trim(),
+        sku_code: editForm.sku_code.trim(),
+        category: editForm.category,
+        unit_of_measure: editForm.unit_of_measure,
+        cost_price: parseFloat(editForm.cost_price),
+        reorder_threshold: parseInt(editForm.reorder_threshold) || 0,
+        status: editForm.status,
+      });
+      setShowEditModal(false);
+      setSelectedItem(null);
+      showToast.success("Inventory item updated successfully");
+      fetchData();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Failed to update inventory item");
+      showToast.error(err instanceof Error ? err.message : "Failed to update inventory item");
+    } finally {
+      setEditingItem(false);
+    }
+  }
+
+  // --- Delete (soft) ---
+  function openDeleteConfirmModal(item: InventoryItem) {
+    setItemToDelete(item);
+    setShowDeleteConfirm(true);
+  }
+
+  async function handleDeleteItem() {
+    if (!itemToDelete) return;
+    try {
+      setDeletingItem(true);
+      await inventoryApi.delete(itemToDelete.id);
+      setShowDeleteConfirm(false);
+      setItemToDelete(null);
+      showToast.success("Inventory item deactivated successfully");
+      fetchData();
+    } catch (err) {
+      showToast.error(err instanceof Error ? err.message : "Failed to delete inventory item");
+    } finally {
+      setDeletingItem(false);
+    }
+  }
+
+  // --- Adjust ---
+  function openAdjustModal(item: InventoryItem) {
+    setAdjustItem(item);
+    setAdjustForm({ adjustment_type: "increase", quantity: "", reason: "" });
+    setAdjustError(null);
+    setShowAdjustModal(true);
+  }
+
+  async function handleAdjust(e: React.FormEvent) {
+    e.preventDefault();
+    if (!adjustItem) return;
+    setAdjustError(null);
+
+    const qty = parseInt(adjustForm.quantity);
+    if (!qty || qty < 1) { setAdjustError("Quantity must be at least 1"); return; }
+    if (!adjustForm.reason.trim()) { setAdjustError("Reason is required for adjustments"); return; }
+
+    try {
+      setAdjustingItem(true);
+      await inventoryApi.adjust(adjustItem.id, {
+        adjustment_type: adjustForm.adjustment_type,
+        quantity: qty,
+        reason: adjustForm.reason.trim(),
+      });
+      setShowAdjustModal(false);
+      showToast.success("Stock adjusted successfully");
+      fetchData();
+    } catch (err) {
+      setAdjustError(err instanceof Error ? err.message : "Failed to adjust stock");
+      showToast.error(err instanceof Error ? err.message : "Failed to adjust stock");
+    } finally {
+      setAdjustingItem(false);
+    }
+  }
+
+  // --- Stock In ---
+  function openStockInModal(item: InventoryItem) {
+    setStockInItem(item);
+    setStockInForm({ quantity: "", reason: "" });
+    setStockInError(null);
+    setShowStockInModal(true);
+  }
+
+  async function handleStockIn(e: React.FormEvent) {
+    e.preventDefault();
+    if (!stockInItem) return;
+    setStockInError(null);
+
+    const qty = parseInt(stockInForm.quantity);
+    if (!qty || qty < 1) { setStockInError("Quantity must be at least 1"); return; }
+
+    try {
+      setStockInLoading(true);
+      await inventoryApi.stockIn(stockInItem.id, {
+        quantity: qty,
+        reason: stockInForm.reason.trim() || undefined,
+      });
+      setShowStockInModal(false);
+      showToast.success("Stock added successfully");
+      fetchData();
+    } catch (err) {
+      setStockInError(err instanceof Error ? err.message : "Failed to add stock");
+      showToast.error(err instanceof Error ? err.message : "Failed to add stock");
+    } finally {
+      setStockInLoading(false);
+    }
+  }
+
+  // --- Movement History ---
+  async function openMovementsModal(item: InventoryItem) {
+    setMovementsItem(item);
+    setMovements([]);
+    setShowMovementsModal(true);
+    setMovementsLoading(true);
+    try {
+      const res = await inventoryApi.getMovements(item.id, { limit: 100 });
+      setMovements(res.data);
+    } catch {
+      showToast.error("Failed to load movement history");
+    } finally {
+      setMovementsLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <LuRefreshCw className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-negative-200 border border-negative rounded-lg p-4 flex items-center gap-3">
+        <LuCircleAlert className="w-5 h-5 text-negative-950 flex-shrink-0" />
+        <div>
+          <p className="text-sm text-negative-950">{error}</p>
+          <button
+            onClick={fetchData}
+            className="text-sm text-negative-900 hover:underline mt-1"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header with title and add button */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 justify-between bg-white rounded-xl p-4 border border-neutral-200">
+        <div>
+          <h3 className="text-lg font-semibold text-neutral-950">Inventory</h3>
+          <p className="text-sm text-neutral-900">Summary of inventory items</p>
+        </div>
+        {canCreate && (
+          <button
+            onClick={openAddModal}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
+          >
+            <LuPlus className="w-4 h-4" />
+            Add New Item
+          </button>
+        )}
+      </div>
+
+      {/* Summary Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white border border-neutral-200 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary-100 rounded-lg">
+              <LuBox className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm text-neutral-900">All Items</p>
+              <p className="text-2xl font-bold text-neutral-950">{stats.total}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white border border-neutral-200 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary-100 rounded-lg">
+              <LuPackageCheck className="w-5 h-5 text-positive" />
+            </div>
+            <div>
+              <p className="text-sm text-neutral-900">Active</p>
+              <p className="text-2xl font-bold text-neutral-950">{stats.active}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white border border-neutral-200 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-negative-100 rounded-lg">
+              <LuTriangleAlert className="w-5 h-5 text-negative" />
+            </div>
+            <div>
+              <p className="text-sm text-neutral-900">Low Stock</p>
+              <p className="text-2xl font-bold text-neutral-950">{stats.lowStock}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Table Section */}
+      <div className="bg-white border border-neutral-200 rounded-xl">
+        {/* Table Header with Search and Filters */}
+        <div className="p-4 border-b border-neutral-200 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="relative flex-1 max-w-md">
+              <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-900" />
+              <input
+                type="text"
+                placeholder="Search items..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-4 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-primary w-full sm:w-64"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={filterStatus}
+                onChange={(e) => { setFilterStatus(e.target.value); setCurrentPage(1); }}
+                className="appearance-none px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+              >
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm font-medium transition-colors ${showFilters ? "border-primary bg-primary-100 text-primary" : "border-neutral-200 text-neutral-950 hover:bg-neutral-100"}`}
+              >
+                <LuFilter className="w-4 h-4" />
+                <span className="hidden sm:inline">Filters</span>
+              </button>
+              <button
+                onClick={fetchData}
+                disabled={loading}
+                className="p-2 border border-neutral-200 rounded-lg text-neutral-950 hover:bg-neutral-100 disabled:opacity-100"
+                title="Refresh"
+              >
+                <LuRefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Advanced Filters */}
+          {showFilters && (
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1">
+                <label className="block text-xs text-neutral-900 mb-1">Category</label>
+                <select
+                  value={filterCategory}
+                  onChange={(e) => { setFilterCategory(e.target.value); setCurrentPage(1); }}
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                >
+                  <option value="all">All Categories</option>
+                  {CATEGORY_PRESETS.map((c) => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-neutral-900 mb-1">Branch</label>
+                <select
+                  value={filterBranch}
+                  onChange={(e) => { setFilterBranch(e.target.value); setCurrentPage(1); }}
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                >
+                  <option value="all">All Branches</option>
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-end gap-2">
+                <button
+                  onClick={fetchData}
+                  className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-950 transition-colors"
+                >
+                  Apply
+                </button>
+                <button
+                  onClick={handleResetFilters}
+                  className="px-4 py-2 border border-neutral-200 rounded-lg text-sm font-medium text-neutral-950 hover:bg-neutral-100 transition-colors"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Mobile Card View */}
+        <div className="md:hidden p-4">
+          <div className="grid grid-cols-1 gap-4">
+            {paginatedItems.map((item) => (
+              <div
+                key={item.id}
+                onClick={() => openViewModal(item)}
+                className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-50 transition-colors"
+              >
+                {/* Card header */}
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-primary-100 rounded-lg">
+                      <LuBox className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-neutral-950">{item.item_name}</h4>
+                      <span className="text-xs font-mono text-neutral-900">{item.sku_code}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${item.status === "active" ? "bg-positive-100 text-positive" : "bg-negative-100 text-negative"}`}>
+                      {item.status === "active" ? "Active" : "Inactive"}
+                    </span>
+                    {item.is_low_stock && (
+                      <span className="px-2 py-1 rounded text-xs font-medium bg-negative-100 text-negative flex items-center gap-1">
+                        <LuTriangleAlert className="w-3 h-3" /> Low
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Item details */}
+                <div className="space-y-1 text-sm text-neutral-900 mb-3">
+                  <p>Stock: <strong className={item.is_low_stock ? "text-negative" : "text-neutral-950"}>{item.current_quantity}</strong> {item.unit_of_measure}</p>
+                  <p>Category: {item.category}</p>
+                  {item.branches && (
+                    <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
+                      {item.branches.code}
+                    </span>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
+                  {canStockIn && item.status === "active" && (
+                    <button onClick={(e) => { e.stopPropagation(); openStockInModal(item); }} className="flex items-center gap-1 text-sm text-positive hover:text-positive-900">
+                      <LuCircleArrowUp className="w-4 h-4" /> Stock In
+                    </button>
+                  )}
+                  {canUpdate && (
+                    <button onClick={(e) => { e.stopPropagation(); openEditModal(item); }} className="flex items-center gap-1 text-sm text-primary hover:text-primary-900">
+                      <LuPencil className="w-4 h-4" /> Edit
+                    </button>
+                  )}
+                  {canDelete && item.status === "active" && (
+                    <button onClick={(e) => { e.stopPropagation(); openDeleteConfirmModal(item); }} className="flex items-center gap-1 text-sm text-negative hover:text-negative-900">
+                      <LuTrash2 className="w-4 h-4" /> Delete
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {paginatedItems.length === 0 && (
+              <div className="col-span-full text-center py-12 text-neutral-900">
+                {searchQuery || filterStatus !== "all" || filterCategory !== "all" || filterBranch !== "all"
+                  ? "No items match your filters."
+                  : 'No inventory items found. Click "Add New Item" to create one.'}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-neutral-200 bg-neutral-100">
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Item Name</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">SKU</th>
+                <th className="text-center py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Stock</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Branch</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Status</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedItems.map((item) => (
+                <tr key={item.id} onClick={() => openViewModal(item)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer">
+                  <td className="py-3 px-4 whitespace-nowrap">
+                    <span className="font-medium text-neutral-900">{item.item_name}</span>
+                  </td>
+                  <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap">
+                    <span className="font-mono">{item.sku_code}</span>
+                  </td>
+                  <td className="py-3 px-4 text-center whitespace-nowrap">
+                    <div className="flex items-center justify-center gap-1">
+                      <span className={`font-semibold ${item.is_low_stock ? "text-negative" : "text-neutral-950"}`}>
+                        {item.current_quantity}
+                      </span>
+                      {item.is_low_stock && (
+                        <LuTriangleAlert className="w-3.5 h-3.5 text-negative" />
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-3 px-4">
+                    <span className="text-xs font-mono bg-positive-100 text-positive-950 px-2 py-0.5 rounded">
+                      {item.branches?.code || item.branch_id.substring(0, 8)}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 whitespace-nowrap">
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${item.status === "active" ? "bg-positive-100 text-positive-950" : "bg-negative-100 text-negative-950"}`}>
+                      {item.status === "active" ? "Active" : "Inactive"}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 whitespace-nowrap">
+                    <div className="flex items-center justify-center gap-2">
+                      {canStockIn && item.status === "active" && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openStockInModal(item); }}
+                          className="p-2 text-positive-950 hover:text-positive-900 hover:bg-positive-50 rounded-lg transition-colors"
+                          title="Stock In"
+                        >
+                          <LuCircleArrowUp className="w-4 h-4" />
+                        </button>
+                      )}
+                      {canAdjust && item.status === "active" && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openAdjustModal(item); }}
+                          className="p-2 text-primary-950 hover:text-primary-900 hover:bg-primary-50 rounded-lg transition-colors"
+                          title="Adjust Stock"
+                        >
+                          <LuCircleArrowDown className="w-4 h-4" />
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openMovementsModal(item); }}
+                        className="p-2 text-neutral-950 hover:text-neutral-900 hover:bg-neutral-50 rounded-lg transition-colors"
+                        title="Movement History"
+                      >
+                        <LuHistory className="w-4 h-4" />
+                      </button>
+                      {canUpdate && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openEditModal(item); }}
+                          className="p-2 text-primary-950 hover:text-primary-900 hover:bg-primary-50 rounded-lg transition-colors"
+                          title="Edit"
+                        >
+                          <LuPencil className="w-4 h-4" />
+                        </button>
+                      )}
+                      {canDelete && item.status === "active" && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openDeleteConfirmModal(item); }}
+                          className="p-2 text-negative-950 hover:text-negative-900 hover:bg-negative-50 rounded-lg transition-colors"
+                          title="Deactivate"
+                        >
+                          <LuTrash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {paginatedItems.length === 0 && (
+            <div className="text-center py-12 text-neutral-900">
+              {searchQuery || filterStatus !== "all" || filterCategory !== "all" || filterBranch !== "all"
+                ? "No items match your filters."
+                : "No inventory items found. Click \"Add New Item\" to create one."}
+            </div>
+          )}
+        </div>
+
+        {/* Pagination */}
+        {filteredItems.length > ITEMS_PER_PAGE && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4">
+            <p className="text-sm text-neutral-900">
+              {(currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredItems.length)} of {filteredItems.length} items
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-2 border border-neutral-200 rounded-lg text-neutral-900 hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <LuChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm text-neutral-900 px-2">
+                {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 border border-neutral-200 rounded-lg text-neutral-900 hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <LuChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ───── Add Inventory Item Modal ───── */}
+      <Modal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        title="Add Inventory Item"
+        maxWidth="lg"
+      >
+        <form onSubmit={handleAddItem}>
+          <ModalSection title="Item Information">
+            <ModalInput type="text" value={addForm.item_name} onChange={(v) => setAddForm(p => ({ ...p, item_name: v }))} placeholder="Item Name *" required />
+            <ModalInput type="text" value={addForm.sku_code} onChange={(v) => setAddForm(p => ({ ...p, sku_code: v.toUpperCase() }))} placeholder="SKU Code * (unique per branch)" required />
+            <div className="grid grid-cols-2 gap-4">
+              <ModalSelect value={addForm.category} onChange={(v) => setAddForm(p => ({ ...p, category: v }))} placeholder="Category *" options={CATEGORY_PRESETS} />
+              <ModalSelect value={addForm.unit_of_measure} onChange={(v) => setAddForm(p => ({ ...p, unit_of_measure: v }))} options={UOM_OPTIONS} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <ModalInput type="number" value={addForm.cost_price} onChange={(v) => setAddForm(p => ({ ...p, cost_price: v }))} placeholder="Cost Price *" required />
+              <ModalInput type="number" value={addForm.reorder_threshold} onChange={(v) => setAddForm(p => ({ ...p, reorder_threshold: v }))} placeholder="Reorder Threshold" />
+            </div>
+          </ModalSection>
+          <ModalSection title="Branch & Initial Stock">
+            <ModalSelect value={addForm.branch_id} onChange={(v) => setAddForm(p => ({ ...p, branch_id: v }))} placeholder="Select Branch *" options={branchOptions} />
+            <ModalInput type="number" value={addForm.initial_stock} onChange={(v) => setAddForm(p => ({ ...p, initial_stock: v }))} placeholder="Initial Stock Quantity (optional)" />
+          </ModalSection>
+          <ModalError message={addError} />
+          <ModalButtons onCancel={() => setShowAddModal(false)} submitText={addingItem ? "Creating..." : "Create Item"} loading={addingItem} />
+        </form>
+      </Modal>
+
+      {/* ───── View Inventory Item Modal ───── */}
+      <Modal
+        isOpen={showViewModal && !!viewItem}
+        onClose={() => setShowViewModal(false)}
+        title="Inventory Item Details"
+        maxWidth="lg"
+      >
+        {viewItem && (
+          <div>
+            <ModalSection title="Item Information">
+              <ModalInput type="text" value={viewItem.item_name} onChange={() => {}} placeholder="Item Name" disabled />
+              <div className="grid grid-cols-2 gap-4">
+                <ModalInput type="text" value={viewItem.sku_code} onChange={() => {}} placeholder="SKU Code" disabled />
+                <ModalInput type="text" value={viewItem.category} onChange={() => {}} placeholder="Category" disabled />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <ModalInput type="text" value={viewItem.unit_of_measure} onChange={() => {}} placeholder="Unit of Measure" disabled />
+                <ModalInput type="text" value={formatPrice(viewItem.cost_price)} onChange={() => {}} placeholder="Cost Price" disabled />
+              </div>
+            </ModalSection>
+
+            <ModalSection title="Stock">
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-neutral-100 rounded-xl p-4 text-center">
+                  <p className="text-xs text-neutral-900">Current Stock</p>
+                  <p className={`text-xl font-bold ${viewItem.is_low_stock ? "text-negative" : "text-neutral-950"}`}>{viewItem.current_quantity}</p>
+                </div>
+                <div className="bg-neutral-100 rounded-xl p-4 text-center">
+                  <p className="text-xs text-neutral-900">Reorder At</p>
+                  <p className="text-xl font-bold text-neutral-950">{viewItem.reorder_threshold}</p>
+                </div>
+                <div className="bg-neutral-100 rounded-xl p-4 text-center">
+                  <p className="text-xs text-neutral-900">Status</p>
+                  <p className={`text-xl font-bold ${viewItem.status === "active" ? "text-positive" : "text-negative"}`}>
+                    {viewItem.status === "active" ? "Active" : "Inactive"}
+                  </p>
+                </div>
+              </div>
+              {viewItem.is_low_stock && (
+                <div className="bg-negative-200 border border-negative rounded-xl p-3 flex items-center gap-2">
+                  <LuTriangleAlert className="w-4 h-4 text-negative-950" />
+                  <span className="text-sm text-negative-950">This item is below the reorder threshold!</span>
+                </div>
+              )}
+            </ModalSection>
+
+            <ModalSection title="Branch & Timestamps">
+              <ModalInput type="text" value={viewItem.branches ? `${viewItem.branches.name} (${viewItem.branches.code})` : viewItem.branch_id} onChange={() => {}} placeholder="Branch" disabled />
+              <div className="grid grid-cols-2 gap-4">
+                <ModalInput type="text" value={formatDate(viewItem.created_at)} onChange={() => {}} placeholder="Created" disabled />
+                <ModalInput type="text" value={formatDate(viewItem.updated_at)} onChange={() => {}} placeholder="Updated" disabled />
+              </div>
+            </ModalSection>
+          </div>
+        )}
+      </Modal>
+
+      {/* ───── Edit Inventory Item Modal ───── */}
+      <Modal
+        isOpen={showEditModal && !!selectedItem}
+        onClose={() => setShowEditModal(false)}
+        title="Edit Inventory Item"
+        maxWidth="lg"
+      >
+        <form onSubmit={handleEditItem}>
+          <ModalSection title="Item Information">
+            <ModalInput type="text" value={editForm.item_name} onChange={(v) => setEditForm(p => ({ ...p, item_name: v }))} placeholder="Item Name *" required />
+            <ModalInput type="text" value={editForm.sku_code} onChange={(v) => setEditForm(p => ({ ...p, sku_code: v.toUpperCase() }))} placeholder="SKU Code *" required />
+            <div className="grid grid-cols-2 gap-4">
+              <ModalSelect value={editForm.category} onChange={(v) => setEditForm(p => ({ ...p, category: v }))} placeholder="Category *" options={CATEGORY_PRESETS} />
+              <ModalSelect value={editForm.unit_of_measure} onChange={(v) => setEditForm(p => ({ ...p, unit_of_measure: v }))} options={UOM_OPTIONS} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <ModalInput type="number" value={editForm.cost_price} onChange={(v) => setEditForm(p => ({ ...p, cost_price: v }))} placeholder="Cost Price *" required />
+              <ModalInput type="number" value={editForm.reorder_threshold} onChange={(v) => setEditForm(p => ({ ...p, reorder_threshold: v }))} placeholder="Reorder Threshold" />
+            </div>
+            <ModalSelect
+              value={editForm.status}
+              onChange={(v) => setEditForm(p => ({ ...p, status: v }))}
+              options={[
+                { value: "active", label: "Active" },
+                { value: "inactive", label: "Inactive" },
+              ]}
+            />
+          </ModalSection>
+          <ModalError message={editError} />
+          <ModalButtons onCancel={() => setShowEditModal(false)} submitText={editingItem ? "Saving..." : "Save Changes"} loading={editingItem} />
+        </form>
+      </Modal>
+
+      {/* ───── Delete Confirmation Modal ───── */}
+      <Modal
+        isOpen={showDeleteConfirm && !!itemToDelete}
+        onClose={() => setShowDeleteConfirm(false)}
+        title="Deactivate Inventory Item"
+        maxWidth="sm"
+      >
+        {itemToDelete && (
+          <div>
+            <div className="bg-neutral-100 rounded-xl p-4 my-4">
+              <p className="text-neutral-900">
+                Are you sure you want to deactivate{" "}
+                <strong className="text-neutral-950">{itemToDelete.item_name}</strong>{" "}
+                ({itemToDelete.sku_code})?
+              </p>
+            </div>
+            <p className="text-sm text-neutral-900 mb-2">
+              This item will be set to inactive and cannot be selected in new transactions.
+            </p>
+            <div className="flex gap-3 mt-6">
+              <button type="button" onClick={() => setShowDeleteConfirm(false)} className="flex-1 px-4 py-3.5 border-2 border-negative text-negative rounded-xl font-semibold hover:bg-negative-200 transition-colors">
+                Cancel
+              </button>
+              <button type="button" onClick={handleDeleteItem} disabled={deletingItem} className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                {deletingItem ? "Deactivating..." : "Deactivate"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ───── Adjust Stock Modal ───── */}
+      <Modal
+        isOpen={showAdjustModal && !!adjustItem}
+        onClose={() => setShowAdjustModal(false)}
+        title="Adjust Stock"
+        maxWidth="lg"
+      >
+        {adjustItem && (
+          <form onSubmit={handleAdjust}>
+            <div className="bg-neutral-100 rounded-xl p-4 my-4">
+              <p className="text-neutral-950 font-medium">{adjustItem.item_name}</p>
+              <p className="text-sm text-neutral-900">Current Stock: <strong>{adjustItem.current_quantity}</strong> {adjustItem.unit_of_measure}</p>
+            </div>
+            <ModalSection title="Adjustment Details">
+              <ModalSelect
+                value={adjustForm.adjustment_type}
+                onChange={(v) => setAdjustForm(p => ({ ...p, adjustment_type: v as "increase" | "decrease" }))}
+                options={[
+                  { value: "increase", label: "Increase Stock" },
+                  { value: "decrease", label: "Decrease Stock" },
+                ]}
+              />
+              <ModalInput type="number" value={adjustForm.quantity} onChange={(v) => setAdjustForm(p => ({ ...p, quantity: v }))} placeholder="Quantity *" required />
+              <textarea
+                value={adjustForm.reason}
+                onChange={(e) => setAdjustForm(p => ({ ...p, reason: e.target.value }))}
+                placeholder="Reason for adjustment *"
+                rows={3}
+                required
+                className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
+              />
+            </ModalSection>
+            <ModalError message={adjustError} />
+            <ModalButtons onCancel={() => setShowAdjustModal(false)} submitText={adjustingItem ? "Adjusting..." : "Adjust Stock"} loading={adjustingItem} />
+          </form>
+        )}
+      </Modal>
+
+      {/* ───── Stock In Modal ───── */}
+      <Modal
+        isOpen={showStockInModal && !!stockInItem}
+        onClose={() => setShowStockInModal(false)}
+        title="Add Stock"
+        maxWidth="lg"
+      >
+        {stockInItem && (
+          <form onSubmit={handleStockIn}>
+            <div className="bg-neutral-100 rounded-xl p-4 my-4">
+              <p className="text-neutral-950 font-medium">{stockInItem.item_name}</p>
+              <p className="text-sm text-neutral-900">Current Stock: <strong>{stockInItem.current_quantity}</strong> {stockInItem.unit_of_measure}</p>
+            </div>
+            <ModalSection title="Stock Received">
+              <ModalInput type="number" value={stockInForm.quantity} onChange={(v) => setStockInForm(p => ({ ...p, quantity: v }))} placeholder="Quantity to add *" required />
+              <textarea
+                value={stockInForm.reason}
+                onChange={(e) => setStockInForm(p => ({ ...p, reason: e.target.value }))}
+                placeholder="Reason / PO reference (optional)"
+                rows={3}
+                className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
+              />
+            </ModalSection>
+            <ModalError message={stockInError} />
+            <ModalButtons onCancel={() => setShowStockInModal(false)} submitText={stockInLoading ? "Adding..." : "Add Stock"} loading={stockInLoading} />
+          </form>
+        )}
+      </Modal>
+
+      {/* ───── Movement History Modal ───── */}
+      <Modal
+        isOpen={showMovementsModal && !!movementsItem}
+        onClose={() => setShowMovementsModal(false)}
+        title={`Stock Movement History — ${movementsItem?.item_name || ""}`}
+        maxWidth="xl"
+      >
+        {movementsLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <LuRefreshCw className="w-6 h-6 animate-spin text-primary" />
+          </div>
+        ) : movements.length === 0 ? (
+          <div className="text-center py-12 text-neutral-900">
+            No movement history found for this item.
+          </div>
+        ) : (
+          <div className="overflow-x-auto max-h-96 mt-4">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-neutral-200 bg-neutral-100">
+                  <th className="text-left px-3 py-2 text-sm font-medium text-neutral-950">Date</th>
+                  <th className="text-left px-3 py-2 text-sm font-medium text-neutral-950">Type</th>
+                  <th className="text-center px-3 py-2 text-sm font-medium text-neutral-950">Qty</th>
+                  <th className="text-left px-3 py-2 text-sm font-medium text-neutral-950">Reference</th>
+                  <th className="text-left px-3 py-2 text-sm font-medium text-neutral-950">Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {movements.map((m) => (
+                  <tr key={m.id} className="border-b border-neutral-200">
+                    <td className="px-3 py-2 text-neutral-900 whitespace-nowrap">{formatDateTime(m.created_at)}</td>
+                    <td className="px-3 py-2">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        m.movement_type === "stock_in" ? "bg-positive-100 text-positive-950"
+                        : m.movement_type === "stock_out" ? "bg-negative-100 text-negative-950"
+                        : "bg-primary-100 text-primary"
+                      }`}>
+                        {movementTypeLabel(m.movement_type)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-center font-medium text-neutral-950">
+                      {m.movement_type === "stock_out" ? "-" : "+"}{m.quantity}
+                    </td>
+                    <td className="px-3 py-2 text-neutral-900">{referenceTypeLabel(m.reference_type)}</td>
+                    <td className="px-3 py-2 text-neutral-900">{m.reason || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}

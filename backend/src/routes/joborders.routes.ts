@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
 import { logFailedAction } from "../lib/auditLogger.js";
+import { deductStockForJobOrder, restoreStockForJobOrder } from "./inventory.routes.js";
 
 const router = Router();
 
@@ -670,6 +671,31 @@ router.patch(
         return;
       }
 
+      // FR-3: If approving, check and deduct inventory stock first
+      if (decision === "approved") {
+        // Fetch JO items to check stock
+        const { data: joItems } = await supabaseAdmin
+          .from("job_order_items")
+          .select("catalog_item_id, catalog_item_name, catalog_item_type, quantity")
+          .eq("job_order_id", orderId);
+
+        if (joItems && joItems.length > 0) {
+          const deductResult = await deductStockForJobOrder(
+            orderId,
+            existing.branch_id,
+            joItems,
+            req.user!.id
+          );
+
+          if (!deductResult.success) {
+            res.status(400).json({
+              error: deductResult.error || "Insufficient stock to approve this job order",
+            });
+            return;
+          }
+        }
+      }
+
       // Update status and approval fields
       const updatePayload: Record<string, unknown> = {
         status: decision,
@@ -773,13 +799,22 @@ router.patch(
         return;
       }
 
-      // Validate status: only created, pending, or rejected can be cancelled
-      const cancellableStatuses = ["created", "pending", "rejected"];
+      // Validate status: only created, pending, rejected, or approved can be cancelled
+      const cancellableStatuses = ["created", "pending", "rejected", "approved"];
       if (!cancellableStatuses.includes(existing.status)) {
         res.status(400).json({
-          error: `Cannot cancel a job order with status "${existing.status}". Only created, pending approval, or rejected orders can be cancelled.`,
+          error: `Cannot cancel a job order with status "${existing.status}". Only created, pending, rejected, or approved orders can be cancelled.`,
         });
         return;
+      }
+
+      // FR-3: If cancelling an approved order, restore deducted stock
+      if (existing.status === "approved") {
+        try {
+          await restoreStockForJobOrder(orderId, existing.branch_id, req.user!.id);
+        } catch (restoreErr) {
+          console.error("Stock restoration error:", restoreErr);
+        }
       }
 
       // Update status

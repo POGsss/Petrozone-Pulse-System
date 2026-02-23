@@ -295,3 +295,40 @@ export interface ThirdPartyRepair {
     };
   };
 }
+
+// Inventory types
+export type InventoryItemStatus = "active" | "inactive";
+
+export interface InventoryItem {
+  id: string;
+  item_name: string;
+  sku_code: string;
+  category: string;
+  unit_of_measure: string;
+  cost_price: number;
+  reorder_threshold: number;
+  status: InventoryItemStatus;
+  branch_id: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  branches?: Branch;
+  current_quantity: number;
+  is_low_stock: boolean;
+}
+
+export type StockMovementType = "stock_in" | "stock_out" | "adjustment";
+export type StockReferenceType = "purchase_order" | "job_order" | "adjustment";
+
+export interface StockMovement {
+  id: string;
+  inventory_item_id: string;
+  movement_type: StockMovementType;
+  quantity: number;
+  reference_type: StockReferenceType;
+  reference_id: string | null;
+  reason: string | null;
+  branch_id: string;
+  created_by: string | null;
+  created_at: string;
+}

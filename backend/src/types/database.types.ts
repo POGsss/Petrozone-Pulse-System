@@ -681,9 +681,146 @@ export type Database = {
           },
         ]
       }
+      inventory_items: {
+        Row: {
+          id: string
+          item_name: string
+          sku_code: string
+          category: string
+          unit_of_measure: string
+          cost_price: number
+          reorder_threshold: number
+          status: Database["public"]["Enums"]["inventory_item_status"]
+          branch_id: string
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          item_name: string
+          sku_code: string
+          category: string
+          unit_of_measure: string
+          cost_price: number
+          reorder_threshold?: number
+          status?: Database["public"]["Enums"]["inventory_item_status"]
+          branch_id: string
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          item_name?: string
+          sku_code?: string
+          category?: string
+          unit_of_measure?: string
+          cost_price?: number
+          reorder_threshold?: number
+          status?: Database["public"]["Enums"]["inventory_item_status"]
+          branch_id?: string
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_items_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_items_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_movements: {
+        Row: {
+          id: string
+          inventory_item_id: string
+          movement_type: Database["public"]["Enums"]["stock_movement_type"]
+          quantity: number
+          reference_type: Database["public"]["Enums"]["stock_reference_type"]
+          reference_id: string | null
+          reason: string | null
+          branch_id: string
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          inventory_item_id: string
+          movement_type: Database["public"]["Enums"]["stock_movement_type"]
+          quantity: number
+          reference_type: Database["public"]["Enums"]["stock_reference_type"]
+          reference_id?: string | null
+          reason?: string | null
+          branch_id: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          inventory_item_id?: string
+          movement_type?: Database["public"]["Enums"]["stock_movement_type"]
+          quantity?: number
+          reference_type?: Database["public"]["Enums"]["stock_reference_type"]
+          reference_id?: string | null
+          reason?: string | null
+          branch_id?: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_movements_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
-      [_ in never]: never
+      inventory_on_hand: {
+        Row: {
+          inventory_item_id: string
+          item_name: string
+          sku_code: string
+          category: string
+          unit_of_measure: string
+          cost_price: number
+          reorder_threshold: number
+          status: string
+          branch_id: string
+          created_by: string | null
+          created_at: string
+          updated_at: string
+          current_quantity: number
+        }
+      }
     }
     Functions: {
       create_audit_log: {
@@ -766,9 +903,12 @@ export type Database = {
     Enums: {
       customer_status: "active" | "inactive"
       customer_type: "individual" | "company"
+      inventory_item_status: "active" | "inactive"
       job_order_status: "created" | "pending" | "approved" | "rejected" | "cancelled"
       pricing_matrix_status: "active" | "inactive"
       pricing_type: "labor" | "packaging"
+      stock_movement_type: "stock_in" | "stock_out" | "adjustment"
+      stock_reference_type: "purchase_order" | "job_order" | "adjustment"
       user_role: "HM" | "POC" | "JS" | "R" | "T" | "ADMIN"
       vehicle_status: "active" | "inactive"
       vehicle_type:
@@ -911,9 +1051,12 @@ export const Constants = {
     Enums: {
       customer_status: ["active", "inactive"],
       customer_type: ["individual", "company"],
+      inventory_item_status: ["active", "inactive"],
       job_order_status: ["created", "pending", "approved", "rejected", "cancelled"],
       pricing_matrix_status: ["active", "inactive"],
       pricing_type: ["labor", "packaging"],
+      stock_movement_type: ["stock_in", "stock_out", "adjustment"],
+      stock_reference_type: ["purchase_order", "job_order", "adjustment"],
       user_role: ["HM", "POC", "JS", "R", "T", "ADMIN"],
       vehicle_status: ["active", "inactive"],
       vehicle_type: [

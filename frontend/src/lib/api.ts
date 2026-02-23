@@ -808,3 +808,129 @@ export const settingsApi = {
     });
   },
 };
+
+// Inventory API
+export const inventoryApi = {
+  getAll: async (params?: {
+    branch_id?: string;
+    status?: string;
+    category?: string;
+    search?: string;
+    low_stock?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
+    const query = searchParams.toString();
+    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").InventoryItem>>(
+      `/api/inventory${query ? `?${query}` : ""}`
+    );
+  },
+
+  getById: async (id: string) => {
+    return fetchWithAuth<import("../types").InventoryItem>(`/api/inventory/${id}`);
+  },
+
+  getLowStock: async () => {
+    return fetchWithAuth<{ data: import("../types").InventoryItem[]; count: number }>(
+      "/api/inventory/low-stock"
+    );
+  },
+
+  create: async (data: {
+    item_name: string;
+    sku_code: string;
+    category: string;
+    unit_of_measure: string;
+    cost_price: number;
+    reorder_threshold?: number;
+    branch_id: string;
+    initial_stock?: number;
+  }) => {
+    return fetchWithAuth<import("../types").InventoryItem>("/api/inventory", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (
+    id: string,
+    data: {
+      item_name?: string;
+      sku_code?: string;
+      category?: string;
+      unit_of_measure?: string;
+      cost_price?: number;
+      reorder_threshold?: number;
+      status?: string;
+    }
+  ) => {
+    return fetchWithAuth<import("../types").InventoryItem>(`/api/inventory/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: string) => {
+    return fetchWithAuth<{ message: string }>(`/api/inventory/${id}`, {
+      method: "DELETE",
+    });
+  },
+
+  adjust: async (
+    id: string,
+    data: {
+      adjustment_type: "increase" | "decrease";
+      quantity: number;
+      reason: string;
+    }
+  ) => {
+    return fetchWithAuth<{
+      message: string;
+      current_quantity: number;
+      is_low_stock: boolean;
+    }>(`/api/inventory/${id}/adjust`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  stockIn: async (
+    id: string,
+    data: { quantity: number; reason?: string }
+  ) => {
+    return fetchWithAuth<{
+      message: string;
+      current_quantity: number;
+      is_low_stock: boolean;
+    }>(`/api/inventory/${id}/stock-in`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  getMovements: async (
+    id: string,
+    params?: { limit?: number; offset?: number }
+  ) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
+    const query = searchParams.toString();
+    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").StockMovement>>(
+      `/api/inventory/${id}/movements${query ? `?${query}` : ""}`
+    );
+  },
+};

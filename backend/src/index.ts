@@ -18,6 +18,7 @@ import pricingRoutes from "./routes/pricing.routes.js";
 import settingsRoutes from "./routes/settings.routes.js";
 import jobOrderRoutes from "./routes/joborders.routes.js";
 import thirdPartyRepairRoutes from "./routes/thirdpartyrepairs.routes.js";
+import inventoryRoutes from "./routes/inventory.routes.js";
 
 const app = express();
 
@@ -63,6 +64,7 @@ app.use("/api/pricing", pricingRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/job-orders", jobOrderRoutes);
 app.use("/api/third-party-repairs", thirdPartyRepairRoutes);
+app.use("/api/inventory", inventoryRoutes);
 
 // 404 handler
 app.use((_req, res) => {
