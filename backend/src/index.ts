@@ -7,17 +7,17 @@ import express from "express";
 import cors from "cors";
 
 // Import routes (these will now have access to env vars)
-import authRoutes from "./auth/auth.routes.js";
-import rbacRoutes from "./rbac/rbac.routes.js";
+import authRoutes from "./routes/auth.routes.js";
+import rbacRoutes from "./routes/rbac.routes.js";
 import branchRoutes from "./routes/branches.routes.js";
-import auditRoutes from "./audit/audit.routes.js";
-import customerRoutes from "./customers/customers.routes.js";
-import vehicleRoutes from "./vehicles/vehicles.routes.js";
-import catalogRoutes from "./catalog/catalog.routes.js";
-import pricingRoutes from "./pricing/pricing.routes.js";
-import settingsRoutes from "./settings/settings.routes.js";
-import jobOrderRoutes from "./joborders/joborders.routes.js";
-import thirdPartyRepairRoutes from "./thirdpartyrepairs/thirdpartyrepairs.routes.js";
+import auditRoutes from "./routes/audit.routes.js";
+import customerRoutes from "./routes/customers.routes.js";
+import vehicleRoutes from "./routes/vehicles.routes.js";
+import catalogRoutes from "./routes/catalog.routes.js";
+import pricingRoutes from "./routes/pricing.routes.js";
+import settingsRoutes from "./routes/settings.routes.js";
+import jobOrderRoutes from "./routes/joborders.routes.js";
+import thirdPartyRepairRoutes from "./routes/thirdpartyrepairs.routes.js";
 
 const app = express();
 

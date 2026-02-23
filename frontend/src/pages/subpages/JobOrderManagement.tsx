@@ -110,6 +110,7 @@ export function JobOrderManagement() {
   // Permission checks
   const canCreate = userRoles.some((r) => ["POC", "JS", "R"].includes(r));
   const canUpdate = userRoles.some((r) => ["POC", "JS", "R", "T"].includes(r));
+  const canEditItems = userRoles.some((r) => ["POC", "JS", "R"].includes(r));
   const canDelete = userRoles.some((r) => ["POC", "JS", "R"].includes(r));
   const canRepair = userRoles.some((r) => ["HM", "POC", "JS", "R", "T"].includes(r));
   const canApproval = userRoles.some((r) => ["R", "T"].includes(r));
@@ -604,8 +605,8 @@ export function JobOrderManagement() {
     setEditSelectedQty("1");
     setShowEditModal(true);
 
-    // If status allows item editing, load items + catalog
-    if (isEditableStatus(order.status)) {
+    // If status allows item editing and user has catalog access, load items + catalog
+    if (isEditableStatus(order.status) && canEditItems) {
       loadEditModalData(order);
     }
   }
@@ -1955,8 +1956,8 @@ export function JobOrderManagement() {
             />
           </ModalSection>
 
-          {/* Items section — only for created/rejected orders */}
-          {editOrder && isEditableStatus(editOrder.status) && (
+          {/* Items section — only for created/rejected orders and roles with catalog access */}
+          {editOrder && isEditableStatus(editOrder.status) && canEditItems && (
             <ModalSection title="Items Lists">
               {editLoadingItems ? (
                 <p className="text-sm text-neutral-900 text-center py-4">Loading items...</p>
