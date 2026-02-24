@@ -176,8 +176,8 @@ Tasks:
 3. Implement stock-in logic when PO status changes to "received"
 4. Create stock_movement records for each stock-in event
 5. Apply Supabase RLS policies for branch isolation
-6. Build Purchase Orders management page (consistent styling with other pages)
-7. Add Purchase Orders sidebar item under Inventory section
+6. Build Purchase Orders management page (Same styling as Inventory Management, Table style.)
+7. Add Purchase Orders sidebar item under Job Orders section
 8. Audit log all mutations
 9. Maintain consistent styling and use available modal components
 ```

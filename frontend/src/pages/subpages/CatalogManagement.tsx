@@ -307,22 +307,26 @@ export function CatalogManagement() {
       setEditError("Base price must be a valid non-negative number");
       return;
     }
-    if (!editForm.is_global && !editForm.branch_id) {
+    if (isHM && !editForm.is_global && !editForm.branch_id) {
       setEditError("Select a branch or mark as global");
       return;
     }
 
     try {
       setEditingItem(true);
-      await catalogApi.update(selectedItem.id, {
+      const updatePayload: Record<string, unknown> = {
         name: editForm.name.trim(),
         type: editForm.type,
         description: editForm.description.trim() || null,
         base_price: parseFloat(editForm.base_price),
         status: editForm.status,
-        branch_id: editForm.is_global ? null : editForm.branch_id,
-        is_global: editForm.is_global,
-      });
+      };
+      // Only HM can change global/branch assignment
+      if (isHM) {
+        updatePayload.branch_id = editForm.is_global ? null : editForm.branch_id;
+        updatePayload.is_global = editForm.is_global;
+      }
+      await catalogApi.update(selectedItem.id, updatePayload);
       setShowEditModal(false);
       setSelectedItem(null);
       showToast.success("Catalog item updated successfully");
@@ -471,7 +475,7 @@ export function CatalogManagement() {
                 canUpdate || canDelete ? "gap-4 pt-3 border-t border-neutral-200" : ""
               }`}
             >
-              {canUpdate && (
+              {canUpdate && (!item.is_global || isHM) && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -483,7 +487,7 @@ export function CatalogManagement() {
                   Edit
                 </button>
               )}
-              {canDelete && (
+              {canDelete && (!item.is_global || isHM) && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -766,6 +770,7 @@ export function CatalogManagement() {
                 }
                 placeholder="Select Branch *"
                 options={branchOptions}
+                disabled={!isHM}
               />
             )}
           </ModalSection>

@@ -667,7 +667,7 @@ export function InventoryManagement() {
 
         {/* Mobile Card View */}
         <div className="md:hidden p-4">
-          <div className="grid grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {paginatedItems.map((item) => (
               <div
                 key={item.id}
@@ -682,42 +682,51 @@ export function InventoryManagement() {
                     </div>
                     <div>
                       <h4 className="font-semibold text-neutral-950">{item.item_name}</h4>
-                      <span className="text-xs font-mono text-neutral-900">{item.sku_code}</span>
+                      {item.branches && (
+                        <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
+                          {item.branches.code}
+                        </span>
+                      )}
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-1">
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${item.status === "active" ? "bg-positive-100 text-positive" : "bg-negative-100 text-negative"}`}>
-                      {item.status === "active" ? "Active" : "Inactive"}
-                    </span>
-                    {item.is_low_stock && (
-                      <span className="px-2 py-1 rounded text-xs font-medium bg-negative-100 text-negative flex items-center gap-1">
-                        <LuTriangleAlert className="w-3 h-3" /> Low
-                      </span>
-                    )}
-                  </div>
+                  <span
+                    className={`px-2 py-1 rounded text-xs font-medium ${
+                      item.status === "active"
+                        ? "bg-positive-100 text-positive"
+                        : "bg-negative-100 text-negative"
+                    }`}
+                  >
+                    {item.status === "active" ? "Active" : "Inactive"}
+                  </span>
                 </div>
 
                 {/* Item details */}
                 <div className="space-y-1 text-sm text-neutral-900 mb-3">
-                  <p>Stock: <strong className={item.is_low_stock ? "text-negative" : "text-neutral-950"}>{item.current_quantity}</strong> {item.unit_of_measure}</p>
-                  <p>Category: {item.category}</p>
-                  {item.branches && (
-                    <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
-                      {item.branches.code}
-                    </span>
-                  )}
+                  <p className="text-neutral-900 font-mono">{item.sku_code}</p>
+                  <p className={`text-neutral-900 ${item.is_low_stock ? "text-negative font-semibold" : ""}`}>
+                    {item.current_quantity} {item.unit_of_measure} {item.is_low_stock && "(Low Stock)"}
+                  </p>
+                  <p className="text-neutral-900">{item.category}</p>
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
+                <div className={`flex items-center justify-end ${canUpdate || canDelete ? "gap-4 pt-3 border-t border-neutral-200" : ""}`}>
                   {canUpdate && (
-                    <button onClick={(e) => { e.stopPropagation(); openEditModal(item); }} className="flex items-center gap-1 text-sm text-primary hover:text-primary-900">
-                      <LuPencil className="w-4 h-4" /> Edit
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openEditModal(item); }}
+                      className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
+                    >
+                      <LuPencil className="w-4 h-4" />
+                      Edit
                     </button>
                   )}
                   {canDelete && item.status === "active" && (
-                    <button onClick={(e) => { e.stopPropagation(); openDeleteConfirmModal(item); }} className="flex items-center gap-1 text-sm text-negative hover:text-negative-900">
-                      <LuTrash2 className="w-4 h-4" /> Delete
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openDeleteConfirmModal(item); }}
+                      className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
+                    >
+                      <LuTrash2 className="w-4 h-4" />
+                      Delete
                     </button>
                   )}
                   {/* More actions dropdown */}
@@ -794,7 +803,7 @@ export function InventoryManagement() {
                   </td>
                   <td className="py-3 px-4 text-center whitespace-nowrap">
                     <div className="flex items-center justify-center gap-1">
-                      <span className={`font-semibold ${item.is_low_stock ? "text-negative" : "text-neutral-950"}`}>
+                      <span className={`font-semibold ${item.is_low_stock ? "text-negative" : "text-neutral-900"}`}>
                         {item.current_quantity}
                       </span>
                       {item.is_low_stock && (
@@ -951,20 +960,7 @@ export function InventoryManagement() {
       >
         {viewItem && (
           <div>
-            <ModalSection title="Item Information">
-              <ModalInput type="text" value={viewItem.item_name} onChange={() => {}} placeholder="Item Name" disabled />
-              <div className="grid grid-cols-2 gap-4">
-                <ModalInput type="text" value={viewItem.sku_code} onChange={() => {}} placeholder="SKU Code" disabled />
-                <ModalInput type="text" value={viewItem.category} onChange={() => {}} placeholder="Category" disabled />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <ModalInput type="text" value={viewItem.unit_of_measure} onChange={() => {}} placeholder="Unit of Measure" disabled />
-                <ModalInput type="text" value={formatPrice(viewItem.cost_price)} onChange={() => {}} placeholder="Cost Price" disabled />
-              </div>
-              <ModalInput type="text" value={viewItem.branches ? `${viewItem.branches.name} (${viewItem.branches.code})` : viewItem.branch_id} onChange={() => {}} placeholder="Branch" disabled />
-            </ModalSection>
-
-            <ModalSection title="Stock">
+            <ModalSection title="Stock Status">
               <div className="grid grid-cols-3 gap-4">
                 <div className="bg-neutral-100 rounded-xl px-4 py-3.5 text-center">
                   <p className="text-xs text-neutral-900">Current Stock</p>
@@ -987,6 +983,19 @@ export function InventoryManagement() {
                   <span className="text-sm text-negative-950">This item is below the reorder threshold!</span>
                 </div>
               )}
+            </ModalSection>
+
+            <ModalSection title="Item Information">
+              <ModalInput type="text" value={viewItem.item_name} onChange={() => {}} placeholder="Item Name" disabled />
+              <div className="grid grid-cols-2 gap-4">
+                <ModalInput type="text" value={viewItem.sku_code} onChange={() => {}} placeholder="SKU Code" disabled />
+                <ModalInput type="text" value={viewItem.category} onChange={() => {}} placeholder="Category" disabled />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <ModalInput type="text" value={viewItem.unit_of_measure} onChange={() => {}} placeholder="Unit of Measure" disabled />
+                <ModalInput type="text" value={formatPrice(viewItem.cost_price)} onChange={() => {}} placeholder="Cost Price" disabled />
+              </div>
+              <ModalInput type="text" value={viewItem.branches ? `${viewItem.branches.name} (${viewItem.branches.code})` : viewItem.branch_id} onChange={() => {}} placeholder="Branch" disabled />
             </ModalSection>
 
             <ModalSection title="Timestamps">

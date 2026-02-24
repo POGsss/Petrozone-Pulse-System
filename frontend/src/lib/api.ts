@@ -53,10 +53,18 @@ async function fetchWithAuth<T>(
     // Auto-logout on auth failures (skip for login/refresh/change-password endpoints)
     const isAuthEndpoint = endpoint === "/api/auth/login" || endpoint === "/api/auth/refresh" || endpoint === "/api/auth/change-password";
     if (!isAuthEndpoint) {
-      // 401 = expired/invalid token, 403 = deactivated account, 423 = locked account
-      if (response.status === 401 || response.status === 403 || response.status === 423) {
+      // 401 = expired/invalid token, 423 = locked account → always logout
+      if (response.status === 401 || response.status === 423) {
         forceLogout();
         return new Promise(() => {}); // Never resolves — page is redirecting
+      }
+      // 403 = only logout for account-level issues (deactivated), not permission errors
+      if (response.status === 403) {
+        const errorMsg = (error.error || "").toLowerCase();
+        if (errorMsg.includes("deactivated") || errorMsg.includes("inactive")) {
+          forceLogout();
+          return new Promise(() => {}); // Never resolves — page is redirecting
+        }
       }
     }
 

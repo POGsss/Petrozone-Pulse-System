@@ -35,13 +35,6 @@ async function getOnHandQuantities(
       map[id] = (map[id] ?? 0) + m.quantity;
     } else if (m.movement_type === "stock_out") {
       map[id] = (map[id] ?? 0) - m.quantity;
-    } else if (m.movement_type === "adjustment") {
-      // For adjustments, check the reason to determine direction
-      if (m.reason && m.reason.toLowerCase().includes("increase")) {
-        map[id] = (map[id] ?? 0) + m.quantity;
-      } else {
-        map[id] = (map[id] ?? 0) - m.quantity;
-      }
     }
   }
   return map;
@@ -669,17 +662,17 @@ router.post(
       }
 
       // Create stock movement
-      const movementType =
+      const movementType: "stock_in" | "stock_out" =
         adjustment_type === "increase" ? "stock_in" : "stock_out";
 
       const { error: moveError } = await supabaseAdmin
         .from("stock_movements")
         .insert({
           inventory_item_id: itemId,
-          movement_type: "adjustment" as "stock_in" | "stock_out" | "adjustment",
+          movement_type: movementType,
           quantity: adjustQty,
           reference_type: "adjustment" as "purchase_order" | "job_order" | "adjustment",
-          reason: `${adjustment_type}: ${reason.trim()}`,
+          reason: reason.trim(),
           branch_id: item.branch_id,
           created_by: req.user!.id,
         });
