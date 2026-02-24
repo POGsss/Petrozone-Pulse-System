@@ -820,6 +820,7 @@ export type Database = {
           updated_at: string
           current_quantity: number
         }
+        Relationships: []
       }
     }
     Functions: {

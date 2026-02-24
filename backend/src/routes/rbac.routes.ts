@@ -57,7 +57,7 @@ router.get("/users", requireUserManager, async (req: Request, res: Response): Pr
     // Transform the data for easier consumption
     const transformedUsers = users?.map((user) => ({
       ...user,
-      roles: user.user_roles?.map((r: { role: UserRole }) => r.role) ?? [],
+      roles: user.user_roles?.map((r) => r.role as UserRole) ?? [],
       branches: user.user_branch_assignments ?? [],
       user_roles: undefined,
       user_branch_assignments: undefined,
@@ -191,7 +191,7 @@ router.post("/users", requireUserManager, async (req: Request, res: Response): P
 
     res.status(201).json({
       ...user,
-      roles: user?.user_roles?.map((r: { role: UserRole }) => r.role) ?? [],
+      roles: user?.user_roles?.map((r) => r.role as UserRole) ?? [],
       branches: user?.user_branch_assignments ?? [],
     });
   } catch (error) {

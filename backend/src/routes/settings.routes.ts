@@ -104,7 +104,7 @@ router.put(
           p_entity_id: existing.id,
           p_performed_by_user_id: req.user!.id,
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
-          p_new_values: updates,
+          p_new_values: updates as Record<string, unknown> as import("../types/database.types.js").Json,
         });
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);

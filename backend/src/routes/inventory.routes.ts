@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
 import { logFailedAction } from "../lib/auditLogger.js";
+import type { Database } from "../types/database.types.js";
 
 const router = Router();
 
@@ -83,7 +84,7 @@ router.get(
       }
 
       if (branch_id) query = query.eq("branch_id", branch_id as string);
-      if (status) query = query.eq("status", status as string);
+      if (status) query = query.eq("status", status as Database["public"]["Enums"]["inventory_item_status"]);
       if (category) query = query.eq("category", category as string);
       if (search) {
         const s = `%${search}%`;
@@ -519,7 +520,7 @@ router.put(
         req,
         "UPDATE",
         "INVENTORY_ITEM",
-        req.params.id || null,
+        (req.params.id as string) || null,
         error instanceof Error ? error.message : "Failed to update inventory item"
       );
       res.status(500).json({ error: "Failed to update inventory item" });
@@ -599,7 +600,7 @@ router.delete(
         req,
         "DELETE",
         "INVENTORY_ITEM",
-        req.params.id || null,
+        (req.params.id as string) || null,
         error instanceof Error ? error.message : "Failed to delete inventory item"
       );
       res.status(500).json({ error: "Failed to delete inventory item" });
@@ -728,7 +729,7 @@ router.post(
         req,
         "ADJUSTMENT",
         "INVENTORY_ITEM",
-        req.params.id || null,
+        (req.params.id as string) || null,
         error instanceof Error ? error.message : "Failed to adjust inventory"
       );
       res.status(500).json({ error: "Failed to adjust inventory" });
@@ -929,7 +930,7 @@ export async function deductStockForJobOrder(
       continue;
     }
 
-    const invItem = invItems[0];
+    const invItem = invItems[0]!;
     const currentQty = await getOnHandSingle(invItem.id);
 
     if (currentQty < item.quantity) {

@@ -65,7 +65,7 @@ export async function requireAuth(
 
     const userDataObj = userData as { profile: any; roles: string[]; branches: any[] } | null;
     const profile = userDataObj?.profile || null;
-    const roles = userDataObj?.roles || [];
+    const roles = (userDataObj?.roles || []) as UserRole[];
     const branchIds = userDataObj?.branches?.map((b: any) => b.branch_id) || [];
 
     // Check if user is active
