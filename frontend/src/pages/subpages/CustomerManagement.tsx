@@ -921,8 +921,13 @@ export function CustomerManagement() {
                 </div>
               ) : linkedVehicles.length > 0 ? (
                 <div className="max-h-40 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {linkedVehicles.map((v) => (
-                    <div key={v.id} className="bg-neutral-100 rounded-xl px-4 py-3">
+                  {linkedVehicles.map((v, idx) => (
+                    <div
+                      key={v.id}
+                      className={`bg-neutral-100 rounded-xl px-4 py-3${
+                        idx === linkedVehicles.length - 1 && linkedVehicles.length % 2 !== 0 ? " sm:col-span-2" : ""
+                      }`}
+                    >
                       <p className="font-medium text-neutral-950 text-sm">
                         {v.plate_number}
                       </p>
@@ -949,8 +954,13 @@ export function CustomerManagement() {
                 </div>
               ) : linkedJobOrders.length > 0 ? (
                 <div className="max-h-40 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {linkedJobOrders.map((jo) => (
-                    <div key={jo.id} className="bg-neutral-100 rounded-xl px-4 py-3">
+                  {linkedJobOrders.map((jo, idx) => (
+                    <div
+                      key={jo.id}
+                      className={`bg-neutral-100 rounded-xl px-4 py-3${
+                        idx === linkedJobOrders.length - 1 && linkedJobOrders.length % 2 !== 0 ? " sm:col-span-2" : ""
+                      }`}
+                    >
                       <p className="font-medium text-neutral-950 text-sm">
                         {jo.order_number}
                       </p>
