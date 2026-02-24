@@ -701,7 +701,7 @@ export function UserManagement() {
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Roles</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Branches</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Status</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Actions</th>
+                <th className="text-center py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>

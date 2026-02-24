@@ -476,22 +476,6 @@ export function InventoryManagement() {
     }
   }
 
-  // --- Movement History ---
-  async function openMovementsModal(item: InventoryItem) {
-    setMovementsItem(item);
-    setMovements([]);
-    setShowMovementsModal(true);
-    setMovementsLoading(true);
-    try {
-      const res = await inventoryApi.getMovements(item.id, { limit: 100 });
-      setMovements(res.data);
-    } catch {
-      showToast.error("Failed to load movement history");
-    } finally {
-      setMovementsLoading(false);
-    }
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -708,11 +692,6 @@ export function InventoryManagement() {
 
                 {/* Actions */}
                 <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
-                  {canStockIn && item.status === "active" && (
-                    <button onClick={(e) => { e.stopPropagation(); openStockInModal(item); }} className="flex items-center gap-1 text-sm text-positive hover:text-positive-900">
-                      <LuCircleArrowUp className="w-4 h-4" /> Stock In
-                    </button>
-                  )}
                   {canUpdate && (
                     <button onClick={(e) => { e.stopPropagation(); openEditModal(item); }} className="flex items-center gap-1 text-sm text-primary hover:text-primary-900">
                       <LuPencil className="w-4 h-4" /> Edit
@@ -747,7 +726,7 @@ export function InventoryManagement() {
                 <th className="text-center py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Stock</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Branch</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Status</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Actions</th>
+                <th className="text-center py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -781,31 +760,6 @@ export function InventoryManagement() {
                   </td>
                   <td className="py-3 px-4 whitespace-nowrap">
                     <div className="flex items-center justify-center gap-2">
-                      {canStockIn && item.status === "active" && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openStockInModal(item); }}
-                          className="p-2 text-positive-950 hover:text-positive-900 hover:bg-positive-50 rounded-lg transition-colors"
-                          title="Stock In"
-                        >
-                          <LuCircleArrowUp className="w-4 h-4" />
-                        </button>
-                      )}
-                      {canAdjust && item.status === "active" && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openAdjustModal(item); }}
-                          className="p-2 text-primary-950 hover:text-primary-900 hover:bg-primary-50 rounded-lg transition-colors"
-                          title="Adjust Stock"
-                        >
-                          <LuCircleArrowDown className="w-4 h-4" />
-                        </button>
-                      )}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openMovementsModal(item); }}
-                        className="p-2 text-neutral-950 hover:text-neutral-900 hover:bg-neutral-50 rounded-lg transition-colors"
-                        title="Movement History"
-                      >
-                        <LuHistory className="w-4 h-4" />
-                      </button>
                       {canUpdate && (
                         <button
                           onClick={(e) => { e.stopPropagation(); openEditModal(item); }}
@@ -917,21 +871,22 @@ export function InventoryManagement() {
                 <ModalInput type="text" value={viewItem.unit_of_measure} onChange={() => {}} placeholder="Unit of Measure" disabled />
                 <ModalInput type="text" value={formatPrice(viewItem.cost_price)} onChange={() => {}} placeholder="Cost Price" disabled />
               </div>
+              <ModalInput type="text" value={viewItem.branches ? `${viewItem.branches.name} (${viewItem.branches.code})` : viewItem.branch_id} onChange={() => {}} placeholder="Branch" disabled />
             </ModalSection>
 
             <ModalSection title="Stock">
               <div className="grid grid-cols-3 gap-4">
-                <div className="bg-neutral-100 rounded-xl p-4 text-center">
+                <div className="bg-neutral-100 rounded-xl px-4 py-3.5 text-center">
                   <p className="text-xs text-neutral-900">Current Stock</p>
-                  <p className={`text-xl font-bold ${viewItem.is_low_stock ? "text-negative" : "text-neutral-950"}`}>{viewItem.current_quantity}</p>
+                  <p className={`text-lg font-bold ${viewItem.is_low_stock ? "text-negative" : "text-neutral-950"}`}>{viewItem.current_quantity}</p>
                 </div>
-                <div className="bg-neutral-100 rounded-xl p-4 text-center">
+                <div className="bg-neutral-100 rounded-xl px-4 py-3.5 text-center">
                   <p className="text-xs text-neutral-900">Reorder At</p>
-                  <p className="text-xl font-bold text-neutral-950">{viewItem.reorder_threshold}</p>
+                  <p className="text-lg font-bold text-neutral-950">{viewItem.reorder_threshold}</p>
                 </div>
-                <div className="bg-neutral-100 rounded-xl p-4 text-center">
+                <div className="bg-neutral-100 rounded-xl px-4 py-3.5 text-center">
                   <p className="text-xs text-neutral-900">Status</p>
-                  <p className={`text-xl font-bold ${viewItem.status === "active" ? "text-positive" : "text-negative"}`}>
+                  <p className={`text-lg font-bold ${viewItem.status === "active" ? "text-positive" : "text-negative"}`}>
                     {viewItem.status === "active" ? "Active" : "Inactive"}
                   </p>
                 </div>
@@ -944,11 +899,43 @@ export function InventoryManagement() {
               )}
             </ModalSection>
 
-            <ModalSection title="Branch & Timestamps">
-              <ModalInput type="text" value={viewItem.branches ? `${viewItem.branches.name} (${viewItem.branches.code})` : viewItem.branch_id} onChange={() => {}} placeholder="Branch" disabled />
+            <ModalSection title="Timestamps">
               <div className="grid grid-cols-2 gap-4">
                 <ModalInput type="text" value={formatDate(viewItem.created_at)} onChange={() => {}} placeholder="Created" disabled />
                 <ModalInput type="text" value={formatDate(viewItem.updated_at)} onChange={() => {}} placeholder="Updated" disabled />
+              </div>
+            </ModalSection>
+
+            <ModalSection title="Actions">
+              <div className="grid grid-cols-1 gap-4">
+                <button
+                  type="button"
+                  onClick={() => { setShowMovementsModal(true); setShowViewModal(false); setMovementsItem(viewItem); setMovements([]); setMovementsLoading(true); inventoryApi.getMovements(viewItem.id, { limit: 100 }).then((res) => { setMovements(res.data); }).catch(() => {}).finally(() => { setMovementsLoading(false); }); }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-neutral-100 transition-colors"
+                >
+                  <LuHistory className="w-5 h-5" />
+                  Movement History
+                </button>
+                {canStockIn && viewItem.status === "active" && (
+                  <button
+                    type="button"
+                    onClick={() => { setShowViewModal(false); openStockInModal(viewItem); }}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 transition-colors"
+                  >
+                    <LuCircleArrowUp className="w-5 h-5" />
+                    Stock In
+                  </button>
+                )}
+                {canAdjust && viewItem.status === "active" && (
+                  <button
+                    type="button"
+                    onClick={() => { setShowViewModal(false); openAdjustModal(viewItem); }}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 transition-colors"
+                  >
+                    <LuCircleArrowDown className="w-5 h-5" />
+                    Adjust Stock
+                  </button>
+                )}
               </div>
             </ModalSection>
           </div>
@@ -1022,7 +1009,7 @@ export function InventoryManagement() {
       {/* ───── Adjust Stock Modal ───── */}
       <Modal
         isOpen={showAdjustModal && !!adjustItem}
-        onClose={() => setShowAdjustModal(false)}
+        onClose={() => { setShowAdjustModal(false); setShowViewModal(true); }}
         title="Adjust Stock"
         maxWidth="lg"
       >
@@ -1052,7 +1039,7 @@ export function InventoryManagement() {
               />
             </ModalSection>
             <ModalError message={adjustError} />
-            <ModalButtons onCancel={() => setShowAdjustModal(false)} submitText={adjustingItem ? "Adjusting..." : "Adjust Stock"} loading={adjustingItem} />
+            <ModalButtons onCancel={() => { setShowAdjustModal(false); setShowViewModal(true); }} submitText={adjustingItem ? "Adjusting..." : "Adjust Stock"} loading={adjustingItem} />
           </form>
         )}
       </Modal>
@@ -1060,7 +1047,7 @@ export function InventoryManagement() {
       {/* ───── Stock In Modal ───── */}
       <Modal
         isOpen={showStockInModal && !!stockInItem}
-        onClose={() => setShowStockInModal(false)}
+        onClose={() => { setShowStockInModal(false); setShowViewModal(true); }}
         title="Add Stock"
         maxWidth="lg"
       >
@@ -1081,7 +1068,7 @@ export function InventoryManagement() {
               />
             </ModalSection>
             <ModalError message={stockInError} />
-            <ModalButtons onCancel={() => setShowStockInModal(false)} submitText={stockInLoading ? "Adding..." : "Add Stock"} loading={stockInLoading} />
+            <ModalButtons onCancel={() => { setShowStockInModal(false); setShowViewModal(true); }} submitText={stockInLoading ? "Adding..." : "Add Stock"} loading={stockInLoading} />
           </form>
         )}
       </Modal>
@@ -1089,52 +1076,54 @@ export function InventoryManagement() {
       {/* ───── Movement History Modal ───── */}
       <Modal
         isOpen={showMovementsModal && !!movementsItem}
-        onClose={() => setShowMovementsModal(false)}
-        title={`Stock Movement History — ${movementsItem?.item_name || ""}`}
-        maxWidth="xl"
+        onClose={() => { setShowMovementsModal(false); setShowViewModal(true); }}
+        title="Stock Movement History"
+        maxWidth="lg"
       >
-        {movementsLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <LuRefreshCw className="w-6 h-6 animate-spin text-primary" />
-          </div>
-        ) : movements.length === 0 ? (
-          <div className="text-center py-12 text-neutral-900">
-            No movement history found for this item.
-          </div>
-        ) : (
-          <div className="overflow-x-auto max-h-96 mt-4">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-neutral-200 bg-neutral-100">
-                  <th className="text-left px-3 py-2 text-sm font-medium text-neutral-950">Date</th>
-                  <th className="text-left px-3 py-2 text-sm font-medium text-neutral-950">Type</th>
-                  <th className="text-center px-3 py-2 text-sm font-medium text-neutral-950">Qty</th>
-                  <th className="text-left px-3 py-2 text-sm font-medium text-neutral-950">Reference</th>
-                  <th className="text-left px-3 py-2 text-sm font-medium text-neutral-950">Reason</th>
-                </tr>
-              </thead>
-              <tbody>
-                {movements.map((m) => (
-                  <tr key={m.id} className="border-b border-neutral-200">
-                    <td className="px-3 py-2 text-neutral-900 whitespace-nowrap">{formatDateTime(m.created_at)}</td>
-                    <td className="px-3 py-2">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        m.movement_type === "stock_in" ? "bg-positive-100 text-positive-950"
-                        : m.movement_type === "stock_out" ? "bg-negative-100 text-negative-950"
-                        : "bg-primary-100 text-primary"
-                      }`}>
-                        {movementTypeLabel(m.movement_type)}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-center font-medium text-neutral-950">
-                      {m.movement_type === "stock_out" ? "-" : "+"}{m.quantity}
-                    </td>
-                    <td className="px-3 py-2 text-neutral-900">{referenceTypeLabel(m.reference_type)}</td>
-                    <td className="px-3 py-2 text-neutral-900">{m.reason || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {movementsItem && (
+          <div>
+            <ModalSection title="Item">
+              <ModalInput type="text" value={movementsItem.item_name} onChange={() => {}} placeholder="Item" disabled />
+            </ModalSection>
+
+            <ModalSection title="History">
+              {movementsLoading ? (
+                <div className="space-y-4">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
+                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
+                    </div>
+                  ))}
+                </div>
+              ) : movements.length > 0 ? (
+                <div className="space-y-3">
+                  {movements.map((m) => (
+                    <div key={m.id} className="bg-neutral-100 rounded-xl px-4 py-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <LuHistory className="w-3.5 h-3.5 text-neutral-600" />
+                        <span className={`text-xs font-semibold uppercase ${
+                          m.movement_type === "stock_in" ? "text-positive"
+                          : m.movement_type === "stock_out" ? "text-negative"
+                          : "text-primary"
+                        }`}>
+                          {movementTypeLabel(m.movement_type)}
+                        </span>
+                        <span className="text-xs font-medium text-neutral-950 ml-1">
+                          {m.movement_type === "stock_out" ? "-" : "+"}{m.quantity}
+                        </span>
+                        <span className="text-xs text-neutral-600 ml-auto">{formatDateTime(m.created_at)}</span>
+                      </div>
+                      <p className="text-xs text-neutral-900">
+                        {referenceTypeLabel(m.reference_type)}{m.reason ? ` — ${m.reason}` : ""}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-neutral-900 text-center py-3">No movement history available.</p>
+              )}
+            </ModalSection>
           </div>
         )}
       </Modal>

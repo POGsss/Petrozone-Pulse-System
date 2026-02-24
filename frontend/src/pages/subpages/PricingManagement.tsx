@@ -617,7 +617,7 @@ export function PricingManagement() {
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Branch</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Status</th>
                 {(canUpdate || canDelete) && (
-                  <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Actions</th>
+                  <th className="text-center py-3 px-4 text-sm font-medium text-neutral-950">Actions</th>
                 )}
               </tr>
             </thead>

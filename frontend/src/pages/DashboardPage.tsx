@@ -1,10 +1,7 @@
 import { useState, useEffect } from "react";
-import { LuTriangleAlert, LuBox, LuRefreshCw } from "react-icons/lu";
 import { useAuth } from "../auth";
 import { DashboardLayout, NavIcons, Modal } from "../components";
 import type { NavItem } from "../components";
-import { inventoryApi } from "../lib/api";
-import type { InventoryItem } from "../types";
 
 
 // Subpage components (shared across roles based on permissions)
@@ -137,24 +134,6 @@ export function DashboardPage() {
   const { user, mustChangePassword } = useAuth();
   const [activeNav, setActiveNav] = useState("dashboard");
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [lowStockItems, setLowStockItems] = useState<InventoryItem[]>([]);
-  const [lowStockLoading, setLowStockLoading] = useState(false);
-
-  // Fetch low-stock items for dashboard indicator
-  useEffect(() => {
-    async function fetchLowStock() {
-      try {
-        setLowStockLoading(true);
-        const res = await inventoryApi.getLowStock();
-        setLowStockItems(res.data);
-      } catch {
-        // silently fail - non-critical
-      } finally {
-        setLowStockLoading(false);
-      }
-    }
-    fetchLowStock();
-  }, []);
 
   // Show the change password modal when the user must change their password
   // Re-show when navigating away from profile settings
@@ -178,7 +157,7 @@ export function DashboardPage() {
   const canViewVehicles = hasAnyRole("HM", "POC", "JS", "R");
   const canViewCatalog = hasAnyRole("HM", "POC", "JS", "R");
   const canViewInventory = hasAnyRole("HM", "POC", "JS");
-  const canAccessSettings = hasAnyRole("HM");
+  const canAccessSettings = userRoles.includes("HM");
 
   // Get page data
   const currentPage = pageData[activeNav] || { title: "Page", description: "" };
@@ -192,7 +171,7 @@ export function DashboardPage() {
       description={currentPage.description}
     >
       {/* Dashboard content */}
-      {activeNav === "dashboard" && (<>
+      {activeNav === "dashboard" && (
         <div className="bg-white rounded-xl p-6 border border-neutral-100">
           <div className="flex items-center gap-2 mb-4">
             <span className="text-sm text-neutral-950">Your roles:</span>
@@ -211,59 +190,7 @@ export function DashboardPage() {
           </div>
           <p className="text-neutral-900">Welcome to Petrozone Pulse System. Select a menu item to get started.</p>
         </div>
-
-        {/* Low Stock Indicator */}
-        {canViewInventory && (
-<div className="bg-white rounded-xl p-6 border border-neutral-100">
-            <div className="flex items-center gap-2 mb-4">
-              <LuBox className="w-5 h-5 text-primary" />
-              <h3 className="font-semibold text-neutral-950">Inventory Overview</h3>
-            </div>
-            {lowStockLoading ? (
-              <div className="flex items-center gap-2 text-neutral-900">
-                <LuRefreshCw className="w-4 h-4 animate-spin" />
-                <span className="text-sm">Loading...</span>
-              </div>
-            ) : lowStockItems.length > 0 ? (
-              <div>
-                <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-negative-200 border border-negative rounded-lg">
-                  <LuTriangleAlert className="w-4 h-4 text-negative-950 shrink-0" />
-                  <span className="text-sm font-medium text-negative-950">
-                    {lowStockItems.length} item{lowStockItems.length > 1 ? "s" : ""} below reorder threshold
-                  </span>
-                </div>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {lowStockItems.slice(0, 5).map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between px-3 py-2 bg-neutral-50 rounded-lg"
-                    >
-                      <div>
-                        <p className="text-sm font-medium text-neutral-950">{item.item_name}</p>
-                        <p className="text-xs text-neutral-900">{item.sku_code} · {item.branches?.name || "—"}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-semibold text-negative">{item.current_quantity}</p>
-                        <p className="text-xs text-neutral-900">/ {item.reorder_threshold}</p>
-                      </div>
-                    </div>
-                  ))}
-                  {lowStockItems.length > 5 && (
-                    <button
-                      onClick={() => setActiveNav("inventory")}
-                      className="w-full text-center text-sm text-primary hover:underline py-1"
-                    >
-                      View all {lowStockItems.length} low-stock items →
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-positive">All inventory items are above reorder thresholds.</p>
-            )}
-          </div>
-        )}
-      </>)}
+      )}
 
       {/* User Management - HM, POC, JS (US10-13) */}
       {activeNav === "users" && canManageUsers && (

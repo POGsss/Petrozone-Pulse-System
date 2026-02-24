@@ -636,7 +636,7 @@ export function CustomerManagement() {
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap w-[12%]">Type</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap w-[15%]">Branch</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap w-[12%]">Status</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap w-[14%]">Actions</th>
+                <th className="text-center py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap w-[14%]">Actions</th>
               </tr>
             </thead>
             <tbody>
