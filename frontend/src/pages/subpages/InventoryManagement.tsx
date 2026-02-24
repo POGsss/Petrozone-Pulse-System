@@ -1099,24 +1099,30 @@ export function InventoryManagement() {
               ) : movements.length > 0 ? (
                 <div className="space-y-3">
                   {movements.map((m) => (
-                    <div key={m.id} className="bg-neutral-100 rounded-xl px-4 py-3">
+                    <div key={m.id} className="bg-neutral-100 rounded-xl px-4 py-3 group relative">
                       <div className="flex items-center gap-2 mb-1">
                         <LuHistory className="w-3.5 h-3.5 text-neutral-600" />
-                        <span className={`text-xs font-semibold uppercase ${
-                          m.movement_type === "stock_in" ? "text-positive"
-                          : m.movement_type === "stock_out" ? "text-negative"
-                          : "text-primary"
-                        }`}>
+                        <span className="text-xs font-semibold uppercase text-neutral-950">
                           {movementTypeLabel(m.movement_type)}
                         </span>
-                        <span className="text-xs font-medium text-neutral-950 ml-1">
+                        <span className="text-xs font-medium text-neutral-950">
                           {m.movement_type === "stock_out" ? "-" : "+"}{m.quantity}
                         </span>
                         <span className="text-xs text-neutral-600 ml-auto">{formatDateTime(m.created_at)}</span>
                       </div>
-                      <p className="text-xs text-neutral-900">
-                        {referenceTypeLabel(m.reference_type)}{m.reason ? ` — ${m.reason}` : ""}
+                      <p className="text-xs text-neutral-900 cursor-default">
+                        {referenceTypeLabel(m.reference_type)}
                       </p>
+                      {/* Tooltip on hover */}
+                      <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-50 w-64 bg-white rounded-lg border border-neutral-200 py-3 pointer-events-none">
+                        <div className="px-4 gap-1 flex flex-col">
+                          <p className="font-medium text-neutral-950">{movementTypeLabel(m.movement_type)}</p>
+                          <p className="text-sm text-neutral-900">Quantity: {m.movement_type === "stock_out" ? "-" : "+"}{m.quantity}</p>
+                          {m.reference_id && <p className="text-sm text-neutral-900">Reference ID: {m.reference_id}</p>}
+                          {m.reason && <p className="text-sm text-neutral-900">Reason: {m.reason}</p>}
+                          <p className="text-sm text-neutral-900">Date: {formatDateTime(m.created_at)}</p>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>

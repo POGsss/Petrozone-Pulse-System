@@ -653,7 +653,7 @@ export function CatalogManagement() {
                 readOnly
                 disabled
                 rows={3}
-                className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none transition-all resize-none opacity-50 cursor-not-allowed"
+                className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none transition-all resize-none cursor-readonly"
               />
             </ModalSection>
 

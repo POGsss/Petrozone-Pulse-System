@@ -111,7 +111,7 @@ export function ModalInput({
       pattern={pattern}
       title={title}
       inputMode={type === "tel" ? "tel" : inputMode}
-      className={`w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all ${disabled ? "opacity-50 cursor-not-allowed" : ""} ${className}`}
+      className={`w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all ${disabled ? "cursor-default" : ""} ${className}`}
     />
   );
 }
@@ -139,7 +139,7 @@ export function ModalSelect({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className={`w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-900 appearance-none focus:outline-none focus:ring-2 focus:ring-primary transition-all ${!value ? "text-neutral-900" : ""} ${disabled ? "opacity-50 cursor-not-allowed" : ""} ${className}`}
+        className={`w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 appearance-none focus:outline-none focus:ring-2 focus:ring-primary transition-all ${!value ? "text-neutral-900" : ""} ${disabled ? "cursor-default" : ""} ${className}`}
       >
         {placeholder && <option value="">{placeholder}</option>}
         {options.map((opt) => (
@@ -148,11 +148,13 @@ export function ModalSelect({
           </option>
         ))}
       </select>
-      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
-        <svg className="w-5 h-5 text-neutral-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </div>
+      {!disabled && (
+        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+          <svg className="w-5 h-5 text-neutral-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      )}
     </div>
   );
 }

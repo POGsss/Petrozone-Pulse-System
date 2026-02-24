@@ -868,7 +868,7 @@ export function UserManagement() {
                     key={role}
                     type="button"
                     disabled
-                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all bg-neutral-100 text-neutral opacity-50 cursor-not-allowed"
+                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all bg-neutral-100 text-neutral cursor-readonly"
                   >
                     {role}
                   </button>
@@ -886,7 +886,7 @@ export function UserManagement() {
                       key={ba.branch_id}
                       type="button"
                       disabled
-                      className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all bg-neutral-100 text-neutral opacity-50 cursor-not-allowed"
+                      className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all bg-neutral-100 text-neutral cursor-readonly"
                     >
                       {ba.branches?.name || ba.branches?.code || ba.branch_id.slice(0, 8)}
                     </button>

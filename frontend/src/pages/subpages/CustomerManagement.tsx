@@ -905,8 +905,64 @@ export function CustomerManagement() {
                 readOnly
                 disabled
                 rows={3}
-                className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none transition-all resize-none opacity-70 cursor-not-allowed"
+                className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none transition-all resize-none cursor-readonly"
               />
+            </ModalSection>
+
+            <ModalSection title="Linked Vehicles">
+              {loadingLinked ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
+                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
+                    </div>
+                  ))}
+                </div>
+              ) : linkedVehicles.length > 0 ? (
+                <div className="max-h-40 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {linkedVehicles.map((v) => (
+                    <div key={v.id} className="bg-neutral-100 rounded-xl px-4 py-3">
+                      <p className="font-medium text-neutral-950 text-sm">
+                        {v.plate_number}
+                      </p>
+                      <p className="text-xs text-neutral-900">
+                        {v.model} · {v.vehicle_type}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-neutral-900 text-center py-3">No vehicles linked.</p>
+              )}
+            </ModalSection>
+
+            <ModalSection title="Linked Job Orders">
+              {loadingLinked ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
+                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
+                    </div>
+                  ))}
+                </div>
+              ) : linkedJobOrders.length > 0 ? (
+                <div className="max-h-40 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {linkedJobOrders.map((jo) => (
+                    <div key={jo.id} className="bg-neutral-100 rounded-xl px-4 py-3">
+                      <p className="font-medium text-neutral-950 text-sm">
+                        {jo.order_number}
+                      </p>
+                      <p className="text-xs text-neutral-900">
+                        {jo.status} · {formatDate(jo.created_at)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-neutral-900 text-center py-3">No job orders linked.</p>
+              )}
             </ModalSection>
 
             <ModalSection title="Timestamps">
@@ -926,64 +982,6 @@ export function CustomerManagement() {
                   disabled
                 />
               </div>
-            </ModalSection>
-
-            {/* Linked Vehicles */}
-            <ModalSection title="Linked Vehicles">
-              {loadingLinked ? (
-                <div className="space-y-2">
-                  {[1, 2].map((i) => (
-                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
-                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
-                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
-                    </div>
-                  ))}
-                </div>
-              ) : linkedVehicles.length > 0 ? (
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {linkedVehicles.map((v) => (
-                    <div key={v.id} className="bg-neutral-100 rounded-xl px-4 py-3">
-                      <p className="font-medium text-neutral-950 text-sm">
-                        {v.plate_number} — {v.model}
-                      </p>
-                      <p className="text-xs text-neutral-900">
-                        {v.vehicle_type} · {v.status}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-neutral-900 text-center py-3">No vehicles linked.</p>
-              )}
-            </ModalSection>
-
-            {/* Linked Job Orders */}
-            <ModalSection title="Linked Job Orders">
-              {loadingLinked ? (
-                <div className="space-y-2">
-                  {[1, 2].map((i) => (
-                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
-                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
-                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
-                    </div>
-                  ))}
-                </div>
-              ) : linkedJobOrders.length > 0 ? (
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {linkedJobOrders.map((jo) => (
-                    <div key={jo.id} className="bg-neutral-100 rounded-xl px-4 py-3">
-                      <p className="font-medium text-neutral-950 text-sm">
-                        {jo.order_number}
-                      </p>
-                      <p className="text-xs text-neutral-900">
-                        {jo.status} · {formatDate(jo.created_at)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-neutral-900 text-center py-3">No job orders linked.</p>
-              )}
             </ModalSection>
           </div>
         )}

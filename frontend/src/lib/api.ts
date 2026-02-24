@@ -455,6 +455,12 @@ export const vehiclesApi = {
       method: "DELETE",
     });
   },
+
+  checkReferences: async (id: string) => {
+    return fetchWithAuth<{ hasReferences: boolean; count: number }>(
+      `/api/vehicles/${id}/references`
+    );
+  },
 };
 
 // Catalog API

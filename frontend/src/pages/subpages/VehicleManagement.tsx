@@ -118,6 +118,7 @@ export function VehicleManagement() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingVehicle, setDeletingVehicle] = useState(false);
   const [vehicleToDelete, setVehicleToDelete] = useState<Vehicle | null>(null);
+  const [vehicleHasReferences, setVehicleHasReferences] = useState(false);
 
   // Filter groups for SearchFilter
   const filterGroups: FilterGroup[] = useMemo(() => {
@@ -393,24 +394,32 @@ export function VehicleManagement() {
     }
   }
 
-  // --- Delete (soft) ---
-  function openDeleteConfirmModal(vehicle: Vehicle) {
+  // --- Delete ---
+  async function openDeleteConfirmModal(vehicle: Vehicle) {
     setVehicleToDelete(vehicle);
+    setVehicleHasReferences(false);
     setShowDeleteConfirm(true);
+    try {
+      const result = await vehiclesApi.checkReferences(vehicle.id);
+      setVehicleHasReferences(result.hasReferences);
+    } catch {
+      // Default to deactivate (safer) if check fails
+      setVehicleHasReferences(true);
+    }
   }
 
   async function handleDeleteVehicle() {
     if (!vehicleToDelete) return;
     try {
       setDeletingVehicle(true);
-      await vehiclesApi.delete(vehicleToDelete.id);
+      const result = await vehiclesApi.delete(vehicleToDelete.id);
       setShowDeleteConfirm(false);
       setVehicleToDelete(null);
-      showToast.success("Vehicle deactivated successfully");
+      showToast.success(result.message || "Vehicle deleted successfully");
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to deactivate vehicle");
-      showToast.error(err instanceof Error ? err.message : "Failed to deactivate vehicle");
+      setError(err instanceof Error ? err.message : "Failed to delete vehicle");
+      showToast.error(err instanceof Error ? err.message : "Failed to delete vehicle");
     } finally {
       setDeletingVehicle(false);
     }
@@ -810,7 +819,7 @@ export function VehicleManagement() {
                 readOnly
                 disabled
                 rows={3}
-                className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none transition-all resize-none opacity-70 cursor-not-allowed"
+                className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none transition-all resize-none cursor-readonly"
               />
             </ModalSection>
 
@@ -961,14 +970,14 @@ export function VehicleManagement() {
       <Modal
         isOpen={showDeleteConfirm && !!vehicleToDelete}
         onClose={() => setShowDeleteConfirm(false)}
-        title="Deactivate Vehicle"
+        title={vehicleHasReferences ? "Deactivate Vehicle" : "Delete Vehicle"}
         maxWidth="sm"
       >
         {vehicleToDelete && (
           <div>
             <div className="bg-neutral-100 rounded-xl p-4 my-4">
               <p className="text-neutral-900">
-                Are you sure you want to deactivate{" "}
+                Are you sure you want to {vehicleHasReferences ? "deactivate" : "delete"}{" "}
                 <strong className="text-neutral-950">
                   {vehicleToDelete.plate_number}
                 </strong>{" "}
@@ -976,7 +985,9 @@ export function VehicleManagement() {
               </p>
             </div>
             <p className="text-sm text-neutral-900 mb-2">
-              The vehicle will be marked as inactive and hidden from active lists.
+              {vehicleHasReferences
+                ? "The vehicle will be marked as inactive and hidden from active lists."
+                : "This vehicle will be permanently removed. This action cannot be undone."}
             </p>
 
             <div className="flex gap-3 mt-6">
@@ -993,7 +1004,9 @@ export function VehicleManagement() {
                 disabled={deletingVehicle}
                 className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {deletingVehicle ? "Deactivating..." : "Deactivate"}
+                {deletingVehicle
+                  ? (vehicleHasReferences ? "Deactivating..." : "Deleting...")
+                  : (vehicleHasReferences ? "Deactivate" : "Delete")}
               </button>
             </div>
           </div>

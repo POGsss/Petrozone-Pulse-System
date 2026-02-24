@@ -530,9 +530,38 @@ router.put(
 );
 
 /**
+ * GET /api/vehicles/:vehicleId/references
+ * Check if a vehicle has any references (job orders)
+ */
+router.get(
+  "/:vehicleId/references",
+  requireRoles("HM", "POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const vehicleId = req.params.vehicleId as string;
+
+      const { count, error } = await supabaseAdmin
+        .from("job_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("vehicle_id", vehicleId);
+
+      if (error) {
+        res.status(500).json({ error: error.message });
+        return;
+      }
+
+      res.json({ hasReferences: (count ?? 0) > 0, count: count ?? 0 });
+    } catch (error) {
+      console.error("Check vehicle references error:", error);
+      res.status(500).json({ error: "Failed to check references" });
+    }
+  }
+);
+
+/**
  * DELETE /api/vehicles/:vehicleId
- * Soft-delete a vehicle (set status to inactive)
- * HM, POC, JS, R can soft-delete
+ * Smart delete: hard-delete if no references exist, soft-delete otherwise
+ * HM, POC, JS, R can delete
  */
 router.delete(
   "/:vehicleId",
@@ -566,29 +595,58 @@ router.delete(
         return;
       }
 
-      // Soft delete: set status to inactive
-      const { error } = await supabaseAdmin
-        .from("vehicles")
-        .update({ status: "inactive" as "active" | "inactive" })
-        .eq("id", vehicleId);
+      // Check if vehicle has any references in job_orders
+      const { count: joCount } = await supabaseAdmin
+        .from("job_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("vehicle_id", vehicleId);
 
-      if (error) {
-        res.status(500).json({ error: error.message });
-        return;
+      if (joCount && joCount > 0) {
+        // Has references — soft delete (set status to inactive)
+        const { error } = await supabaseAdmin
+          .from("vehicles")
+          .update({ status: "inactive" as "active" | "inactive" })
+          .eq("id", vehicleId);
+
+        if (error) {
+          res.status(500).json({ error: error.message });
+          return;
+        }
+
+        // Update audit log with user_id
+        await supabaseAdmin
+          .from("audit_logs")
+          .update({ user_id: req.user!.id })
+          .eq("entity_type", "VEHICLE")
+          .eq("entity_id", vehicleId)
+          .eq("action", "UPDATE")
+          .is("user_id", null)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        res.json({ message: "Vehicle deactivated (has existing job orders)" });
+      } else {
+        // No references — hard delete
+
+        // Remove audit logs for this vehicle first
+        await supabaseAdmin
+          .from("audit_logs")
+          .delete()
+          .eq("entity_type", "VEHICLE")
+          .eq("entity_id", vehicleId);
+
+        const { error } = await supabaseAdmin
+          .from("vehicles")
+          .delete()
+          .eq("id", vehicleId);
+
+        if (error) {
+          res.status(500).json({ error: error.message });
+          return;
+        }
+
+        res.json({ message: "Vehicle deleted successfully" });
       }
-
-      // Update audit log with user_id
-      await supabaseAdmin
-        .from("audit_logs")
-        .update({ user_id: req.user!.id })
-        .eq("entity_type", "VEHICLE")
-        .eq("entity_id", vehicleId)
-        .eq("action", "UPDATE")
-        .is("user_id", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      res.json({ message: "Vehicle deactivated successfully" });
     } catch (error) {
       console.error("Delete vehicle error:", error);
       await logFailedAction(req, "DELETE", "VEHICLE", (req.params.vehicleId as string) || null, error instanceof Error ? error.message : "Failed to deactivate vehicle");
