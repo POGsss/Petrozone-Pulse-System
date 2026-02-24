@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   LuPlus,
   LuCircleAlert,
@@ -12,10 +12,9 @@ import {
   LuWrench,
   LuCheck,
   LuSend,
-  LuShieldCheck,
-  LuShieldX,
   LuBan,
   LuHistory,
+  LuEllipsisVertical,
 } from "react-icons/lu";
 import { jobOrdersApi, branchesApi, customersApi, vehiclesApi, catalogApi, pricingApi, thirdPartyRepairsApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
@@ -209,6 +208,31 @@ export function JobOrderManagement() {
   const [history, setHistory] = useState<JobOrderHistory[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+
+  // Cancel confirmation modal
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [orderToCancel, setOrderToCancel] = useState<JobOrder | null>(null);
+
+  // Approval action modal
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const [approvalOrder, setApprovalOrder] = useState<JobOrder | null>(null);
+
+  // Actions overflow dropdown
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const closeDropdown = useCallback(() => setOpenDropdownId(null), []);
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        closeDropdown();
+      }
+    }
+    if (openDropdownId) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [openDropdownId, closeDropdown]);
 
   // Filter groups for SearchFilter
   const filterGroups: FilterGroup[] = useMemo(() => {
@@ -810,23 +834,14 @@ export function JobOrderManagement() {
     }
   }
 
-  // --- Customer Approval ---
-  async function handleRequestApproval(order: JobOrder) {
-    try {
-      await jobOrdersApi.requestApproval(order.id);
-      showToast.success("Approval requested — status changed to Pending Approval");
-      fetchData();
-    } catch (err) {
-      showToast.error(err instanceof Error ? err.message : "Failed to request approval");
-    }
-  }
-
   // --- Cancel ---
   async function handleCancelOrder(order: JobOrder) {
     try {
       setProcessingCancel(true);
       await jobOrdersApi.cancel(order.id);
       showToast.success("Job order cancelled");
+      setShowCancelConfirm(false);
+      setOrderToCancel(null);
       setShowViewModal(false);
       setViewOrder(null);
       fetchData();
@@ -837,7 +852,29 @@ export function JobOrderManagement() {
     }
   }
 
+  // --- Open JO History from card/dropdown ---
+  function openHistoryFromCard(order: JobOrder) {
+    setViewOrder(order);
+    setHistory([]);
+    setLoadingHistory(true);
+    setShowHistoryModal(true);
+    jobOrdersApi.getHistory(order.id)
+      .then((res) => { setHistory(res); })
+      .catch(() => {})
+      .finally(() => { setLoadingHistory(false); });
+  }
 
+  // --- Open Cancel Confirmation from card/dropdown ---
+  function openCancelConfirmModal(order: JobOrder) {
+    setOrderToCancel(order);
+    setShowCancelConfirm(true);
+  }
+
+  // --- Open Approval Modal from card/dropdown ---
+  function openApprovalModal(order: JobOrder) {
+    setApprovalOrder(order);
+    setShowApprovalModal(true);
+  }
 
   // --- Repair Action Modal (wrench button) ---
   async function openRepairActionModal(order: JobOrder) {
@@ -1091,20 +1128,7 @@ export function JobOrderManagement() {
             </div>
 
             {/* Actions */}
-            <div
-              className={`flex items-center justify-end flex-wrap ${canRepair || canUpdate || canDelete || canApproval ? "gap-4 pt-3 border-t border-neutral-200" : ""
-                }`}
-            >
-
-              {canRepair && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); openRepairActionModal(order); }}
-                  className="flex items-center gap-1 text-sm text-positive hover:text-positive-900"
-                >
-                  <LuWrench className="w-4 h-4" />
-                  Repair
-                </button>
-              )}
+            <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
               {canUpdate && (
                 <button
                   onClick={(e) => { e.stopPropagation(); openEditModal(order); }}
@@ -1123,6 +1147,50 @@ export function JobOrderManagement() {
                   Delete
                 </button>
               )}
+              {/* More actions dropdown */}
+              <div className="relative" ref={openDropdownId === `card-${order.id}` ? dropdownRef : undefined}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${order.id}` ? null : `card-${order.id}`); }}
+                  className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+                  title="More actions"
+                >
+                  <LuEllipsisVertical className="w-4 h-4" /> More
+                </button>
+                {openDropdownId === `card-${order.id}` && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); closeDropdown(); openHistoryFromCard(order); }}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                    >
+                      <LuHistory className="w-4 h-4" /> Job Order History
+                    </button>
+                    {canApproval && (order.status === "created" || order.status === "pending" || order.status === "rejected") && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); closeDropdown(); openApprovalModal(order); }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                      >
+                        <LuSend className="w-4 h-4" /> Customer Approval
+                      </button>
+                    )}
+                    {canApproval && (order.status === "created" || order.status === "pending" || order.status === "rejected") && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelConfirmModal(order); }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                      >
+                        <LuBan className="w-4 h-4" /> Cancel Job Order
+                      </button>
+                    )}
+                    {canRepair && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); closeDropdown(); openRepairActionModal(order); }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                      >
+                        <LuWrench className="w-4 h-4" /> Manage Repairs
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         ))}
@@ -1575,160 +1643,6 @@ export function JobOrderManagement() {
                 />
               </div>
             </ModalSection>
-
-            {canApproval && (viewOrder.status === "created" || viewOrder.status === "pending" || viewOrder.status === "rejected") && (
-              <ModalSection title="Actions">
-                {viewOrder.status === "pending" && (
-                  <div className="grid grid-row gap-4">
-                    <button
-                      type="button"
-                      onClick={() => {setShowHistoryModal(true); setShowViewModal(false);}}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-neutral-100 transition-colors"
-                    >
-                      <LuHistory className="w-5 h-5" />
-                      Job Order History
-                    </button>
-                    <div className="grid grid-cols-2 gap-4">
-                      <button
-                        type="button"
-                        disabled={processingApproval}
-                        onClick={async () => {
-                          try {
-                            setProcessingApproval(true);
-                            await jobOrdersApi.recordApproval(viewOrder.id, { decision: "rejected" });
-                            setShowViewModal(false);
-                            setViewOrder(null);
-                            showToast.success("Customer rejected the job order");
-                            fetchData();
-                          } catch (err) {
-                            showToast.error(err instanceof Error ? err.message : "Failed to record approval");
-                          } finally {
-                            setProcessingApproval(false);
-                          }
-                        }}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-neutral-100 transition-colors"
-                      >
-                        <LuShieldX className="w-5 h-5" />
-                        {processingApproval ? "Processing..." : "Reject"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={processingApproval}
-                        onClick={async () => {
-                          try {
-                            setProcessingApproval(true);
-                            await jobOrdersApi.recordApproval(viewOrder.id, { decision: "approved" });
-                            setShowViewModal(false);
-                            setViewOrder(null);
-                            showToast.success("Customer approved the job order");
-                            fetchData();
-                          } catch (err) {
-                            showToast.error(err instanceof Error ? err.message : "Failed to record approval");
-                          } finally {
-                            setProcessingApproval(false);
-                          }
-                        }}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 transition-colors"
-                      >
-                        <LuShieldCheck className="w-5 h-5" />
-                        {processingApproval ? "Processing..." : "Accept"}
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={processingCancel}
-                      onClick={() => handleCancelOrder(viewOrder)}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 transition-colors"
-                    >
-                      <LuBan className="w-5 h-5" />
-                      {processingCancel ? "Cancelling..." : "Cancel Job Order"}
-                    </button>
-                  </div>
-                )}
-
-                {viewOrder.status === "created" && (
-                  <div className="grid grid-cols-1 gap-4">
-                    <button
-                      type="button"
-                      onClick={() => {setShowHistoryModal(true); setShowViewModal(false);}}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-neutral-100 transition-colors"
-                    >
-                      <LuHistory className="w-5 h-5" />
-                      Job Order History
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleRequestApproval(viewOrder);
-                        setShowViewModal(false);
-                        setViewOrder(null);
-                      }}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 transition-colors"
-                    >
-                      <LuSend className="w-5 h-5" />
-                      Request Customer Approval
-                    </button>
-                    <button
-                      type="button"
-                      disabled={processingCancel}
-                      onClick={() => handleCancelOrder(viewOrder)}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 transition-colors"
-                    >
-                      <LuBan className="w-5 h-5" />
-                      {processingCancel ? "Cancelling..." : "Cancel Job Order"}
-                    </button>
-                  </div>
-                )}
-
-                {viewOrder.status === "rejected" && (
-                  <div className="grid grid-cols-1 gap-4">
-                    <button
-                      type="button"
-                      onClick={() => {setShowHistoryModal(true); setShowViewModal(false);}}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-neutral-100 transition-colors"
-                    >
-                      <LuHistory className="w-5 h-5" />
-                      Job Order History
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleRequestApproval(viewOrder);
-                        setShowViewModal(false);
-                        setViewOrder(null);
-                      }}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 transition-colors"
-                    >
-                      <LuSend className="w-5 h-5" />
-                      Re-Request Customer Approval
-                    </button>
-                    <button
-                      type="button"
-                      disabled={processingCancel}
-                      onClick={() => handleCancelOrder(viewOrder)}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 transition-colors"
-                    >
-                      <LuBan className="w-5 h-5" />
-                      {processingCancel ? "Cancelling..." : "Cancel Job Order"}
-                    </button>
-                  </div>
-                )}
-              </ModalSection>
-            )}
-
-            {/* History button for statuses without an actions section */}
-            {!(canApproval && (viewOrder.status === "created" || viewOrder.status === "pending" || viewOrder.status === "rejected")) && (
-              <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={() => {setShowHistoryModal(true); setShowViewModal(false);}}
-                  className="w-full flex-1 flex items-center justify-center gap-2 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-neutral-100 transition-colors"
-                >
-                  <LuHistory className="w-5 h-5" />
-                  Job Order History
-                </button>
-              </div>
-            )}
           </div>
         )}
       </Modal>
@@ -1736,7 +1650,7 @@ export function JobOrderManagement() {
       {/* --- Job Order History Modal --- */}
       <Modal
         isOpen={showHistoryModal && !!viewOrder}
-        onClose={() => {setShowHistoryModal(false); setShowViewModal(true);}}
+        onClose={() => { setShowHistoryModal(false); }}
         title="Job Order History"
         maxWidth="lg"
       >
@@ -2133,6 +2047,189 @@ export function JobOrderManagement() {
                 {deletingOrder ? "Deleting..." : "Delete"}
               </button>
             </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* --- Cancel Job Order Confirmation Modal --- */}
+      <Modal
+        isOpen={showCancelConfirm && !!orderToCancel}
+        onClose={() => setShowCancelConfirm(false)}
+        title="Cancel Job Order"
+        maxWidth="sm"
+      >
+        {orderToCancel && (
+          <div>
+            <div className="bg-neutral-100 rounded-xl p-4 my-4">
+              <p className="text-neutral-900">
+                Are you sure you want to cancel{" "}
+                <strong className="text-neutral-950">{orderToCancel.order_number}</strong>?
+              </p>
+            </div>
+            <p className="text-sm text-neutral-900 mb-2">
+              This will change the job order status to cancelled. This action cannot be undone.
+            </p>
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowCancelConfirm(false)}
+                className="flex-1 px-4 py-3.5 border-2 border-negative text-negative rounded-xl font-semibold hover:bg-negative-200 transition-colors"
+              >
+                Go Back
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCancelOrder(orderToCancel)}
+                disabled={processingCancel}
+                className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {processingCancel ? "Cancelling..." : "Cancel Order"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* --- Customer Approval Modal --- */}
+      <Modal
+        isOpen={showApprovalModal && !!approvalOrder}
+        onClose={() => setShowApprovalModal(false)}
+        title="Customer Approval"
+        maxWidth="sm"
+      >
+        {approvalOrder && (
+          <div>
+            <div className="bg-neutral-100 rounded-xl p-4 my-4">
+              <p className="text-neutral-900">
+                {approvalOrder.status === "created" && (
+                  <>Request customer approval for <strong className="text-neutral-950">{approvalOrder.order_number}</strong>?</>
+                )}
+                {approvalOrder.status === "pending" && (
+                  <>Record the customer's decision for <strong className="text-neutral-950">{approvalOrder.order_number}</strong>?</>
+                )}
+                {approvalOrder.status === "rejected" && (
+                  <>Re-request customer approval for <strong className="text-neutral-950">{approvalOrder.order_number}</strong>?</>
+                )}
+              </p>
+            </div>
+            <p className="text-sm text-neutral-900 mb-2">
+              {approvalOrder.status === "created" && "This will change the status to Pending Approval and notify the customer for review."}
+              {approvalOrder.status === "pending" && "Select whether the customer approved or rejected this job order."}
+              {approvalOrder.status === "rejected" && "This will re-send the approval request and change the status back to Pending Approval."}
+            </p>
+
+            {approvalOrder.status === "created" && (
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowApprovalModal(false)}
+                  className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={processingApproval}
+                  onClick={async () => {
+                    try {
+                      setProcessingApproval(true);
+                      await jobOrdersApi.requestApproval(approvalOrder.id);
+                      setShowApprovalModal(false);
+                      setApprovalOrder(null);
+                      showToast.success("Approval requested — status changed to Pending Approval");
+                      fetchData();
+                    } catch (err) {
+                      showToast.error(err instanceof Error ? err.message : "Failed to request approval");
+                    } finally {
+                      setProcessingApproval(false);
+                    }
+                  }}
+                  className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {processingApproval ? "Processing..." : "Request"}
+                </button>
+              </div>
+            )}
+
+            {approvalOrder.status === "pending" && (
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  disabled={processingApproval}
+                  onClick={async () => {
+                    try {
+                      setProcessingApproval(true);
+                      await jobOrdersApi.recordApproval(approvalOrder.id, { decision: "rejected" });
+                      setShowApprovalModal(false);
+                      setApprovalOrder(null);
+                      showToast.success("Customer rejected the job order");
+                      fetchData();
+                    } catch (err) {
+                      showToast.error(err instanceof Error ? err.message : "Failed to record approval");
+                    } finally {
+                      setProcessingApproval(false);
+                    }
+                  }}
+                  className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {processingApproval ? "Processing..." : "Reject"}
+                </button>
+                <button
+                  type="button"
+                  disabled={processingApproval}
+                  onClick={async () => {
+                    try {
+                      setProcessingApproval(true);
+                      await jobOrdersApi.recordApproval(approvalOrder.id, { decision: "approved" });
+                      setShowApprovalModal(false);
+                      setApprovalOrder(null);
+                      showToast.success("Customer approved the job order");
+                      fetchData();
+                    } catch (err) {
+                      showToast.error(err instanceof Error ? err.message : "Failed to record approval");
+                    } finally {
+                      setProcessingApproval(false);
+                    }
+                  }}
+                  className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {processingApproval ? "Processing..." : "Approve"}
+                </button>
+              </div>
+            )}
+
+            {approvalOrder.status === "rejected" && (
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowApprovalModal(false)}
+                  className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={processingApproval}
+                  onClick={async () => {
+                    try {
+                      setProcessingApproval(true);
+                      await jobOrdersApi.requestApproval(approvalOrder.id);
+                      setShowApprovalModal(false);
+                      setApprovalOrder(null);
+                      showToast.success("Re-requested approval — status changed to Pending Approval");
+                      fetchData();
+                    } catch (err) {
+                      showToast.error(err instanceof Error ? err.message : "Failed to re-request approval");
+                    } finally {
+                      setProcessingApproval(false);
+                    }
+                  }}
+                  className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {processingApproval ? "Processing..." : "Re-Request"}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </Modal>

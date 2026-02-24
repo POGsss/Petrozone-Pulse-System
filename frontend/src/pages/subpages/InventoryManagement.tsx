@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   LuPlus,
   LuCircleAlert,
@@ -15,6 +15,7 @@ import {
   LuTriangleAlert,
   LuFilter,
   LuPackageCheck,
+  LuEllipsisVertical,
 } from "react-icons/lu";
 import { inventoryApi, branchesApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
@@ -187,6 +188,23 @@ export function InventoryManagement() {
   const [movementsItem, setMovementsItem] = useState<InventoryItem | null>(null);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [movementsLoading, setMovementsLoading] = useState(false);
+
+  // Actions overflow dropdown
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const closeDropdown = useCallback(() => setOpenDropdownId(null), []);
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        closeDropdown();
+      }
+    }
+    if (openDropdownId) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [openDropdownId, closeDropdown]);
 
   // Computed stats
   const stats = useMemo(() => {
@@ -702,6 +720,42 @@ export function InventoryManagement() {
                       <LuTrash2 className="w-4 h-4" /> Delete
                     </button>
                   )}
+                  {/* More actions dropdown */}
+                  <div className="relative" ref={openDropdownId === `card-${item.id}` ? dropdownRef : undefined}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${item.id}` ? null : `card-${item.id}`); }}
+                      className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+                      title="More actions"
+                    >
+                      <LuEllipsisVertical className="w-4 h-4" /> More
+                    </button>
+                    {openDropdownId === `card-${item.id}` && (
+                      <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); closeDropdown(); setShowMovementsModal(true); setMovementsItem(item); setMovements([]); setMovementsLoading(true); inventoryApi.getMovements(item.id, { limit: 100 }).then((res) => { setMovements(res.data); }).catch(() => {}).finally(() => { setMovementsLoading(false); }); }}
+                          className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                        >
+                          <LuHistory className="w-4 h-4" /> Movement History
+                        </button>
+                        {canStockIn && item.status === "active" && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); closeDropdown(); openStockInModal(item); }}
+                            className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                          >
+                            <LuCircleArrowUp className="w-4 h-4" /> Stock In
+                          </button>
+                        )}
+                        {canAdjust && item.status === "active" && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); closeDropdown(); openAdjustModal(item); }}
+                            className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                          >
+                            <LuCircleArrowDown className="w-4 h-4" /> Adjust Stock
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -717,7 +771,7 @@ export function InventoryManagement() {
         </div>
 
         {/* Desktop Table View */}
-        <div className="hidden md:block overflow-x-auto">
+        <div className="hidden md:block">
           <table className="w-full">
             <thead>
               <tr className="border-b border-neutral-200 bg-neutral-100">
@@ -778,6 +832,42 @@ export function InventoryManagement() {
                           <LuTrash2 className="w-4 h-4" />
                         </button>
                       )}
+                      {/* More actions dropdown */}
+                      <div className="relative" ref={openDropdownId === `table-${item.id}` ? dropdownRef : undefined}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `table-${item.id}` ? null : `table-${item.id}`); }}
+                          className="p-2 text-neutral-950 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"
+                          title="More actions"
+                        >
+                          <LuEllipsisVertical className="w-4 h-4" />
+                        </button>
+                        {openDropdownId === `table-${item.id}` && (
+                          <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); closeDropdown(); setShowMovementsModal(true); setMovementsItem(item); setMovements([]); setMovementsLoading(true); inventoryApi.getMovements(item.id, { limit: 100 }).then((res) => { setMovements(res.data); }).catch(() => {}).finally(() => { setMovementsLoading(false); }); }}
+                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                            >
+                              <LuHistory className="w-4 h-4" /> Movement History
+                            </button>
+                            {canStockIn && item.status === "active" && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); closeDropdown(); openStockInModal(item); }}
+                                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                              >
+                                <LuCircleArrowUp className="w-4 h-4" /> Stock In
+                              </button>
+                            )}
+                            {canAdjust && item.status === "active" && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); closeDropdown(); openAdjustModal(item); }}
+                                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                              >
+                                <LuCircleArrowDown className="w-4 h-4" /> Adjust Stock
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -905,39 +995,6 @@ export function InventoryManagement() {
                 <ModalInput type="text" value={formatDate(viewItem.updated_at)} onChange={() => {}} placeholder="Updated" disabled />
               </div>
             </ModalSection>
-
-            <ModalSection title="Actions">
-              <div className="grid grid-cols-1 gap-4">
-                <button
-                  type="button"
-                  onClick={() => { setShowMovementsModal(true); setShowViewModal(false); setMovementsItem(viewItem); setMovements([]); setMovementsLoading(true); inventoryApi.getMovements(viewItem.id, { limit: 100 }).then((res) => { setMovements(res.data); }).catch(() => {}).finally(() => { setMovementsLoading(false); }); }}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-neutral-100 transition-colors"
-                >
-                  <LuHistory className="w-5 h-5" />
-                  Movement History
-                </button>
-                {canStockIn && viewItem.status === "active" && (
-                  <button
-                    type="button"
-                    onClick={() => { setShowViewModal(false); openStockInModal(viewItem); }}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 transition-colors"
-                  >
-                    <LuCircleArrowUp className="w-5 h-5" />
-                    Stock In
-                  </button>
-                )}
-                {canAdjust && viewItem.status === "active" && (
-                  <button
-                    type="button"
-                    onClick={() => { setShowViewModal(false); openAdjustModal(viewItem); }}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 transition-colors"
-                  >
-                    <LuCircleArrowDown className="w-5 h-5" />
-                    Adjust Stock
-                  </button>
-                )}
-              </div>
-            </ModalSection>
           </div>
         )}
       </Modal>
@@ -1009,7 +1066,7 @@ export function InventoryManagement() {
       {/* ───── Adjust Stock Modal ───── */}
       <Modal
         isOpen={showAdjustModal && !!adjustItem}
-        onClose={() => { setShowAdjustModal(false); setShowViewModal(true); }}
+        onClose={() => { setShowAdjustModal(false) }}
         title="Adjust Stock"
         maxWidth="lg"
       >
@@ -1039,7 +1096,7 @@ export function InventoryManagement() {
               />
             </ModalSection>
             <ModalError message={adjustError} />
-            <ModalButtons onCancel={() => { setShowAdjustModal(false); setShowViewModal(true); }} submitText={adjustingItem ? "Adjusting..." : "Adjust Stock"} loading={adjustingItem} />
+            <ModalButtons onCancel={() => { setShowAdjustModal(false) }} submitText={adjustingItem ? "Adjusting..." : "Adjust Stock"} loading={adjustingItem} />
           </form>
         )}
       </Modal>
@@ -1047,7 +1104,7 @@ export function InventoryManagement() {
       {/* ───── Stock In Modal ───── */}
       <Modal
         isOpen={showStockInModal && !!stockInItem}
-        onClose={() => { setShowStockInModal(false); setShowViewModal(true); }}
+        onClose={() => { setShowStockInModal(false) }}
         title="Add Stock"
         maxWidth="lg"
       >
@@ -1068,7 +1125,7 @@ export function InventoryManagement() {
               />
             </ModalSection>
             <ModalError message={stockInError} />
-            <ModalButtons onCancel={() => { setShowStockInModal(false); setShowViewModal(true); }} submitText={stockInLoading ? "Adding..." : "Add Stock"} loading={stockInLoading} />
+            <ModalButtons onCancel={() => { setShowStockInModal(false) }} submitText={stockInLoading ? "Adding..." : "Add Stock"} loading={stockInLoading} />
           </form>
         )}
       </Modal>
@@ -1076,7 +1133,7 @@ export function InventoryManagement() {
       {/* ───── Movement History Modal ───── */}
       <Modal
         isOpen={showMovementsModal && !!movementsItem}
-        onClose={() => { setShowMovementsModal(false); setShowViewModal(true); }}
+        onClose={() => { setShowMovementsModal(false); }}
         title="Stock Movement History"
         maxWidth="lg"
       >
