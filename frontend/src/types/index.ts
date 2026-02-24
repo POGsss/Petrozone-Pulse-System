@@ -332,3 +332,44 @@ export interface StockMovement {
   created_by: string | null;
   created_at: string;
 }
+
+// Purchase Order types
+export type PurchaseOrderStatus = "draft" | "submitted" | "received" | "cancelled";
+
+export interface PurchaseOrderItem {
+  id: string;
+  purchase_order_id: string;
+  inventory_item_id: string;
+  quantity_ordered: number;
+  unit_cost: number;
+  quantity_received: number;
+  created_at: string;
+  updated_at: string;
+  inventory_items?: {
+    id: string;
+    item_name: string;
+    sku_code: string;
+    unit_of_measure: string;
+    cost_price?: number;
+  };
+}
+
+export interface PurchaseOrder {
+  id: string;
+  po_number: string;
+  supplier_name: string | null;
+  status: PurchaseOrderStatus;
+  order_date: string;
+  expected_delivery_date: string | null;
+  branch_id: string;
+  notes: string | null;
+  total_amount: number;
+  created_by: string | null;
+  received_at: string | null;
+  received_by: string | null;
+  is_deleted: boolean;
+  created_at: string;
+  updated_at: string;
+  branches?: Branch;
+  purchase_order_items?: PurchaseOrderItem[];
+}

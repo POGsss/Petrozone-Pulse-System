@@ -948,3 +948,94 @@ export const inventoryApi = {
     );
   },
 };
+
+// Purchase Orders API
+export const purchaseOrdersApi = {
+  getAll: async (params?: {
+    branch_id?: string;
+    status?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
+    const query = searchParams.toString();
+    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").PurchaseOrder>>(
+      `/api/purchase-orders${query ? `?${query}` : ""}`
+    );
+  },
+
+  getById: async (id: string) => {
+    return fetchWithAuth<import("../types").PurchaseOrder>(`/api/purchase-orders/${id}`);
+  },
+
+  create: async (data: {
+    po_number?: string;
+    supplier_name?: string;
+    order_date: string;
+    expected_delivery_date?: string;
+    branch_id: string;
+    notes?: string;
+    items: Array<{
+      inventory_item_id: string;
+      quantity_ordered: number;
+      unit_cost: number;
+    }>;
+  }) => {
+    return fetchWithAuth<import("../types").PurchaseOrder>("/api/purchase-orders", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (
+    id: string,
+    data: {
+      supplier_name?: string;
+      order_date?: string;
+      expected_delivery_date?: string;
+      notes?: string;
+      items?: Array<{
+        inventory_item_id: string;
+        quantity_ordered: number;
+        unit_cost: number;
+      }>;
+    }
+  ) => {
+    return fetchWithAuth<import("../types").PurchaseOrder>(`/api/purchase-orders/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: string) => {
+    return fetchWithAuth<{ message: string }>(`/api/purchase-orders/${id}`, {
+      method: "DELETE",
+    });
+  },
+
+  submit: async (id: string) => {
+    return fetchWithAuth<import("../types").PurchaseOrder>(`/api/purchase-orders/${id}/submit`, {
+      method: "PATCH",
+    });
+  },
+
+  receive: async (id: string) => {
+    return fetchWithAuth<import("../types").PurchaseOrder>(`/api/purchase-orders/${id}/receive`, {
+      method: "PATCH",
+    });
+  },
+
+  cancel: async (id: string) => {
+    return fetchWithAuth<{ message: string }>(`/api/purchase-orders/${id}/cancel`, {
+      method: "PATCH",
+    });
+  },
+};

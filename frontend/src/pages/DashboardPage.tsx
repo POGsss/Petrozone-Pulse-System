@@ -15,6 +15,7 @@ import { CatalogManagement } from "./subpages/CatalogManagement";
 import { PricingManagement } from "./subpages/PricingManagement";
 import { JobOrderManagement } from "./subpages/JobOrderManagement";
 import { InventoryManagement } from "./subpages/InventoryManagement";
+import { PurchaseOrderManagement } from "./subpages/PurchaseOrderManagement";
 import { SystemSettings } from "./subpages/SystemSettings";
 
 // Page content data
@@ -54,6 +55,10 @@ const pageData: Record<string, { title: string; description: string }> = {
   inventory: {
     title: "Inventory",
     description: "Manage inventory items and stock levels.",
+  },
+  "purchase-orders": {
+    title: "Purchase Orders",
+    description: "Manage inventory procurement and purchase orders.",
   },
   audit: {
     title: "Audit Logs",
@@ -117,6 +122,11 @@ function getNavItemsForRole(roles: string[]): NavItem[] {
   // Job Orders: All roles can view; HM, POC, JS, R can create
   items.push({ id: "job-orders", label: "Job Orders", icon: <NavIcons.Jobs /> });
 
+  // Purchase Orders: HM, POC, JS, R (UC49-UC52)
+  if (hasAnyRole("HM", "POC", "JS", "R")) {
+    items.push({ id: "purchase-orders", label: "Purchase Orders", icon: <NavIcons.Orders /> });
+  }
+
   // Audit Logs: HM, POC (US18)
   if (hasAnyRole("HM", "POC")) {
     items.push({ id: "audit", label: "Audit Logs", icon: <NavIcons.Audit /> });
@@ -157,6 +167,7 @@ export function DashboardPage() {
   const canViewVehicles = hasAnyRole("HM", "POC", "JS", "R");
   const canViewCatalog = hasAnyRole("HM", "POC", "JS", "R");
   const canViewInventory = hasAnyRole("HM", "POC", "JS");
+  const canViewPurchaseOrders = hasAnyRole("HM", "POC", "JS", "R");
   const canAccessSettings = userRoles.includes("HM");
 
   // Get page data
@@ -222,6 +233,11 @@ export function DashboardPage() {
           <InventoryManagement />
       )}
 
+      {/* Purchase Orders - HM, POC, JS, R (UC49-UC52) */}
+      {activeNav === "purchase-orders" && canViewPurchaseOrders && (
+          <PurchaseOrderManagement />
+      )}
+
       {/* Job Orders - All roles */}
       {activeNav === "job-orders" && (
           <JobOrderManagement />
@@ -233,7 +249,7 @@ export function DashboardPage() {
       )}
 
       {/* Empty state for upcoming pages (Settings) */}
-      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && activeNav !== "vehicles" && activeNav !== "catalog" && activeNav !== "inventory" && activeNav !== "job-orders" && activeNav !== "pricing" && (
+      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && activeNav !== "vehicles" && activeNav !== "catalog" && activeNav !== "inventory" && activeNav !== "purchase-orders" && activeNav !== "job-orders" && activeNav !== "pricing" && (
         <div className="bg-white rounded-xl p-6 border border-neutral-100">
           <p className="text-neutral-900">This feature is coming in the next phase.</p>
         </div>

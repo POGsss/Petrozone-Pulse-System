@@ -357,6 +357,130 @@ export type Database = {
           },
         ]
       }
+      purchase_orders: {
+        Row: {
+          id: string
+          po_number: string
+          supplier_name: string | null
+          status: string
+          order_date: string
+          expected_delivery_date: string | null
+          branch_id: string
+          notes: string | null
+          total_amount: number
+          created_by: string | null
+          received_at: string | null
+          received_by: string | null
+          is_deleted: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          po_number?: string
+          supplier_name?: string | null
+          status?: string
+          order_date: string
+          expected_delivery_date?: string | null
+          branch_id: string
+          notes?: string | null
+          total_amount?: number
+          created_by?: string | null
+          received_at?: string | null
+          received_by?: string | null
+          is_deleted?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          po_number?: string
+          supplier_name?: string | null
+          status?: string
+          order_date?: string
+          expected_delivery_date?: string | null
+          branch_id?: string
+          notes?: string | null
+          total_amount?: number
+          created_by?: string | null
+          received_at?: string | null
+          received_by?: string | null
+          is_deleted?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_orders_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_received_by_fkey"
+            columns: ["received_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_order_items: {
+        Row: {
+          id: string
+          purchase_order_id: string
+          inventory_item_id: string
+          quantity_ordered: number
+          unit_cost: number
+          quantity_received: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          purchase_order_id: string
+          inventory_item_id: string
+          quantity_ordered: number
+          unit_cost: number
+          quantity_received?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          purchase_order_id?: string
+          inventory_item_id?: string
+          quantity_ordered?: number
+          unit_cost?: number
+          quantity_received?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_order_items_purchase_order_id_fkey"
+            columns: ["purchase_order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_items_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pricing_matrices: {
         Row: {
           branch_id: string
@@ -906,6 +1030,7 @@ export type Database = {
       customer_type: "individual" | "company"
       inventory_item_status: "active" | "inactive"
       job_order_status: "created" | "pending" | "approved" | "rejected" | "cancelled"
+      purchase_order_status: "draft" | "submitted" | "received" | "cancelled"
       pricing_matrix_status: "active" | "inactive"
       pricing_type: "labor" | "packaging"
       stock_movement_type: "stock_in" | "stock_out" | "adjustment"
