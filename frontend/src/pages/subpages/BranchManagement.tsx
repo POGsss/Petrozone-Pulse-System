@@ -18,7 +18,7 @@ export function BranchManagement() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Add branch modal state
   const [showAddModal, setShowAddModal] = useState(false);
   const [addingBranch, setAddingBranch] = useState(false);
@@ -152,7 +152,7 @@ export function BranchManagement() {
         phone: addBranchForm.phone,
         email: addBranchForm.email,
       });
-      
+
       // Reset form and close modal
       setAddBranchForm({
         name: "",
@@ -162,7 +162,7 @@ export function BranchManagement() {
         email: "",
       });
       setShowAddModal(false);
-      
+
       // Refresh branches list
       showToast.success("Branch created successfully");
       fetchBranches();
@@ -193,7 +193,7 @@ export function BranchManagement() {
   async function handleEditBranch(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedBranch) return;
-    
+
     setEditBranchError(null);
 
     if (!editBranchForm.name || !editBranchForm.code) {
@@ -233,10 +233,10 @@ export function BranchManagement() {
         email: editBranchForm.email,
         is_active: editBranchForm.is_active,
       });
-      
+
       setShowEditModal(false);
       setSelectedBranch(null);
-      
+
       // Refresh branches list
       showToast.success("Branch updated successfully");
       fetchBranches();
@@ -261,10 +261,10 @@ export function BranchManagement() {
     try {
       setDeletingBranch(true);
       await branchesApi.delete(branchToDelete.id);
-      
+
       setShowDeleteConfirm(false);
       setBranchToDelete(null);
-      
+
       // Refresh branches list
       showToast.success("Branch deleted successfully");
       fetchBranches();
@@ -314,7 +314,7 @@ export function BranchManagement() {
           className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
         >
           <LuPlus className="w-4 h-4" />
-          Add Branch
+          Add New Branch
         </button>
       </div>
 
@@ -356,11 +356,10 @@ export function BranchManagement() {
                 </div>
               </div>
               <span
-                className={`px-2 py-1 rounded text-xs font-medium ${
-                  branch.is_active
+                className={`px-2 py-1 rounded text-xs font-medium ${branch.is_active
                     ? "bg-positive-100 text-positive"
                     : "bg-negative-100 text-negative"
-                }`}
+                  }`}
               >
                 {branch.is_active ? "Active" : "Inactive"}
               </span>
@@ -411,7 +410,7 @@ export function BranchManagement() {
       <Modal
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
-        title="Add a New Branch"
+        title="Add New Branch"
       >
         <form onSubmit={handleAddBranch}>
           <ModalSection title="Branch Information">
@@ -422,19 +421,16 @@ export function BranchManagement() {
               placeholder="Branch Name"
               required
             />
-            
-            <div>
-              <ModalInput
-                type="text"
-                value={addBranchForm.code}
-                onChange={(v) => setAddBranchForm(prev => ({ ...prev, code: v.toUpperCase() }))}
-                placeholder="Branch Code (e.g., MAIN)"
-                required
-                maxLength={10}
-                className="font-mono uppercase"
-              />
-              <p className="text-xs text-neutral-900 mt-1.5 ml-1">Unique identifier for this branch</p>
-            </div>
+
+            <ModalInput
+              type="text"
+              value={addBranchForm.code}
+              onChange={(v) => setAddBranchForm(prev => ({ ...prev, code: v.toUpperCase() }))}
+              placeholder="Branch Code (e.g., MAIN)"
+              required
+              maxLength={10}
+              className="font-mono uppercase"
+            />
           </ModalSection>
 
           <ModalSection title="Contact Details">
@@ -445,7 +441,7 @@ export function BranchManagement() {
               placeholder="Building No., Street Address"
               required
             />
-            
+
             <ModalInput
               type="tel"
               value={addBranchForm.phone}
@@ -455,7 +451,7 @@ export function BranchManagement() {
               pattern="[0-9+\-()\s]{7,20}"
               title="Please enter a valid phone number (7-20 digits)"
             />
-            
+
             <ModalInput
               type="email"
               value={addBranchForm.email}
@@ -491,7 +487,7 @@ export function BranchManagement() {
                 placeholder="Branch Name"
                 required
               />
-              
+
               <ModalInput
                 type="text"
                 value={editBranchForm.code}
@@ -511,7 +507,7 @@ export function BranchManagement() {
                 placeholder="Building No., Street Address"
                 required
               />
-              
+
               <ModalInput
                 type="tel"
                 value={editBranchForm.phone}
@@ -521,7 +517,7 @@ export function BranchManagement() {
                 pattern="[0-9+\-()\s]{7,20}"
                 title="Please enter a valid phone number (7-20 digits)"
               />
-              
+
               <ModalInput
                 type="email"
                 value={editBranchForm.email}
@@ -529,19 +525,17 @@ export function BranchManagement() {
                 placeholder="Email Address"
                 required
               />
-              
+
               <div className="flex items-center gap-3 mt-2">
                 <button
                   type="button"
                   onClick={() => setEditBranchForm(prev => ({ ...prev, is_active: !prev.is_active }))}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    editBranchForm.is_active ? "bg-primary" : "bg-neutral-200"
-                  }`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${editBranchForm.is_active ? "bg-primary" : "bg-neutral-200"
+                    }`}
                 >
                   <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      editBranchForm.is_active ? "translate-x-6" : "translate-x-1"
-                    }`}
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editBranchForm.is_active ? "translate-x-6" : "translate-x-1"
+                      }`}
                   />
                 </button>
                 <span className="text-sm text-neutral-700">
@@ -612,14 +606,14 @@ export function BranchManagement() {
               <ModalInput
                 type="text"
                 value={viewBranch.name}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Branch Name"
                 disabled
               />
               <ModalInput
                 type="text"
                 value={viewBranch.code}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Branch Code"
                 disabled
                 className="font-mono"
@@ -627,7 +621,7 @@ export function BranchManagement() {
               <ModalInput
                 type="text"
                 value={viewBranch.is_active ? "Active" : "Inactive"}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Status"
                 disabled
               />
@@ -637,21 +631,21 @@ export function BranchManagement() {
               <ModalInput
                 type="text"
                 value={viewBranch.address || "-"}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Address"
                 disabled
               />
               <ModalInput
                 type="text"
                 value={viewBranch.phone || "-"}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Phone"
                 disabled
               />
               <ModalInput
                 type="text"
                 value={viewBranch.email || "-"}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Email"
                 disabled
               />
@@ -662,14 +656,14 @@ export function BranchManagement() {
                 <ModalInput
                   type="text"
                   value={formatDate(viewBranch.created_at)}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   placeholder="Created"
                   disabled
                 />
                 <ModalInput
                   type="text"
                   value={formatDate(viewBranch.updated_at)}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   placeholder="Updated"
                   disabled
                 />

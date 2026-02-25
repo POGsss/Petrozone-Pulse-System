@@ -711,16 +711,19 @@ router.delete(
             return;
           }
 
-          // Update audit log with user_id
-          await supabaseAdmin
-            .from("audit_logs")
-            .update({ user_id: req.user!.id })
-            .eq("entity_type", "PRICING_MATRIX")
-            .eq("entity_id", id)
-            .eq("action", "UPDATE")
-            .is("user_id", null)
-            .order("created_at", { ascending: false })
-            .limit(1);
+          // Log soft delete with correct user
+          try {
+            await supabaseAdmin.rpc("log_admin_action", {
+              p_action: "UPDATE",
+              p_entity_type: "PRICING_MATRIX",
+              p_entity_id: id,
+              p_performed_by_user_id: req.user!.id,
+              p_performed_by_branch_id: req.user!.branchIds[0] || null,
+              p_new_values: { status: "inactive", reason: "soft_delete" },
+            });
+          } catch (auditErr) {
+            console.error("Audit log error:", auditErr);
+          }
 
           res.json({
             message: "Pricing matrix is referenced by other records and has been deactivated instead",
@@ -733,16 +736,19 @@ router.delete(
         return;
       }
 
-      // Update audit log with user_id for the DELETE action
-      await supabaseAdmin
-        .from("audit_logs")
-        .update({ user_id: req.user!.id })
-        .eq("entity_type", "PRICING_MATRIX")
-        .eq("entity_id", id)
-        .eq("action", "DELETE")
-        .is("user_id", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
+      // Log hard delete with correct user
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "DELETE",
+          p_entity_type: "PRICING_MATRIX",
+          p_entity_id: id,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { name: existing.service_type, deleted: true },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
 
       res.json({ message: "Pricing matrix deleted successfully" });
     } catch (error) {

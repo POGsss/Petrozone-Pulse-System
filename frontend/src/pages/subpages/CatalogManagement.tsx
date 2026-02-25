@@ -405,7 +405,7 @@ export function CatalogManagement() {
             className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
           >
             <LuPlus className="w-4 h-4" />
-            Add Item
+            Add New Catalog
           </button>
         )}
       </div>
@@ -507,7 +507,7 @@ export function CatalogManagement() {
           <div className="col-span-full text-center py-12 text-neutral-900">
             {searchQuery
               ? "No catalog items match your search."
-              : 'No catalog items found. Click "Add Item" to create one.'}
+              : 'No catalog items found. Click "Add New Catalog" to create one.'}
           </div>
         )}
       </div>
@@ -610,7 +610,7 @@ export function CatalogManagement() {
 
           <ModalButtons
             onCancel={() => setShowAddModal(false)}
-            submitText={addingItem ? "Creating..." : "Create Item"}
+            submitText={addingItem ? "Creating..." : "Create Catalog"}
             loading={addingItem}
           />
         </form>

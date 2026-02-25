@@ -3,19 +3,19 @@ import {
   LuPlus,
   LuCircleAlert,
   LuRefreshCw,
-  LuSearch,
   LuPencil,
   LuTrash2,
   LuChevronLeft,
   LuChevronRight,
-  LuFilter,
   LuEllipsisVertical,
   LuShoppingCart,
   LuSend,
   LuPackageCheck,
-  LuCircleX,
-  LuEye,
+  LuBan,
   LuClipboardList,
+  LuX,
+  LuSearch,
+  LuFilter,
 } from "react-icons/lu";
 import { purchaseOrdersApi, branchesApi, inventoryApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
@@ -28,7 +28,7 @@ import {
   ModalButtons,
   ModalError,
 } from "../../components";
-import type { PurchaseOrder, PurchaseOrderItem, Branch, InventoryItem } from "../../types";
+import type { PurchaseOrder, Branch, InventoryItem } from "../../types";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -37,6 +37,16 @@ function formatDate(dateStr: string): string {
     year: "numeric",
     month: "short",
     day: "numeric",
+  });
+}
+
+function formatDateTime(dateStr: string): string {
+  return new Date(dateStr).toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
@@ -50,7 +60,7 @@ function formatPrice(price: number): string {
 function statusBadge(status: string) {
   switch (status) {
     case "draft":
-      return "bg-neutral-200 text-neutral-900";
+      return "bg-neutral-100 text-neutral-950";
     case "submitted":
       return "bg-primary-100 text-primary-950";
     case "received":
@@ -58,7 +68,7 @@ function statusBadge(status: string) {
     case "cancelled":
       return "bg-negative-100 text-negative-950";
     default:
-      return "bg-neutral-200 text-neutral-900";
+      return "bg-neutral-100 text-neutral-950";
   }
 }
 
@@ -66,11 +76,14 @@ function statusLabel(status: string): string {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-// Item row type for the add/edit form
-interface POItemRow {
+// Draft item for the plus-button pattern
+interface DraftPOItem {
   inventory_item_id: string;
-  quantity_ordered: string;
-  unit_cost: string;
+  item_name: string;
+  sku_code: string;
+  quantity_ordered: number;
+  unit_cost: number;
+  line_total: number;
 }
 
 export function PurchaseOrderManagement() {
@@ -108,10 +121,13 @@ export function PurchaseOrderManagement() {
     branch_id: "",
     notes: "",
   });
-  const [addItems, setAddItems] = useState<POItemRow[]>([
-    { inventory_item_id: "", quantity_ordered: "", unit_cost: "" },
-  ]);
   const [addError, setAddError] = useState<string | null>(null);
+
+  // Add modal — plus-button item pattern
+  const [selectedInventoryId, setSelectedInventoryId] = useState("");
+  const [selectedQty, setSelectedQty] = useState("1");
+  const [selectedUnitCost, setSelectedUnitCost] = useState("");
+  const [draftItems, setDraftItems] = useState<DraftPOItem[]>([]);
 
   // View modal
   const [showViewModal, setShowViewModal] = useState(false);
@@ -127,13 +143,28 @@ export function PurchaseOrderManagement() {
     expected_delivery_date: "",
     notes: "",
   });
-  const [editItems, setEditItems] = useState<POItemRow[]>([]);
   const [editError, setEditError] = useState<string | null>(null);
+
+  // Edit modal — plus-button item pattern
+  const [editSelectedInventoryId, setEditSelectedInventoryId] = useState("");
+  const [editSelectedQty, setEditSelectedQty] = useState("1");
+  const [editSelectedUnitCost, setEditSelectedUnitCost] = useState("");
+  const [editDraftItems, setEditDraftItems] = useState<DraftPOItem[]>([]);
 
   // Delete modal
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<PurchaseOrder | null>(null);
+
+  // Submit confirmation modal
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [orderToSubmit, setOrderToSubmit] = useState<PurchaseOrder | null>(null);
+  const [processingSubmit, setProcessingSubmit] = useState(false);
+
+  // Cancel confirmation modal
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [orderToCancel, setOrderToCancel] = useState<PurchaseOrder | null>(null);
+  const [processingCancel, setProcessingCancel] = useState(false);
 
   // Actions overflow dropdown
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
@@ -152,16 +183,15 @@ export function PurchaseOrderManagement() {
     }
   }, [openDropdownId, closeDropdown]);
 
-  // Computed stats
+  // Computed stats (3 cards: Total, Submitted, Received)
   const stats = useMemo(() => {
-    const draft = allOrders.filter((o) => o.status === "draft").length;
     const submitted = allOrders.filter((o) => o.status === "submitted").length;
     const received = allOrders.filter((o) => o.status === "received").length;
-    return { total: allOrders.length, draft, submitted, received };
+    return { total: allOrders.length, submitted, received };
   }, [allOrders]);
 
   // Filtered + paginated
-  const { filteredItems, paginatedItems, totalPages } = useMemo(() => {
+  const { paginatedItems, totalPages, filteredCount } = useMemo(() => {
     const q = searchQuery.toLowerCase();
     const filtered = allOrders.filter((order) => {
       const matchSearch =
@@ -177,10 +207,13 @@ export function PurchaseOrderManagement() {
 
       return matchSearch && matchStatus && matchBranch;
     });
-    const total = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+    const pages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    const paginated = filtered.slice(start, start + ITEMS_PER_PAGE);
-    return { filteredItems: filtered, paginatedItems: paginated, totalPages: total };
+    return {
+      paginatedItems: filtered.slice(start, start + ITEMS_PER_PAGE),
+      totalPages: pages,
+      filteredCount: filtered.length,
+    };
   }, [allOrders, searchQuery, filterStatus, filterBranch, currentPage]);
 
   useEffect(() => { fetchData(); }, []);
@@ -232,13 +265,21 @@ export function PurchaseOrderManagement() {
     return branches.map((b) => ({ value: b.id, label: b.name }));
   }, [branches, user, isHM]);
 
-  // Inventory items filtered by selected branch for add/edit
+  // Inventory items filtered by selected branch
   function getInventoryForBranch(branchId: string) {
     if (!branchId) return inventoryItems;
     return inventoryItems.filter((i) => i.branch_id === branchId);
   }
 
-  // ─── Add ─────────────────────────────────────────────────────────────
+  // Inventory options for selects
+  function getInventoryOptions(branchId: string) {
+    return getInventoryForBranch(branchId).map((inv) => ({
+      value: inv.id,
+      label: `${inv.item_name} (${inv.sku_code})`,
+    }));
+  }
+
+  // ─── Add (plus-button pattern) ───────────────────────────────────────
   function openAddModal() {
     setAddForm({
       po_number: "",
@@ -248,31 +289,72 @@ export function PurchaseOrderManagement() {
       branch_id: defaultBranchId,
       notes: "",
     });
-    setAddItems([{ inventory_item_id: "", quantity_ordered: "", unit_cost: "" }]);
+    setDraftItems([]);
+    setSelectedInventoryId("");
+    setSelectedQty("1");
+    setSelectedUnitCost("");
     setAddError(null);
     setShowAddModal(true);
   }
 
-  function addItemRow() {
-    setAddItems([...addItems, { inventory_item_id: "", quantity_ordered: "", unit_cost: "" }]);
+  function handleAddDraftItem() {
+    if (!selectedInventoryId) return;
+    const qty = parseInt(selectedQty) || 1;
+    const cost = parseFloat(selectedUnitCost) || 0;
+    const inv = inventoryItems.find((i) => i.id === selectedInventoryId);
+    if (!inv) return;
+
+    // Check for duplicate
+    if (draftItems.some((d) => d.inventory_item_id === selectedInventoryId)) {
+      setAddError("This item is already added.");
+      return;
+    }
+
+    setDraftItems([
+      ...draftItems,
+      {
+        inventory_item_id: inv.id,
+        item_name: inv.item_name,
+        sku_code: inv.sku_code,
+        quantity_ordered: qty,
+        unit_cost: cost,
+        line_total: qty * cost,
+      },
+    ]);
+    setSelectedInventoryId("");
+    setSelectedQty("1");
+    setSelectedUnitCost("");
+    setAddError(null);
   }
 
-  function removeAddItemRow(idx: number) {
-    if (addItems.length <= 1) return;
-    setAddItems(addItems.filter((_, i) => i !== idx));
+  function removeDraftItem(itemId: string) {
+    setDraftItems(draftItems.filter((d) => d.inventory_item_id !== itemId));
   }
 
-  function updateAddItem(idx: number, field: keyof POItemRow, val: string) {
-    const updated = [...addItems];
-    updated[idx] = { ...updated[idx], [field]: val };
-    // If inventory item selected and unit_cost is empty, prefill with item cost_price
-    if (field === "inventory_item_id" && val) {
-      const invItem = inventoryItems.find((i) => i.id === val);
-      if (invItem && !updated[idx].unit_cost) {
-        updated[idx].unit_cost = invItem.cost_price.toString();
+  const draftTotal = useMemo(
+    () => draftItems.reduce((sum, i) => sum + i.line_total, 0),
+    [draftItems]
+  );
+
+  // Auto-fill unit cost when inventory item selected
+  function handleInventorySelect(itemId: string) {
+    setSelectedInventoryId(itemId);
+    if (itemId) {
+      const inv = inventoryItems.find((i) => i.id === itemId);
+      if (inv) {
+        setSelectedUnitCost(inv.cost_price.toString());
       }
     }
-    setAddItems(updated);
+  }
+
+  function handleEditInventorySelect(itemId: string) {
+    setEditSelectedInventoryId(itemId);
+    if (itemId) {
+      const inv = inventoryItems.find((i) => i.id === itemId);
+      if (inv) {
+        setEditSelectedUnitCost(inv.cost_price.toString());
+      }
+    }
   }
 
   async function handleAdd(e: React.FormEvent) {
@@ -281,17 +363,12 @@ export function PurchaseOrderManagement() {
 
     if (!addForm.branch_id) { setAddError("Branch is required"); return; }
     if (!addForm.order_date) { setAddError("Order date is required"); return; }
+    if (draftItems.length === 0) { setAddError("At least one item is required"); return; }
 
-    // Validate items
-    for (let i = 0; i < addItems.length; i++) {
-      const item = addItems[i];
-      if (!item.inventory_item_id) { setAddError(`Item #${i + 1}: Select an inventory item`); return; }
-      if (!item.quantity_ordered || parseInt(item.quantity_ordered) < 1) {
-        setAddError(`Item #${i + 1}: Quantity must be at least 1`); return;
-      }
-      if (item.unit_cost === "" || parseFloat(item.unit_cost) < 0) {
-        setAddError(`Item #${i + 1}: Unit cost must be a non-negative number`); return;
-      }
+    for (let i = 0; i < draftItems.length; i++) {
+      const item = draftItems[i];
+      if (item.quantity_ordered < 1) { setAddError(`Item #${i + 1}: Quantity must be at least 1`); return; }
+      if (item.unit_cost < 0) { setAddError(`Item #${i + 1}: Unit cost must be a non-negative number`); return; }
     }
 
     try {
@@ -303,10 +380,10 @@ export function PurchaseOrderManagement() {
         expected_delivery_date: addForm.expected_delivery_date || undefined,
         branch_id: addForm.branch_id,
         notes: addForm.notes.trim() || undefined,
-        items: addItems.map((i) => ({
+        items: draftItems.map((i) => ({
           inventory_item_id: i.inventory_item_id,
-          quantity_ordered: parseInt(i.quantity_ordered),
-          unit_cost: parseFloat(i.unit_cost),
+          quantity_ordered: i.quantity_ordered,
+          unit_cost: i.unit_cost,
         })),
       });
       setShowAddModal(false);
@@ -326,7 +403,7 @@ export function PurchaseOrderManagement() {
     setShowViewModal(true);
   }
 
-  // ─── Edit ────────────────────────────────────────────────────────────
+  // ─── Edit (plus-button pattern) ──────────────────────────────────────
   function openEditModal(order: PurchaseOrder) {
     setSelectedOrder(order);
     setEditForm({
@@ -335,40 +412,60 @@ export function PurchaseOrderManagement() {
       expected_delivery_date: order.expected_delivery_date || "",
       notes: order.notes || "",
     });
-    setEditItems(
+    setEditDraftItems(
       (order.purchase_order_items || []).map((item) => ({
         inventory_item_id: item.inventory_item_id,
-        quantity_ordered: item.quantity_ordered.toString(),
-        unit_cost: item.unit_cost.toString(),
+        item_name: item.inventory_items?.item_name || "Unknown",
+        sku_code: item.inventory_items?.sku_code || "",
+        quantity_ordered: item.quantity_ordered,
+        unit_cost: item.unit_cost,
+        line_total: item.quantity_ordered * item.unit_cost,
       }))
     );
-    if (editItems.length === 0) {
-      setEditItems([{ inventory_item_id: "", quantity_ordered: "", unit_cost: "" }]);
-    }
+    setEditSelectedInventoryId("");
+    setEditSelectedQty("1");
+    setEditSelectedUnitCost("");
     setEditError(null);
     setShowEditModal(true);
   }
 
-  function addEditItemRow() {
-    setEditItems([...editItems, { inventory_item_id: "", quantity_ordered: "", unit_cost: "" }]);
-  }
+  function handleAddEditDraftItem() {
+    if (!editSelectedInventoryId) return;
+    const qty = parseInt(editSelectedQty) || 1;
+    const cost = parseFloat(editSelectedUnitCost) || 0;
+    const inv = inventoryItems.find((i) => i.id === editSelectedInventoryId);
+    if (!inv) return;
 
-  function removeEditItemRow(idx: number) {
-    if (editItems.length <= 1) return;
-    setEditItems(editItems.filter((_, i) => i !== idx));
-  }
-
-  function updateEditItem(idx: number, field: keyof POItemRow, val: string) {
-    const updated = [...editItems];
-    updated[idx] = { ...updated[idx], [field]: val };
-    if (field === "inventory_item_id" && val) {
-      const invItem = inventoryItems.find((i) => i.id === val);
-      if (invItem && !updated[idx].unit_cost) {
-        updated[idx].unit_cost = invItem.cost_price.toString();
-      }
+    if (editDraftItems.some((d) => d.inventory_item_id === editSelectedInventoryId)) {
+      setEditError("This item is already added.");
+      return;
     }
-    setEditItems(updated);
+
+    setEditDraftItems([
+      ...editDraftItems,
+      {
+        inventory_item_id: inv.id,
+        item_name: inv.item_name,
+        sku_code: inv.sku_code,
+        quantity_ordered: qty,
+        unit_cost: cost,
+        line_total: qty * cost,
+      },
+    ]);
+    setEditSelectedInventoryId("");
+    setEditSelectedQty("1");
+    setEditSelectedUnitCost("");
+    setEditError(null);
   }
+
+  function removeEditDraftItem(itemId: string) {
+    setEditDraftItems(editDraftItems.filter((d) => d.inventory_item_id !== itemId));
+  }
+
+  const editDraftTotal = useMemo(
+    () => editDraftItems.reduce((sum, i) => sum + i.line_total, 0),
+    [editDraftItems]
+  );
 
   async function handleEdit(e: React.FormEvent) {
     e.preventDefault();
@@ -376,16 +473,12 @@ export function PurchaseOrderManagement() {
     setEditError(null);
 
     if (!editForm.order_date) { setEditError("Order date is required"); return; }
+    if (editDraftItems.length === 0) { setEditError("At least one item is required"); return; }
 
-    for (let i = 0; i < editItems.length; i++) {
-      const item = editItems[i];
-      if (!item.inventory_item_id) { setEditError(`Item #${i + 1}: Select an inventory item`); return; }
-      if (!item.quantity_ordered || parseInt(item.quantity_ordered) < 1) {
-        setEditError(`Item #${i + 1}: Quantity must be at least 1`); return;
-      }
-      if (item.unit_cost === "" || parseFloat(item.unit_cost) < 0) {
-        setEditError(`Item #${i + 1}: Unit cost must be a non-negative number`); return;
-      }
+    for (let i = 0; i < editDraftItems.length; i++) {
+      const item = editDraftItems[i];
+      if (item.quantity_ordered < 1) { setEditError(`Item #${i + 1}: Quantity must be at least 1`); return; }
+      if (item.unit_cost < 0) { setEditError(`Item #${i + 1}: Unit cost must be a non-negative number`); return; }
     }
 
     try {
@@ -395,10 +488,10 @@ export function PurchaseOrderManagement() {
         order_date: editForm.order_date,
         expected_delivery_date: editForm.expected_delivery_date || undefined,
         notes: editForm.notes.trim() || undefined,
-        items: editItems.map((i) => ({
+        items: editDraftItems.map((i) => ({
           inventory_item_id: i.inventory_item_id,
-          quantity_ordered: parseInt(i.quantity_ordered),
-          unit_cost: parseFloat(i.unit_cost),
+          quantity_ordered: i.quantity_ordered,
+          unit_cost: i.unit_cost,
         })),
       });
       setShowEditModal(false);
@@ -435,17 +528,51 @@ export function PurchaseOrderManagement() {
     }
   }
 
-  // ─── Status transitions ─────────────────────────────────────────────
-  async function handleSubmitPO(order: PurchaseOrder) {
+  // ─── Submit PO confirmation ──────────────────────────────────────────
+  function openSubmitConfirm(order: PurchaseOrder) {
+    setOrderToSubmit(order);
+    setShowSubmitConfirm(true);
+  }
+
+  async function handleConfirmSubmit() {
+    if (!orderToSubmit) return;
     try {
-      await purchaseOrdersApi.submit(order.id);
-      showToast.success(`PO ${order.po_number} submitted`);
+      setProcessingSubmit(true);
+      await purchaseOrdersApi.submit(orderToSubmit.id);
+      showToast.success(`PO ${orderToSubmit.po_number} submitted`);
+      setShowSubmitConfirm(false);
+      setOrderToSubmit(null);
       fetchData();
     } catch (err) {
       showToast.error(err instanceof Error ? err.message : "Failed to submit PO");
+    } finally {
+      setProcessingSubmit(false);
     }
   }
 
+  // ─── Cancel PO confirmation ──────────────────────────────────────────
+  function openCancelConfirm(order: PurchaseOrder) {
+    setOrderToCancel(order);
+    setShowCancelConfirm(true);
+  }
+
+  async function handleConfirmCancel() {
+    if (!orderToCancel) return;
+    try {
+      setProcessingCancel(true);
+      await purchaseOrdersApi.cancel(orderToCancel.id);
+      showToast.success(`PO ${orderToCancel.po_number} cancelled`);
+      setShowCancelConfirm(false);
+      setOrderToCancel(null);
+      fetchData();
+    } catch (err) {
+      showToast.error(err instanceof Error ? err.message : "Failed to cancel PO");
+    } finally {
+      setProcessingCancel(false);
+    }
+  }
+
+  // ─── Receive PO ─────────────────────────────────────────────────────
   async function handleReceivePO(order: PurchaseOrder) {
     try {
       await purchaseOrdersApi.receive(order.id);
@@ -456,59 +583,13 @@ export function PurchaseOrderManagement() {
     }
   }
 
-  async function handleCancelPO(order: PurchaseOrder) {
-    try {
-      await purchaseOrdersApi.cancel(order.id);
-      showToast.success(`PO ${order.po_number} cancelled`);
-      fetchData();
-    } catch (err) {
-      showToast.error(err instanceof Error ? err.message : "Failed to cancel PO");
-    }
-  }
-
-  // Compute line total for display
-  function lineTotal(item: POItemRow): number {
-    const qty = parseInt(item.quantity_ordered) || 0;
-    const cost = parseFloat(item.unit_cost) || 0;
-    return qty * cost;
-  }
-
-  function computeTotal(items: POItemRow[]): number {
-    return items.reduce((sum, i) => sum + lineTotal(i), 0);
-  }
-
-  // ─── Render helpers ──────────────────────────────────────────────────
-  function renderItemsTable(items: PurchaseOrderItem[]) {
-    return (
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-neutral-200 bg-neutral-50">
-              <th className="text-left py-2 px-3 text-xs font-medium text-neutral-900">Item</th>
-              <th className="text-left py-2 px-3 text-xs font-medium text-neutral-900">SKU</th>
-              <th className="text-center py-2 px-3 text-xs font-medium text-neutral-900">Qty Ordered</th>
-              <th className="text-center py-2 px-3 text-xs font-medium text-neutral-900">Qty Received</th>
-              <th className="text-right py-2 px-3 text-xs font-medium text-neutral-900">Unit Cost</th>
-              <th className="text-right py-2 px-3 text-xs font-medium text-neutral-900">Line Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => (
-              <tr key={item.id} className="border-b border-neutral-100">
-                <td className="py-2 px-3 text-neutral-950">{item.inventory_items?.item_name || "—"}</td>
-                <td className="py-2 px-3 font-mono text-neutral-900">{item.inventory_items?.sku_code || "—"}</td>
-                <td className="py-2 px-3 text-center text-neutral-900">{item.quantity_ordered}</td>
-                <td className="py-2 px-3 text-center text-neutral-900">{item.quantity_received}</td>
-                <td className="py-2 px-3 text-right text-neutral-900">{formatPrice(item.unit_cost)}</td>
-                <td className="py-2 px-3 text-right font-medium text-neutral-950">
-                  {formatPrice(item.quantity_ordered * item.unit_cost)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
+  // ─── Helpers: count available dropdown actions for a given order ────
+  function getDropdownActions(order: PurchaseOrder) {
+    const actions: string[] = [];
+    if (order.status === "draft") actions.push("submit");
+    if (order.status === "submitted") actions.push("receive");
+    if (["draft", "submitted"].includes(order.status)) actions.push("cancel");
+    return actions;
   }
 
   // ─── Loading / Error ─────────────────────────────────────────────────
@@ -523,7 +604,7 @@ export function PurchaseOrderManagement() {
   if (error) {
     return (
       <div className="bg-negative-200 border border-negative rounded-lg p-4 flex items-center gap-3">
-        <LuCircleAlert className="w-5 h-5 text-negative-950 flex-shrink-0" />
+        <LuCircleAlert className="w-5 h-5 text-negative-950 shrink-0" />
         <div>
           <p className="text-sm text-negative-950">{error}</p>
           <button onClick={fetchData} className="text-sm text-negative-900 hover:underline mt-1">Try again</button>
@@ -538,7 +619,7 @@ export function PurchaseOrderManagement() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 justify-between bg-white rounded-xl p-4 border border-neutral-200">
         <div>
           <h3 className="text-lg font-semibold text-neutral-950">Purchase Orders</h3>
-          <p className="text-sm text-neutral-900">Manage inventory procurement</p>
+          <p className="text-sm text-neutral-900">Summary of purchase orders</p>
         </div>
         {canCreate && (
           <button
@@ -546,13 +627,13 @@ export function PurchaseOrderManagement() {
             className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
           >
             <LuPlus className="w-4 h-4" />
-            New Purchase Order
+            Create Purchase Order
           </button>
         )}
       </div>
 
-      {/* Summary Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      {/* Summary Stats Cards — 3 cards only */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white border border-neutral-200 rounded-xl p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-primary-100 rounded-lg">
@@ -561,17 +642,6 @@ export function PurchaseOrderManagement() {
             <div>
               <p className="text-sm text-neutral-900">Total</p>
               <p className="text-2xl font-bold text-neutral-950">{stats.total}</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white border border-neutral-200 rounded-xl p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-neutral-100 rounded-lg">
-              <LuPencil className="w-5 h-5 text-neutral-600" />
-            </div>
-            <div>
-              <p className="text-sm text-neutral-900">Draft</p>
-              <p className="text-2xl font-bold text-neutral-950">{stats.draft}</p>
             </div>
           </div>
         </div>
@@ -608,10 +678,10 @@ export function PurchaseOrderManagement() {
               <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-900" />
               <input
                 type="text"
-                placeholder="Search PO number or supplier..."
+                placeholder="Search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-4 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-primary w-full sm:w-72"
+                className="pl-9 pr-4 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-primary w-full sm:w-64"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -661,8 +731,18 @@ export function PurchaseOrderManagement() {
                 </select>
               </div>
               <div className="flex items-end gap-2">
-                <button onClick={fetchData} className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-950 transition-colors">Apply</button>
-                <button onClick={handleResetFilters} className="px-4 py-2 border border-neutral-200 rounded-lg text-sm font-medium text-neutral-950 hover:bg-neutral-100 transition-colors">Reset</button>
+                <button
+                  onClick={fetchData}
+                  className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-950 transition-colors"
+                >
+                  Apply
+                </button>
+                <button
+                  onClick={handleResetFilters}
+                  className="px-4 py-2 border border-neutral-200 rounded-lg text-sm font-medium text-neutral-950 hover:bg-neutral-100 transition-colors"
+                >
+                  Reset
+                </button>
               </div>
             </div>
           )}
@@ -671,72 +751,81 @@ export function PurchaseOrderManagement() {
         {/* Mobile Card View */}
         <div className="md:hidden p-4">
           <div className="grid grid-cols-1 gap-4">
-            {paginatedItems.map((order) => (
-              <div
-                key={order.id}
-                onClick={() => openViewModal(order)}
-                className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-50 transition-colors"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-primary-100 rounded-lg">
-                      <LuShoppingCart className="w-5 h-5 text-primary" />
+            {paginatedItems.map((order) => {
+              const dropdownActions = getDropdownActions(order);
+              const showDots = dropdownActions.length > 0;
+
+              return (
+                <div
+                  key={order.id}
+                  onClick={() => openViewModal(order)}
+                  className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-50 transition-colors"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-primary-100 rounded-lg">
+                        <LuShoppingCart className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-neutral-950">{order.po_number}</h4>
+                        {order.branches && (
+                          <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
+                            {order.branches.code}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-semibold text-neutral-950">{order.po_number}</h4>
-                      {order.branches && (
-                        <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
-                          {order.branches.code}
-                        </span>
-                      )}
-                    </div>
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${statusBadge(order.status)}`}>
+                      {statusLabel(order.status)}
+                    </span>
                   </div>
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${statusBadge(order.status)}`}>
-                    {statusLabel(order.status)}
-                  </span>
-                </div>
 
-                <div className="space-y-1 text-sm text-neutral-900 mb-3">
-                  {order.supplier_name && <p>{order.supplier_name}</p>}
-                  <p className="font-semibold text-neutral-950">{formatPrice(order.total_amount)}</p>
-                </div>
+                  <div className="space-y-1 text-sm text-neutral-900 mb-3">
+                    <p className="text-neutral-900">{formatPrice(order.total_amount)}</p>
+                    {order.supplier_name && <p className="text-neutral-900">{order.supplier_name}</p>}
+                    <p className="text-neutral-900">{formatDate(order.created_at)}</p>
+                  </div>
 
-                <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
-                  {canUpdate && ["draft", "submitted"].includes(order.status) && (
-                    <button onClick={(e) => { e.stopPropagation(); openEditModal(order); }} className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"><LuPencil className="w-4 h-4" /> Edit</button>
-                  )}
-                  {canDelete && order.status !== "received" && (
-                    <button onClick={(e) => { e.stopPropagation(); openDeleteModal(order); }} className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"><LuTrash2 className="w-4 h-4" /> Delete</button>
-                  )}
-                  <div className="relative" ref={openDropdownId === `card-${order.id}` ? dropdownRef : undefined}>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${order.id}` ? null : `card-${order.id}`); }}
-                      className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
-                    >
-                      <LuEllipsisVertical className="w-4 h-4" /> More
-                    </button>
-                    {openDropdownId === `card-${order.id}` && (
-                      <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
-                        {order.status === "draft" && (
-                          <button onClick={(e) => { e.stopPropagation(); closeDropdown(); handleSubmitPO(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuSend className="w-4 h-4" /> Submit</button>
-                        )}
-                        {order.status === "submitted" && (
-                          <button onClick={(e) => { e.stopPropagation(); closeDropdown(); handleReceivePO(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-positive hover:bg-neutral-100 transition-colors"><LuPackageCheck className="w-4 h-4" /> Receive &amp; Stock In</button>
-                        )}
-                        {["draft", "submitted"].includes(order.status) && (
-                          <button onClick={(e) => { e.stopPropagation(); closeDropdown(); handleCancelPO(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-negative hover:bg-neutral-100 transition-colors"><LuCircleX className="w-4 h-4" /> Cancel</button>
+                  <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
+                    {canUpdate && ["draft", "submitted"].includes(order.status) && (
+                      <button onClick={(e) => { e.stopPropagation(); openEditModal(order); }} className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"><LuPencil className="w-4 h-4" /> Edit</button>
+                    )}
+                    {canDelete && order.status !== "received" && (
+                      <button onClick={(e) => { e.stopPropagation(); openDeleteModal(order); }} className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"><LuTrash2 className="w-4 h-4" /> Delete</button>
+                    )}
+                    {showDots && (
+                      <div className="relative" ref={openDropdownId === `card-${order.id}` ? dropdownRef : undefined}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${order.id}` ? null : `card-${order.id}`); }}
+                          className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+                          title="More actions"
+                        >
+                          <LuEllipsisVertical className="w-4 h-4" /> More
+                        </button>
+                        {openDropdownId === `card-${order.id}` && (
+                          <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                            {order.status === "draft" && (
+                              <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openSubmitConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuSend className="w-4 h-4" /> Submit PO</button>
+                            )}
+                            {order.status === "submitted" && (
+                              <button onClick={(e) => { e.stopPropagation(); closeDropdown(); handleReceivePO(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuPackageCheck className="w-4 h-4" /> Receive &amp; Stock In</button>
+                            )}
+                            {["draft", "submitted"].includes(order.status) && (
+                              <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBan className="w-4 h-4" /> Cancel PO</button>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {paginatedItems.length === 0 && (
               <div className="text-center py-12 text-neutral-900">
                 {searchQuery || filterStatus !== "all" || filterBranch !== "all"
                   ? "No purchase orders match your filters."
-                  : 'No purchase orders found. Click "New Purchase Order" to create one.'}
+                  : 'No purchase orders found. Click "Create Purchase Order" to create one.'}
               </div>
             )}
           </div>
@@ -749,87 +838,87 @@ export function PurchaseOrderManagement() {
               <tr className="border-b border-neutral-200 bg-neutral-100">
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">PO Number</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Supplier</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Total</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Total</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Branch</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Status</th>
                 <th className="text-center py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {paginatedItems.map((order) => (
-                <tr key={order.id} onClick={() => openViewModal(order)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer">
-                  <td className="py-3 px-4 whitespace-nowrap">
-                    <span className="font-medium text-neutral-900">{order.po_number}</span>
-                  </td>
-                  <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap">
-                    {order.supplier_name || <span className="text-neutral-500 italic">—</span>}
-                  </td>
-                  <td className="py-3 px-4 text-sm text-right text-neutral-900 whitespace-nowrap font-medium">
-                    {formatPrice(order.total_amount)}
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className="text-xs font-mono bg-positive-100 text-positive-950 px-2 py-0.5 rounded">
-                      {order.branches?.code || order.branch_id.substring(0, 8)}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 whitespace-nowrap">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusBadge(order.status)}`}>
-                      {statusLabel(order.status)}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 whitespace-nowrap">
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openViewModal(order); }}
-                        className="p-2 text-neutral-950 hover:text-primary hover:bg-primary-50 rounded-lg transition-colors"
-                        title="View"
-                      >
-                        <LuEye className="w-4 h-4" />
-                      </button>
-                      {canUpdate && ["draft", "submitted"].includes(order.status) && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openEditModal(order); }}
-                          className="p-2 text-primary-950 hover:text-primary-900 hover:bg-primary-50 rounded-lg transition-colors"
-                          title="Edit"
-                        >
-                          <LuPencil className="w-4 h-4" />
-                        </button>
-                      )}
-                      {canDelete && order.status !== "received" && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openDeleteModal(order); }}
-                          className="p-2 text-negative-950 hover:text-negative-900 hover:bg-negative-50 rounded-lg transition-colors"
-                          title="Delete"
-                        >
-                          <LuTrash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                      <div className="relative" ref={openDropdownId === `table-${order.id}` ? dropdownRef : undefined}>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `table-${order.id}` ? null : `table-${order.id}`); }}
-                          className="p-2 text-neutral-950 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"
-                          title="More actions"
-                        >
-                          <LuEllipsisVertical className="w-4 h-4" />
-                        </button>
-                        {openDropdownId === `table-${order.id}` && (
-                          <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
-                            {order.status === "draft" && (
-                              <button onClick={(e) => { e.stopPropagation(); closeDropdown(); handleSubmitPO(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuSend className="w-4 h-4" /> Submit PO</button>
-                            )}
-                            {order.status === "submitted" && (
-                              <button onClick={(e) => { e.stopPropagation(); closeDropdown(); handleReceivePO(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-positive hover:bg-neutral-100 transition-colors"><LuPackageCheck className="w-4 h-4" /> Receive &amp; Stock In</button>
-                            )}
-                            {["draft", "submitted"].includes(order.status) && (
-                              <button onClick={(e) => { e.stopPropagation(); closeDropdown(); handleCancelPO(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-negative hover:bg-neutral-100 transition-colors"><LuCircleX className="w-4 h-4" /> Cancel PO</button>
+              {paginatedItems.map((order) => {
+                const dropdownActions = getDropdownActions(order);
+                const showDots = dropdownActions.length > 0;
+
+                return (
+                  <tr key={order.id} onClick={() => openViewModal(order)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer">
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <span className="font-medium text-neutral-900">{order.po_number}</span>
+                    </td>
+                    <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap">
+                      {order.supplier_name || <span className="text-neutral-500 italic">—</span>}
+                    </td>
+                    <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap font-medium">
+                      {formatPrice(order.total_amount)}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="text-xs font-mono bg-positive-100 text-positive-950 px-2 py-0.5 rounded">
+                        {order.branches?.code || order.branch_id.substring(0, 8)}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusBadge(order.status)}`}>
+                        {statusLabel(order.status)}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-2">
+                        {canUpdate && ["draft", "submitted"].includes(order.status) && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openEditModal(order); }}
+                            className="p-2 text-primary-950 hover:text-primary-900 hover:bg-primary-50 rounded-lg transition-colors"
+                            title="Edit"
+                          >
+                            <LuPencil className="w-4 h-4" />
+                          </button>
+                        )}
+                        {canDelete && order.status !== "received" && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openDeleteModal(order); }}
+                            className="p-2 text-negative-950 hover:text-negative-900 hover:bg-negative-50 rounded-lg transition-colors"
+                            title="Delete"
+                          >
+                            <LuTrash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        {showDots && (
+                          <div className="relative" ref={openDropdownId === `table-${order.id}` ? dropdownRef : undefined}>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `table-${order.id}` ? null : `table-${order.id}`); }}
+                              className="p-2 text-neutral-950 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"
+                              title="More actions"
+                            >
+                              <LuEllipsisVertical className="w-4 h-4" />
+                            </button>
+                            {openDropdownId === `table-${order.id}` && (
+                              <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                                {order.status === "draft" && (
+                                  <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openSubmitConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuSend className="w-4 h-4" /> Submit PO</button>
+                                )}
+                                {order.status === "submitted" && (
+                                  <button onClick={(e) => { e.stopPropagation(); closeDropdown(); handleReceivePO(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuPackageCheck className="w-4 h-4" /> Receive &amp; Stock In</button>
+                                )}
+                                {["draft", "submitted"].includes(order.status) && (
+                                  <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBan className="w-4 h-4" /> Cancel PO</button>
+                                )}
+                              </div>
                             )}
                           </div>
                         )}
                       </div>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 
@@ -837,286 +926,346 @@ export function PurchaseOrderManagement() {
             <div className="text-center py-12 text-neutral-900">
               {searchQuery || filterStatus !== "all" || filterBranch !== "all"
                 ? "No purchase orders match your filters."
-                : "No purchase orders found. Click \"New Purchase Order\" to create one."}
+                : 'No purchase orders found. Click "Create Purchase Order" to create one.'}
             </div>
           )}
         </div>
 
         {/* Pagination */}
-        {filteredItems.length > ITEMS_PER_PAGE && (
+        {filteredCount > ITEMS_PER_PAGE && (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4">
             <p className="text-sm text-neutral-900">
-              {(currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredItems.length)} of {filteredItems.length} orders
+              {(currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredCount)} of {filteredCount} orders
             </p>
-            <div className="flex items-center gap-1">
-              <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-2 border border-neutral-200 rounded-lg text-sm text-neutral-950 hover:bg-neutral-100 disabled:opacity-50"><LuChevronLeft className="w-4 h-4" /></button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).slice(Math.max(0, currentPage - 3), currentPage + 2).map((page) => (
-                <button key={page} onClick={() => setCurrentPage(page)} className={`px-3 py-1 border rounded-lg text-sm font-medium ${page === currentPage ? "bg-primary text-white border-primary" : "border-neutral-200 text-neutral-950 hover:bg-neutral-100"}`}>{page}</button>
-              ))}
-              <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-2 border border-neutral-200 rounded-lg text-sm text-neutral-950 hover:bg-neutral-100 disabled:opacity-50"><LuChevronRight className="w-4 h-4" /></button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-2 border border-neutral-200 rounded-lg text-neutral-900 hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <LuChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm text-neutral-900 px-2">
+                {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 border border-neutral-200 rounded-lg text-neutral-900 hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <LuChevronRight className="w-4 h-4" />
+              </button>
             </div>
           </div>
         )}
       </div>
 
       {/* ═══════════════════ ADD MODAL ═══════════════════ */}
-      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="New Purchase Order" maxWidth="lg">
+      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Create Purchase Order" maxWidth="lg">
         <form onSubmit={handleAdd}>
-          <ModalSection title="Purchase Order Details">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <ModalInput value={addForm.po_number} onChange={(v) => setAddForm({ ...addForm, po_number: v })} placeholder="PO Number (auto if blank)" />
-              <ModalInput value={addForm.supplier_name} onChange={(v) => setAddForm({ ...addForm, supplier_name: v })} placeholder="Supplier / vendor name" />
-              <div>
-                <label className="block text-xs text-neutral-600 mb-1">Order Date *</label>
-                <input type="date" value={addForm.order_date} onChange={(e) => setAddForm({ ...addForm, order_date: e.target.value })} required className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 text-sm focus:outline-none focus:ring-2 focus:ring-primary border-0" />
-              </div>
-              <div>
-                <label className="block text-xs text-neutral-600 mb-1">Expected Delivery</label>
-                <input type="date" value={addForm.expected_delivery_date} onChange={(e) => setAddForm({ ...addForm, expected_delivery_date: e.target.value })} className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 text-sm focus:outline-none focus:ring-2 focus:ring-primary border-0" />
-              </div>
+          <ModalSection title="Purchase Information">
+            <ModalInput value={addForm.po_number} onChange={(v) => setAddForm({ ...addForm, po_number: v })} placeholder="PO Number (auto if blank)" />
+            <div className="grid grid-cols-2 gap-4">
+              <ModalInput value={addForm.supplier_name} onChange={(v) => setAddForm({ ...addForm, supplier_name: v })} placeholder="Supplier / Vendor Name" />
               <ModalSelect value={addForm.branch_id} onChange={(v) => setAddForm({ ...addForm, branch_id: v })} options={branchOptions} placeholder="Select Branch *" />
-              <ModalInput value={addForm.notes} onChange={(v) => setAddForm({ ...addForm, notes: v })} placeholder="Optional notes" />
+            </div>
+            <textarea
+              value={addForm.notes}
+              onChange={(e) => setAddForm({ ...addForm, notes: e.target.value })}
+              placeholder="Notes (optional)"
+              rows={2}
+              className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
+            />
+          </ModalSection>
+
+          <ModalSection title="Order Date and Expected Delivery">
+            <div className="grid grid-cols-2 gap-4">
+              <ModalInput type="date" value={addForm.order_date} onChange={(v) => setAddForm({ ...addForm, order_date: v })} required />
+              <ModalInput type="date" value={addForm.expected_delivery_date} onChange={(v) => setAddForm({ ...addForm, expected_delivery_date: v })} />
             </div>
           </ModalSection>
 
           <ModalSection title="Order Items">
-            <div className="space-y-3">
-              {addItems.map((item, idx) => {
-                const branchInv = getInventoryForBranch(addForm.branch_id);
-                return (
-                  <div key={idx} className="grid grid-cols-12 gap-2 items-end">
-                    <div className="col-span-5">
-                      {idx === 0 && <label className="block text-xs text-neutral-900 mb-1">Inventory Item</label>}
-                      <select
-                        value={item.inventory_item_id}
-                        onChange={(e) => updateAddItem(idx, "inventory_item_id", e.target.value)}
-                        className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                        required
+            <div className="flex gap-2 items-end">
+              <div className="flex-1">
+                <ModalSelect
+                  value={selectedInventoryId}
+                  onChange={handleInventorySelect}
+                  placeholder="Select Inventory"
+                  options={getInventoryOptions(addForm.branch_id)}
+                  disabled={!addForm.branch_id}
+                />
+              </div>
+              <div className="w-20">
+                <ModalInput
+                  type="number"
+                  value={selectedQty}
+                  onChange={setSelectedQty}
+                  placeholder="Qty"
+                />
+              </div>
+              <div className="w-25">
+                <ModalInput
+                  type="number"
+                  value={selectedUnitCost}
+                  onChange={setSelectedUnitCost}
+                  placeholder="Cost"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleAddDraftItem}
+                disabled={!selectedInventoryId}
+                className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+              >
+                <LuPlus className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Draft items list */}
+            {draftItems.length > 0 && (
+              <div className="mt-3 space-y-4">
+                {draftItems.map((item) => (
+                  <div
+                    key={item.inventory_item_id}
+                    className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-neutral-950 text-sm truncate">
+                        {item.item_name}
+                        <span className="text-neutral-900 font-normal ml-1">({item.sku_code})</span>
+                      </p>
+                      <p className="text-xs text-neutral-900">
+                        {formatPrice(item.unit_cost)} × {item.quantity_ordered}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 ml-3">
+                      <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap">
+                        {formatPrice(item.line_total)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeDraftItem(item.inventory_item_id)}
+                        className="text-negative hover:text-negative-900 p-1"
                       >
-                        <option value="">Select item</option>
-                        {branchInv.map((inv) => (
-                          <option key={inv.id} value={inv.id}>{inv.item_name} ({inv.sku_code})</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="col-span-2">
-                      {idx === 0 && <label className="block text-xs text-neutral-900 mb-1">Qty</label>}
-                      <input
-                        type="number"
-                        min="1"
-                        value={item.quantity_ordered}
-                        onChange={(e) => updateAddItem(idx, "quantity_ordered", e.target.value)}
-                        className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                        placeholder="Qty"
-                        required
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      {idx === 0 && <label className="block text-xs text-neutral-900 mb-1">Unit Cost</label>}
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.unit_cost}
-                        onChange={(e) => updateAddItem(idx, "unit_cost", e.target.value)}
-                        className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                        placeholder="Cost"
-                        required
-                      />
-                    </div>
-                    <div className="col-span-2 text-right text-sm font-medium text-neutral-900 py-2">
-                      {formatPrice(lineTotal(item))}
-                    </div>
-                    <div className="col-span-1 flex justify-center">
-                      {addItems.length > 1 && (
-                        <button type="button" onClick={() => removeAddItemRow(idx)} className="p-2 text-negative hover:text-negative-900 rounded-lg"><LuTrash2 className="w-4 h-4" /></button>
-                      )}
+                        <LuX className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
-                );
-              })}
-              <div className="flex items-center justify-between pt-2">
-                <button type="button" onClick={addItemRow} className="flex items-center gap-1 text-sm text-primary hover:text-primary-900 font-medium">
-                  <LuPlus className="w-4 h-4" /> Add Item
-                </button>
-                <p className="text-sm font-semibold text-neutral-950">Total: {formatPrice(computeTotal(addItems))}</p>
+                ))}
+
+                {/* Total card */}
+                <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
+                  <span className="font-semibold text-neutral-950">Total</span>
+                  <span className="font-bold text-primary text-lg">{formatPrice(draftTotal)}</span>
+                </div>
               </div>
-            </div>
+            )}
+
+            {draftItems.length === 0 && (
+              <p className="text-sm text-neutral-900 text-center py-4">
+                No items added yet. Select an inventory item and click +.
+              </p>
+            )}
           </ModalSection>
 
-          {addError && <ModalError message={addError} />}
+          <ModalError message={addError} />
           <ModalButtons
-            submitText="Create Purchase Order"
             onCancel={() => setShowAddModal(false)}
+            submitText={addLoading ? "Creating..." : "Create Purchase"}
             loading={addLoading}
           />
         </form>
       </Modal>
 
       {/* ═══════════════════ VIEW MODAL ═══════════════════ */}
-      <Modal isOpen={showViewModal} onClose={() => setShowViewModal(false)} title={`Purchase Order — ${viewOrder?.po_number || ""}`} maxWidth="lg">
+      <Modal isOpen={showViewModal && !!viewOrder} onClose={() => { setShowViewModal(false); setViewOrder(null); }} title="Purchase Order Details" maxWidth="lg">
         {viewOrder && (
-          <div className="space-y-5">
-            <ModalSection title="Order Details">
-              <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
-                <div>
-                  <span className="text-neutral-600">PO Number</span>
-                  <p className="font-medium text-neutral-950">{viewOrder.po_number}</p>
-                </div>
-                <div>
-                  <span className="text-neutral-600">Status</span>
-                  <p><span className={`px-3 py-1 rounded-full text-xs font-medium ${statusBadge(viewOrder.status)}`}>{statusLabel(viewOrder.status)}</span></p>
-                </div>
-                <div>
-                  <span className="text-neutral-600">Supplier</span>
-                  <p className="font-medium text-neutral-950">{viewOrder.supplier_name || "—"}</p>
-                </div>
-                <div>
-                  <span className="text-neutral-600">Branch</span>
-                  <p className="font-medium text-neutral-950">{viewOrder.branches?.name || "—"}</p>
-                </div>
-                <div>
-                  <span className="text-neutral-600">Order Date</span>
-                  <p className="font-medium text-neutral-950">{formatDate(viewOrder.order_date)}</p>
-                </div>
-                <div>
-                  <span className="text-neutral-600">Expected Delivery</span>
-                  <p className="font-medium text-neutral-950">{viewOrder.expected_delivery_date ? formatDate(viewOrder.expected_delivery_date) : "—"}</p>
-                </div>
-                <div>
-                  <span className="text-neutral-600">Total Amount</span>
-                  <p className="font-semibold text-neutral-950">{formatPrice(viewOrder.total_amount)}</p>
-                </div>
-                {viewOrder.received_at && (
-                  <div>
-                    <span className="text-neutral-600">Received At</span>
-                    <p className="font-medium text-neutral-950">{formatDate(viewOrder.received_at)}</p>
-                  </div>
-                )}
-                {viewOrder.notes && (
-                  <div className="col-span-2">
-                    <span className="text-neutral-600">Notes</span>
-                    <p className="text-neutral-900">{viewOrder.notes}</p>
-                  </div>
-                )}
+          <div>
+            <ModalSection title="Purchase Information">
+              <ModalInput type="text" value={viewOrder.po_number} onChange={() => { }} placeholder="PO Number" disabled />
+              <div className="grid grid-cols-2 gap-4">
+                <ModalInput type="text" value={statusLabel(viewOrder.status)} onChange={() => { }} placeholder="Status" disabled />
+                <ModalInput type="text" value={formatPrice(viewOrder.total_amount)} onChange={() => { }} placeholder="Total Amount" disabled />
               </div>
             </ModalSection>
 
-            <ModalSection title="Items">
-              {viewOrder.purchase_order_items && viewOrder.purchase_order_items.length > 0
-                ? renderItemsTable(viewOrder.purchase_order_items)
-                : <p className="text-sm text-neutral-600">No items.</p>}
+            <ModalSection title="Supplier & Branch">
+              <ModalInput type="text" value={viewOrder.supplier_name || "—"} onChange={() => { }} placeholder="Supplier" disabled />
+              <ModalInput type="text" value={viewOrder.branches ? `${viewOrder.branches.name} (${viewOrder.branches.code})` : "—"} onChange={() => { }} placeholder="Branch" disabled />
             </ModalSection>
 
-            {/* Actions from view modal */}
-            <div className="flex flex-wrap gap-2 pt-2">
-              {canUpdate && viewOrder.status === "draft" && (
-                <button onClick={() => { setShowViewModal(false); handleSubmitPO(viewOrder); }} className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-950 transition-colors"><LuSend className="w-4 h-4" /> Submit</button>
+            <ModalSection title="Order Date and Expected Delivery">
+              <div className="grid grid-cols-2 gap-4">
+                <ModalInput type="text" value={formatDate(viewOrder.order_date)} onChange={() => { }} placeholder="Order Date" disabled />
+                <ModalInput type="text" value={viewOrder.expected_delivery_date ? formatDate(viewOrder.expected_delivery_date) : "—"} onChange={() => { }} placeholder="Expected Delivery" disabled />
+              </div>
+              {viewOrder.received_at && (
+                <ModalInput type="text" value={formatDate(viewOrder.received_at)} onChange={() => { }} placeholder="Received At" disabled />
               )}
-              {canUpdate && viewOrder.status === "submitted" && (
-                <button onClick={() => { setShowViewModal(false); handleReceivePO(viewOrder); }} className="flex items-center gap-2 px-4 py-2 bg-positive text-white rounded-lg text-sm font-medium hover:bg-positive-950 transition-colors"><LuPackageCheck className="w-4 h-4" /> Receive &amp; Stock In</button>
+            </ModalSection>
+
+            {/* Items section */}
+            <ModalSection title="Order Items">
+              {viewOrder.purchase_order_items && viewOrder.purchase_order_items.length > 0 ? (
+                <div className="space-y-4">
+                  {viewOrder.purchase_order_items.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-neutral-950 text-sm truncate">
+                          {item.inventory_items?.item_name || "Unknown"}
+                          <span className="text-neutral-900 font-normal ml-1">({item.inventory_items?.sku_code || "—"})</span>
+                        </p>
+                        <p className="text-xs text-neutral-900">
+                          {formatPrice(item.unit_cost)} × {item.quantity_ordered}
+                          {item.quantity_received > 0 && ` (Received: ${item.quantity_received})`}
+                        </p>
+                      </div>
+                      <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap ml-3">
+                        {formatPrice(item.quantity_ordered * item.unit_cost)}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
+                    <span className="font-semibold text-neutral-950">Total</span>
+                    <span className="font-bold text-primary text-lg">{formatPrice(viewOrder.total_amount)}</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-neutral-900 text-center py-3">No items.</p>
               )}
-              {canUpdate && ["draft", "submitted"].includes(viewOrder.status) && (
-                <button onClick={() => { setShowViewModal(false); openEditModal(viewOrder); }} className="flex items-center gap-2 px-4 py-2 border border-neutral-200 rounded-lg text-sm font-medium text-neutral-950 hover:bg-neutral-100 transition-colors"><LuPencil className="w-4 h-4" /> Edit</button>
-              )}
-              {canUpdate && ["draft", "submitted"].includes(viewOrder.status) && (
-                <button onClick={() => { setShowViewModal(false); handleCancelPO(viewOrder); }} className="flex items-center gap-2 px-4 py-2 border border-negative text-negative rounded-lg text-sm font-medium hover:bg-negative-100 transition-colors"><LuCircleX className="w-4 h-4" /> Cancel</button>
-              )}
-              <button onClick={() => setShowViewModal(false)} className="flex items-center gap-2 px-4 py-2 border border-neutral-200 rounded-lg text-sm font-medium text-neutral-950 hover:bg-neutral-100 transition-colors">Close</button>
-            </div>
+            </ModalSection>
+
+            {viewOrder.notes && (
+              <ModalSection title="Notes">
+                <textarea value={viewOrder.notes} readOnly disabled rows={3}
+                  className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 focus:outline-none transition-all resize-none cursor-default" />
+              </ModalSection>
+            )}
+
+            <ModalSection title="Timestamps">
+              <div className="grid grid-cols-2 gap-4">
+                <ModalInput type="text" value={formatDateTime(viewOrder.created_at)} onChange={() => { }} placeholder="Created" disabled />
+                <ModalInput type="text" value={formatDateTime(viewOrder.updated_at)} onChange={() => { }} placeholder="Updated" disabled />
+              </div>
+            </ModalSection>
           </div>
         )}
       </Modal>
 
       {/* ═══════════════════ EDIT MODAL ═══════════════════ */}
-      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title={`Edit Purchase Order — ${selectedOrder?.po_number || ""}`} maxWidth="lg">
+      <Modal isOpen={showEditModal && !!selectedOrder} onClose={() => setShowEditModal(false)} title="Edit Purchase Order" maxWidth="lg">
         {selectedOrder && (
           <form onSubmit={handleEdit}>
             <ModalSection title="Purchase Order Details">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <ModalInput value={selectedOrder.po_number} onChange={() => {}} placeholder="PO Number" disabled />
-                <ModalInput value={editForm.supplier_name} onChange={(v) => setEditForm({ ...editForm, supplier_name: v })} placeholder="Supplier / vendor name" />
-                <div>
-                  <label className="block text-xs text-neutral-600 mb-1">Order Date *</label>
-                  <input type="date" value={editForm.order_date} onChange={(e) => setEditForm({ ...editForm, order_date: e.target.value })} required className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 text-sm focus:outline-none focus:ring-2 focus:ring-primary border-0" />
-                </div>
-                <div>
-                  <label className="block text-xs text-neutral-600 mb-1">Expected Delivery</label>
-                  <input type="date" value={editForm.expected_delivery_date} onChange={(e) => setEditForm({ ...editForm, expected_delivery_date: e.target.value })} className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 text-sm focus:outline-none focus:ring-2 focus:ring-primary border-0" />
-                </div>
-                <ModalInput value={editForm.notes} onChange={(v) => setEditForm({ ...editForm, notes: v })} placeholder="Optional notes" />
+              <ModalInput type="text" value={selectedOrder.po_number} onChange={() => { }} placeholder="PO Number" disabled />
+              <div className="grid grid-cols-2 gap-4">
+                <ModalInput value={editForm.supplier_name} onChange={(v) => setEditForm({ ...editForm, supplier_name: v })} placeholder="Supplier / Vendor Name" />
+                <ModalInput type="text" value={selectedOrder.branches?.name || "—"} onChange={() => { }} placeholder="Branch" disabled />
+              </div>
+              <textarea
+                value={editForm.notes}
+                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                placeholder="Notes (optional)"
+                rows={2}
+                className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
+              />
+            </ModalSection>
+
+            <ModalSection title="Order Date and Expected Delivery">
+              <div className="grid grid-cols-2 gap-4">
+                <ModalInput type="date" value={editForm.order_date} onChange={(v) => setEditForm({ ...editForm, order_date: v })} required />
+                <ModalInput type="date" value={editForm.expected_delivery_date} onChange={(v) => setEditForm({ ...editForm, expected_delivery_date: v })} />
               </div>
             </ModalSection>
 
             <ModalSection title="Order Items">
-              <div className="space-y-3">
-                {editItems.map((item, idx) => {
-                  const branchInv = getInventoryForBranch(selectedOrder.branch_id);
-                  return (
-                    <div key={idx} className="grid grid-cols-12 gap-2 items-end">
-                      <div className="col-span-5">
-                        {idx === 0 && <label className="block text-xs text-neutral-900 mb-1">Inventory Item</label>}
-                        <select
-                          value={item.inventory_item_id}
-                          onChange={(e) => updateEditItem(idx, "inventory_item_id", e.target.value)}
-                          className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                          required
-                        >
-                          <option value="">Select item</option>
-                          {branchInv.map((inv) => (
-                            <option key={inv.id} value={inv.id}>{inv.item_name} ({inv.sku_code})</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="col-span-2">
-                        {idx === 0 && <label className="block text-xs text-neutral-900 mb-1">Qty</label>}
-                        <input
-                          type="number"
-                          min="1"
-                          value={item.quantity_ordered}
-                          onChange={(e) => updateEditItem(idx, "quantity_ordered", e.target.value)}
-                          className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                          placeholder="Qty"
-                          required
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        {idx === 0 && <label className="block text-xs text-neutral-900 mb-1">Unit Cost</label>}
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={item.unit_cost}
-                          onChange={(e) => updateEditItem(idx, "unit_cost", e.target.value)}
-                          className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                          placeholder="Cost"
-                          required
-                        />
-                      </div>
-                      <div className="col-span-2 text-right text-sm font-medium text-neutral-900 py-2">
-                        {formatPrice(lineTotal(item))}
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        {editItems.length > 1 && (
-                          <button type="button" onClick={() => removeEditItemRow(idx)} className="p-2 text-negative hover:text-negative-900 rounded-lg"><LuTrash2 className="w-4 h-4" /></button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-                <div className="flex items-center justify-between pt-2">
-                  <button type="button" onClick={addEditItemRow} className="flex items-center gap-1 text-sm text-primary hover:text-primary-900 font-medium">
-                    <LuPlus className="w-4 h-4" /> Add Item
-                  </button>
-                  <p className="text-sm font-semibold text-neutral-950">Total: {formatPrice(computeTotal(editItems))}</p>
+              {/* Add item row */}
+              <div className="flex gap-2 items-end mt-2">
+                <div className="flex-1">
+                  <ModalSelect
+                    value={editSelectedInventoryId}
+                    onChange={handleEditInventorySelect}
+                    placeholder="Select Inventory"
+                    options={getInventoryOptions(selectedOrder.branch_id)}
+                  />
                 </div>
+                <div className="w-20">
+                  <ModalInput
+                    type="number"
+                    value={editSelectedQty}
+                    onChange={setEditSelectedQty}
+                    placeholder="Qty"
+                  />
+                </div>
+                <div className="w-25">
+                  <ModalInput
+                    type="number"
+                    value={editSelectedUnitCost}
+                    onChange={setEditSelectedUnitCost}
+                    placeholder="Cost"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddEditDraftItem}
+                  disabled={!editSelectedInventoryId}
+                  className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+                >
+                  <LuPlus className="w-4 h-4" />
+                </button>
               </div>
+
+              {/* Existing items */}
+              {editDraftItems.map((item) => (
+                <div
+                  key={item.inventory_item_id}
+                  className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-neutral-950 text-sm truncate">
+                      {item.item_name}
+                      <span className="text-neutral-900 font-normal ml-1">({item.sku_code})</span>
+                    </p>
+                    <p className="text-xs text-neutral-900">
+                      {formatPrice(item.unit_cost)} × {item.quantity_ordered}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 ml-3">
+                    <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap">
+                      {formatPrice(item.line_total)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeEditDraftItem(item.inventory_item_id)}
+                      className="text-negative hover:text-negative-900 p-1"
+                      title="Remove item"
+                    >
+                      <LuX className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {/* Total */}
+              {editDraftItems.length > 0 && (
+                <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl mt-3">
+                  <span className="font-semibold text-neutral-950">Total</span>
+                  <span className="font-bold text-primary text-lg">{formatPrice(editDraftTotal)}</span>
+                </div>
+              )}
+
+              {editDraftItems.length === 0 && (
+                <p className="text-sm text-neutral-900 text-center py-4">
+                  No items. Select an inventory item and click + to add.
+                </p>
+              )}
             </ModalSection>
 
-            {editError && <ModalError message={editError} />}
+            <ModalError message={editError} />
             <ModalButtons
-              submitText="Save Changes"
               onCancel={() => setShowEditModal(false)}
+              submitText={editLoading ? "Saving..." : "Save Changes"}
               loading={editLoading}
             />
           </form>
@@ -1124,19 +1273,23 @@ export function PurchaseOrderManagement() {
       </Modal>
 
       {/* ═══════════════════ DELETE CONFIRM MODAL ═══════════════════ */}
-      <Modal isOpen={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="Delete Purchase Order" maxWidth="sm">
+      <Modal isOpen={showDeleteConfirm && !!orderToDelete} onClose={() => setShowDeleteConfirm(false)} title="Delete Purchase Order" maxWidth="sm">
         {orderToDelete && (
           <div>
-            <div className="bg-negative-100 rounded-xl p-4 my-4">
-              <p className="text-sm text-negative-950">
-                Are you sure you want to delete purchase order <strong>{orderToDelete.po_number}</strong>? This action will soft-delete the record.
+            <div className="bg-neutral-100 rounded-xl p-4 my-4">
+              <p className="text-neutral-900">
+                Are you sure you want to delete{" "}
+                <strong className="text-neutral-950">{orderToDelete.po_number}</strong>?
               </p>
             </div>
+            <p className="text-sm text-neutral-900 mb-2">
+              This will permanently remove the purchase order and all its items.
+            </p>
             <div className="flex gap-3 mt-6">
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 px-4 py-3 border-2 border-neutral-200 text-neutral-950 rounded-xl font-semibold hover:bg-neutral-100 transition-colors"
+                className="flex-1 px-4 py-3.5 border-2 border-negative text-negative rounded-xl font-semibold hover:bg-negative-200 transition-colors"
               >
                 Cancel
               </button>
@@ -1144,9 +1297,77 @@ export function PurchaseOrderManagement() {
                 type="button"
                 onClick={handleDelete}
                 disabled={deleteLoading}
-                className="flex-1 px-4 py-3 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {deleteLoading ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ═══════════════════ SUBMIT PO CONFIRM MODAL ═══════════════════ */}
+      <Modal isOpen={showSubmitConfirm && !!orderToSubmit} onClose={() => setShowSubmitConfirm(false)} title="Submit Purchase Order" maxWidth="sm">
+        {orderToSubmit && (
+          <div>
+            <div className="bg-neutral-100 rounded-xl p-4 my-4">
+              <p className="text-neutral-900">
+                Submit purchase order{" "}
+                <strong className="text-neutral-950">{orderToSubmit.po_number}</strong> for processing?
+              </p>
+            </div>
+            <p className="text-sm text-neutral-900 mb-2">
+              This will change the status from Draft to Submitted. The PO will be available for receiving.
+            </p>
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowSubmitConfirm(false)}
+                className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSubmit}
+                disabled={processingSubmit}
+                className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {processingSubmit ? "Submitting..." : "Submit PO"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ═══════════════════ CANCEL PO CONFIRM MODAL ═══════════════════ */}
+      <Modal isOpen={showCancelConfirm && !!orderToCancel} onClose={() => setShowCancelConfirm(false)} title="Cancel Purchase Order" maxWidth="sm">
+        {orderToCancel && (
+          <div>
+            <div className="bg-neutral-100 rounded-xl p-4 my-4">
+              <p className="text-neutral-900">
+                Are you sure you want to cancel{" "}
+                <strong className="text-neutral-950">{orderToCancel.po_number}</strong>?
+              </p>
+            </div>
+            <p className="text-sm text-neutral-900 mb-2">
+              This will change the purchase order status to cancelled. This action cannot be undone.
+            </p>
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowCancelConfirm(false)}
+                className="flex-1 px-4 py-3.5 border-2 border-negative text-negative rounded-xl font-semibold hover:bg-negative-200 transition-colors"
+              >
+                Go Back
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmCancel}
+                disabled={processingCancel}
+                className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {processingCancel ? "Cancelling..." : "Cancel PO"}
               </button>
             </div>
           </div>

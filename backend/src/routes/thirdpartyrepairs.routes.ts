@@ -37,6 +37,7 @@ router.get(
         `,
           { count: "exact" }
         )
+        .eq("is_deleted", false)
         .order("created_at", { ascending: false });
 
       // Filter by job order
@@ -120,6 +121,7 @@ router.get(
         `
         )
         .eq("id", repairId)
+        .eq("is_deleted", false)
         .single();
 
       if (error) {
@@ -266,6 +268,7 @@ router.put(
         .from("third_party_repairs")
         .select("id, job_order_id")
         .eq("id", repairId)
+        .eq("is_deleted", false)
         .single();
 
       if (fetchError) {
@@ -325,6 +328,7 @@ router.put(
         `
         )
         .eq("id", repairId)
+        .eq("is_deleted", false)
         .single();
 
       if (refetchError) {
@@ -332,16 +336,19 @@ router.put(
         return;
       }
 
-      // Update audit log with user_id
-      await supabaseAdmin
-        .from("audit_logs")
-        .update({ user_id: req.user!.id })
-        .eq("entity_type", "THIRD_PARTY_REPAIR")
-        .eq("entity_id", repairId)
-        .eq("action", "UPDATE")
-        .is("user_id", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
+      // Audit log
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "UPDATE",
+          p_entity_type: "THIRD_PARTY_REPAIR",
+          p_entity_id: repairId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: updateData,
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
 
       res.json(updated);
     } catch (error) {
@@ -354,7 +361,9 @@ router.put(
 
 /**
  * DELETE /api/third-party-repairs/:id
- * Delete a third-party repair
+ * Conditional delete:
+ *   - Hard delete if parent JO status is "created" or "rejected" (still modifiable)
+ *   - Soft delete (is_deleted: true) otherwise
  * Roles: HM, POC, JS, R, T
  */
 router.delete(
@@ -369,6 +378,7 @@ router.delete(
         .from("third_party_repairs")
         .select("id, job_order_id, provider_name")
         .eq("id", repairId)
+        .eq("is_deleted", false)
         .single();
 
       if (fetchError) {
@@ -383,7 +393,7 @@ router.delete(
       // Verify branch access via parent job order
       const { data: jobOrder, error: joError } = await supabaseAdmin
         .from("job_orders")
-        .select("id, branch_id")
+        .select("id, branch_id, status")
         .eq("id", existing.job_order_id)
         .single();
 
@@ -400,19 +410,48 @@ router.delete(
         return;
       }
 
-      const { error: deleteError } = await supabaseAdmin
-        .from("third_party_repairs")
-        .delete()
-        .eq("id", repairId);
+      // Hard delete if parent JO is still in modifiable state
+      if (["created", "rejected"].includes(jobOrder.status)) {
+        const { error: deleteError } = await supabaseAdmin
+          .from("third_party_repairs")
+          .delete()
+          .eq("id", repairId);
 
-      if (deleteError) {
-        res.status(500).json({ error: deleteError.message });
+        if (deleteError) {
+          res.status(500).json({ error: deleteError.message });
+          return;
+        }
+
+        // Log hard delete
+        try {
+          await supabaseAdmin.rpc("log_admin_action", {
+            p_action: "DELETE",
+            p_entity_type: "THIRD_PARTY_REPAIR",
+            p_entity_id: repairId,
+            p_performed_by_user_id: req.user!.id,
+            p_performed_by_branch_id: req.user!.branchIds[0] || null,
+            p_new_values: { provider_name: existing.provider_name, job_order_id: existing.job_order_id, type: "hard_delete" },
+          });
+        } catch (auditErr) {
+          console.error("Audit log error:", auditErr);
+        }
+
+        res.json({ message: `Third-party repair "${existing.provider_name}" deleted permanently` });
         return;
       }
 
-      res.json({ message: `Third-party repair "${existing.provider_name}" deleted successfully` });
+      // Soft delete: parent JO has progressed past modifiable state
+      const { error: updateError } = await supabaseAdmin
+        .from("third_party_repairs")
+        .update({ is_deleted: true })
+        .eq("id", repairId);
 
-      // Log deletion
+      if (updateError) {
+        res.status(500).json({ error: updateError.message });
+        return;
+      }
+
+      // Log soft delete
       try {
         await supabaseAdmin.rpc("log_admin_action", {
           p_action: "DELETE",
@@ -420,11 +459,13 @@ router.delete(
           p_entity_id: repairId,
           p_performed_by_user_id: req.user!.id,
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
-          p_new_values: { provider_name: existing.provider_name, job_order_id: existing.job_order_id },
+          p_new_values: { provider_name: existing.provider_name, job_order_id: existing.job_order_id, is_deleted: true, type: "soft_delete" },
         });
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);
       }
+
+      res.json({ message: `Third-party repair "${existing.provider_name}" deleted successfully` });
     } catch (error) {
       console.error("Delete third-party repair error:", error);
       await logFailedAction(req, "DELETE", "THIRD_PARTY_REPAIR", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to delete third-party repair");

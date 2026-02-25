@@ -458,7 +458,7 @@ export function UserManagement() {
           className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
         >
           <LuPlus className="w-4 h-4" />
-          Add a New User
+          Add New User
         </button>
       </div>
 
@@ -508,7 +508,7 @@ export function UserManagement() {
               <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-900" />
               <input
                 type="text"
-                placeholder="Search users..."
+                placeholder="Search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 pr-4 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-primary w-full sm:w-64"
@@ -902,7 +902,7 @@ export function UserManagement() {
       <Modal
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
-        title="Add a New User"
+        title="Add New User"
         maxWidth="lg"
       >
         <form onSubmit={handleAddUser}>

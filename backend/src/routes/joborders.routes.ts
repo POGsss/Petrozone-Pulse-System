@@ -43,6 +43,7 @@ router.get(
         `,
           { count: "exact" }
         )
+        .eq("is_deleted", false)
         .order("created_at", { ascending: false });
 
       // Branch scoping: HM sees all, others see only their branches
@@ -125,6 +126,7 @@ router.get(
         `
         )
         .eq("id", orderId)
+        .eq("is_deleted", false)
         .single();
 
       if (error) {
@@ -371,6 +373,7 @@ router.put(
         .from("job_orders")
         .select("id, branch_id")
         .eq("id", orderId)
+        .eq("is_deleted", false)
         .single();
 
       if (fetchError) {
@@ -414,6 +417,7 @@ router.put(
         `
         )
         .eq("id", orderId)
+        .eq("is_deleted", false)
         .single();
 
       if (refetchError) {
@@ -421,16 +425,19 @@ router.put(
         return;
       }
 
-      // Update audit log with user_id
-      await supabaseAdmin
-        .from("audit_logs")
-        .update({ user_id: req.user!.id })
-        .eq("entity_type", "JOB_ORDER")
-        .eq("entity_id", orderId)
-        .eq("action", "UPDATE")
-        .is("user_id", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
+      // Audit log
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "UPDATE",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: orderId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { notes: notes?.trim() || null },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
 
       res.json(updated);
     } catch (error) {
@@ -443,7 +450,9 @@ router.put(
 
 /**
  * DELETE /api/job-orders/:id
- * Delete a job order and its items
+ * Conditional delete:
+ *   - Hard delete if status is "created" and has no items (empty draft)
+ *   - Soft delete (is_deleted: true) otherwise
  * Roles: POC, JS, R
  */
 router.delete(
@@ -456,8 +465,9 @@ router.delete(
       // Get existing order
       const { data: existing, error: fetchError } = await supabaseAdmin
         .from("job_orders")
-        .select("id, branch_id, order_number")
+        .select("id, branch_id, order_number, status")
         .eq("id", orderId)
+        .eq("is_deleted", false)
         .single();
 
       if (fetchError) {
@@ -478,26 +488,63 @@ router.delete(
         return;
       }
 
-      // Delete items first (foreign key constraint)
-      await supabaseAdmin
+      // Check if JO has items
+      const { count: itemCount } = await supabaseAdmin
         .from("job_order_items")
-        .delete()
+        .select("id", { count: "exact", head: true })
         .eq("job_order_id", orderId);
 
-      // Delete order
-      const { error: deleteError } = await supabaseAdmin
+      // Hard delete: only if status is "created" and has no items (empty draft)
+      if (existing.status === "created" && (!itemCount || itemCount === 0)) {
+        // Check for third-party repairs too
+        const { count: tprCount } = await supabaseAdmin
+          .from("third_party_repairs")
+          .select("id", { count: "exact", head: true })
+          .eq("job_order_id", orderId);
+
+        if (!tprCount || tprCount === 0) {
+          // Safe to hard delete — empty draft with no items or repairs
+          const { error: deleteError } = await supabaseAdmin
+            .from("job_orders")
+            .delete()
+            .eq("id", orderId);
+
+          if (deleteError) {
+            res.status(500).json({ error: deleteError.message });
+            return;
+          }
+
+          // Log hard delete
+          try {
+            await supabaseAdmin.rpc("log_admin_action", {
+              p_action: "DELETE",
+              p_entity_type: "JOB_ORDER",
+              p_entity_id: orderId,
+              p_performed_by_user_id: req.user!.id,
+              p_performed_by_branch_id: req.user!.branchIds[0] || null,
+              p_new_values: { order_number: existing.order_number, deleted: true, type: "hard_delete" },
+            });
+          } catch (auditErr) {
+            console.error("Audit log error:", auditErr);
+          }
+
+          res.json({ message: `Job order ${existing.order_number} deleted permanently` });
+          return;
+        }
+      }
+
+      // Soft delete: JO has progressed or has items
+      const { error: updateError } = await supabaseAdmin
         .from("job_orders")
-        .delete()
+        .update({ is_deleted: true })
         .eq("id", orderId);
 
-      if (deleteError) {
-        res.status(500).json({ error: deleteError.message });
+      if (updateError) {
+        res.status(500).json({ error: updateError.message });
         return;
       }
 
-      res.json({ message: `Job order ${existing.order_number} deleted successfully` });
-
-      // Log deletion
+      // Log soft delete
       try {
         await supabaseAdmin.rpc("log_admin_action", {
           p_action: "DELETE",
@@ -505,11 +552,13 @@ router.delete(
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
-          p_new_values: { order_number: existing.order_number, branch_id: existing.branch_id },
+          p_new_values: { order_number: existing.order_number, is_deleted: true, type: "soft_delete" },
         });
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);
       }
+
+      res.json({ message: `Job order ${existing.order_number} deleted successfully` });
     } catch (error) {
       console.error("Delete job order error:", error);
       await logFailedAction(req, "DELETE", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to delete job order");
@@ -536,6 +585,7 @@ router.patch(
         .from("job_orders")
         .select("id, branch_id, status, order_number")
         .eq("id", orderId)
+        .eq("is_deleted", false)
         .single();
 
       if (fetchError) {
@@ -588,6 +638,7 @@ router.patch(
         `
         )
         .eq("id", orderId)
+        .eq("is_deleted", false)
         .single();
 
       if (refetchError) {
@@ -643,6 +694,7 @@ router.patch(
         .from("job_orders")
         .select("id, branch_id, status, order_number")
         .eq("id", orderId)
+        .eq("is_deleted", false)
         .single();
 
       if (fetchError) {
@@ -726,6 +778,7 @@ router.patch(
         `
         )
         .eq("id", orderId)
+        .eq("is_deleted", false)
         .single();
 
       if (refetchError) {
@@ -779,6 +832,7 @@ router.patch(
         .from("job_orders")
         .select("id, branch_id, status, order_number")
         .eq("id", orderId)
+        .eq("is_deleted", false)
         .single();
 
       if (fetchError) {
@@ -841,6 +895,7 @@ router.patch(
         `
         )
         .eq("id", orderId)
+        .eq("is_deleted", false)
         .single();
 
       if (refetchError) {
@@ -900,6 +955,7 @@ router.post(
         .from("job_orders")
         .select("id, branch_id, status, total_amount")
         .eq("id", orderId)
+        .eq("is_deleted", false)
         .single();
 
       if (fetchError) {
@@ -1004,6 +1060,7 @@ router.post(
         `
         )
         .eq("id", orderId)
+        .eq("is_deleted", false)
         .single();
 
       if (refetchError) {
@@ -1044,6 +1101,7 @@ router.put(
         .from("job_orders")
         .select("id, branch_id, status")
         .eq("id", orderId)
+        .eq("is_deleted", false)
         .single();
 
       if (fetchError) {
@@ -1121,6 +1179,7 @@ router.put(
         `
         )
         .eq("id", orderId)
+        .eq("is_deleted", false)
         .single();
 
       if (refetchError) {
@@ -1156,6 +1215,7 @@ router.delete(
         .from("job_orders")
         .select("id, branch_id, status")
         .eq("id", orderId)
+        .eq("is_deleted", false)
         .single();
 
       if (fetchError) {
@@ -1234,6 +1294,7 @@ router.delete(
         `
         )
         .eq("id", orderId)
+        .eq("is_deleted", false)
         .single();
 
       if (refetchError) {

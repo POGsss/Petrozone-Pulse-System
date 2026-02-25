@@ -533,7 +533,7 @@ export function InventoryManagement() {
             className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
           >
             <LuPlus className="w-4 h-4" />
-            Add New Item
+            Add New Inventory
           </button>
         )}
       </div>
@@ -584,7 +584,7 @@ export function InventoryManagement() {
               <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-900" />
               <input
                 type="text"
-                placeholder="Search items..."
+                placeholder="Search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 pr-4 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-primary w-full sm:w-64"
@@ -773,7 +773,7 @@ export function InventoryManagement() {
               <div className="col-span-full text-center py-12 text-neutral-900">
                 {searchQuery || filterStatus !== "all" || filterCategory !== "all" || filterBranch !== "all"
                   ? "No items match your filters."
-                  : 'No inventory items found. Click "Add New Item" to create one.'}
+                  : 'No inventory items found. Click "Add New Inventory" to create one.'}
               </div>
             )}
           </div>
@@ -888,7 +888,7 @@ export function InventoryManagement() {
             <div className="text-center py-12 text-neutral-900">
               {searchQuery || filterStatus !== "all" || filterCategory !== "all" || filterBranch !== "all"
                 ? "No items match your filters."
-                : "No inventory items found. Click \"Add New Item\" to create one."}
+                : "No inventory items found. Click \"Add New Inventory\" to create one."}
             </div>
           )}
         </div>
@@ -922,11 +922,11 @@ export function InventoryManagement() {
         )}
       </div>
 
-      {/* ───── Add Inventory Item Modal ───── */}
+      {/* ───── Add New Inventory Modal ───── */}
       <Modal
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
-        title="Add Inventory Item"
+        title="Add New Inventory"
         maxWidth="lg"
       >
         <form onSubmit={handleAddItem}>
@@ -947,7 +947,7 @@ export function InventoryManagement() {
             <ModalInput type="number" value={addForm.initial_stock} onChange={(v) => setAddForm(p => ({ ...p, initial_stock: v }))} placeholder="Initial Stock Quantity (optional)" />
           </ModalSection>
           <ModalError message={addError} />
-          <ModalButtons onCancel={() => setShowAddModal(false)} submitText={addingItem ? "Creating..." : "Create Item"} loading={addingItem} />
+          <ModalButtons onCancel={() => setShowAddModal(false)} submitText={addingItem ? "Creating..." : "Create Inventory"} loading={addingItem} />
         </form>
       </Modal>
 

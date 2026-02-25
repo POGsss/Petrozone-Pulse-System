@@ -59,7 +59,7 @@ export function ModalSection({ title, children }: ModalSectionProps) {
 }
 
 interface ModalInputProps {
-  type?: "text" | "email" | "password" | "tel" | "number";
+  type?: "text" | "email" | "password" | "tel" | "number" | "date";
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;

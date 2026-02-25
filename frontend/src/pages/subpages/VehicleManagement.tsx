@@ -464,7 +464,7 @@ export function VehicleManagement() {
             className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
           >
             <LuPlus className="w-4 h-4" />
-            Add Vehicle
+            Add New Vehicle
           </button>
         )}
       </div>
@@ -596,7 +596,7 @@ export function VehicleManagement() {
       <Modal
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
-        title="Add a New Vehicle"
+        title="Add New Vehicle"
         maxWidth="lg"
       >
         <form onSubmit={handleAddVehicle}>

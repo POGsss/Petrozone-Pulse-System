@@ -1444,7 +1444,7 @@ export function JobOrderManagement() {
 
           <ModalButtons
             onCancel={() => setShowAddModal(false)}
-            submitText={addingOrder ? "Creating..." : "Create Order"}
+            submitText={addingOrder ? "Creating..." : "Create Job"}
             loading={addingOrder}
           />
         </form>

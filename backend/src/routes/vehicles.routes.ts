@@ -613,16 +613,19 @@ router.delete(
           return;
         }
 
-        // Update audit log with user_id
-        await supabaseAdmin
-          .from("audit_logs")
-          .update({ user_id: req.user!.id })
-          .eq("entity_type", "VEHICLE")
-          .eq("entity_id", vehicleId)
-          .eq("action", "UPDATE")
-          .is("user_id", null)
-          .order("created_at", { ascending: false })
-          .limit(1);
+        // Log soft delete with correct user
+        try {
+          await supabaseAdmin.rpc("log_admin_action", {
+            p_action: "UPDATE",
+            p_entity_type: "VEHICLE",
+            p_entity_id: vehicleId,
+            p_performed_by_user_id: req.user!.id,
+            p_performed_by_branch_id: req.user!.branchIds[0] || null,
+            p_new_values: { status: "inactive", reason: "soft_delete" },
+          });
+        } catch (auditErr) {
+          console.error("Audit log error:", auditErr);
+        }
 
         res.json({ message: "Vehicle deactivated (has existing job orders)" });
       } else {
@@ -643,6 +646,20 @@ router.delete(
         if (error) {
           res.status(500).json({ error: error.message });
           return;
+        }
+
+        // Log hard delete with correct user
+        try {
+          await supabaseAdmin.rpc("log_admin_action", {
+            p_action: "DELETE",
+            p_entity_type: "VEHICLE",
+            p_entity_id: vehicleId,
+            p_performed_by_user_id: req.user!.id,
+            p_performed_by_branch_id: req.user!.branchIds[0] || null,
+            p_new_values: { plate_number: existing.plate_number, deleted: true },
+          });
+        } catch (auditErr) {
+          console.error("Audit log error:", auditErr);
         }
 
         res.json({ message: "Vehicle deleted successfully" });

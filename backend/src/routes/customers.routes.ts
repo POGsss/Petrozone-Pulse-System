@@ -424,8 +424,8 @@ router.put(
 
 /**
  * DELETE /api/customers/:customerId
- * Soft-delete a customer (set status to inactive)
- * POC, JS, R can deactivate
+ * Hard-delete if no job orders reference this customer.
+ * Soft-delete (set status to inactive) if job orders exist.
  */
 router.delete(
   "/:customerId",
@@ -456,33 +456,99 @@ router.delete(
         return;
       }
 
-      // Soft delete: set status to inactive
-      const { error } = await supabaseAdmin
-        .from("customers")
-        .update({ status: "inactive" as "active" | "inactive" })
-        .eq("id", customerId);
+      // Check if any job orders reference this customer
+      const { count: joCount, error: joError } = await supabaseAdmin
+        .from("job_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("customer_id", customerId);
 
-      if (error) {
-        res.status(500).json({ error: error.message });
+      if (joError) {
+        res.status(500).json({ error: joError.message });
         return;
       }
 
-      // Update audit log with user_id
-      await supabaseAdmin
-        .from("audit_logs")
-        .update({ user_id: req.user!.id })
-        .eq("entity_type", "CUSTOMER")
-        .eq("entity_id", customerId)
-        .eq("action", "UPDATE")
-        .is("user_id", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
+      if ((joCount ?? 0) > 0) {
+        // Soft delete: customer has job order references
+        const { error } = await supabaseAdmin
+          .from("customers")
+          .update({ status: "inactive" as "active" | "inactive" })
+          .eq("id", customerId);
 
-      res.json({ message: "Customer deactivated successfully" });
+        if (error) {
+          res.status(500).json({ error: error.message });
+          return;
+        }
+
+        // Log soft delete with correct user
+        try {
+          await supabaseAdmin.rpc("log_admin_action", {
+            p_action: "UPDATE",
+            p_entity_type: "CUSTOMER",
+            p_entity_id: customerId,
+            p_performed_by_user_id: req.user!.id,
+            p_performed_by_branch_id: req.user!.branchIds[0] || null,
+            p_new_values: { status: "inactive", reason: "soft_delete" },
+          });
+        } catch (auditErr) {
+          console.error("Audit log error:", auditErr);
+        }
+
+        res.json({ message: "Customer deactivated (has existing job orders)" });
+      } else {
+        // Hard delete: no job order references
+        // Delete associated vehicles first
+        await supabaseAdmin
+          .from("vehicles")
+          .delete()
+          .eq("customer_id", customerId);
+
+        // Delete audit logs referencing this customer
+        await supabaseAdmin
+          .from("audit_logs")
+          .delete()
+          .eq("entity_type", "CUSTOMER")
+          .eq("entity_id", customerId);
+
+        const { error } = await supabaseAdmin
+          .from("customers")
+          .delete()
+          .eq("id", customerId);
+
+        if (error) {
+          // FK constraint — fallback to soft delete
+          if (error.code === "23503") {
+            await supabaseAdmin
+              .from("customers")
+              .update({ status: "inactive" as "active" | "inactive" })
+              .eq("id", customerId);
+
+            res.json({ message: "Customer deactivated (referenced by other records)" });
+            return;
+          }
+          res.status(500).json({ error: error.message });
+          return;
+        }
+
+        // Log hard delete with correct user
+        try {
+          await supabaseAdmin.rpc("log_admin_action", {
+            p_action: "DELETE",
+            p_entity_type: "CUSTOMER",
+            p_entity_id: customerId,
+            p_performed_by_user_id: req.user!.id,
+            p_performed_by_branch_id: req.user!.branchIds[0] || null,
+            p_new_values: { name: existing.name, deleted: true },
+          });
+        } catch (auditErr) {
+          console.error("Audit log error:", auditErr);
+        }
+
+        res.json({ message: "Customer deleted permanently" });
+      }
     } catch (error) {
       console.error("Delete customer error:", error);
-      await logFailedAction(req, "DELETE", "CUSTOMER", (req.params.customerId as string) || null, error instanceof Error ? error.message : "Failed to deactivate customer");
-      res.status(500).json({ error: "Failed to deactivate customer" });
+      await logFailedAction(req, "DELETE", "CUSTOMER", (req.params.customerId as string) || null, error instanceof Error ? error.message : "Failed to delete customer");
+      res.status(500).json({ error: "Failed to delete customer" });
     }
   }
 );

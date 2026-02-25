@@ -424,16 +424,19 @@ router.put(
         }
       }
 
-      // Update audit log user_id
-      await supabaseAdmin
-        .from("audit_logs")
-        .update({ user_id: req.user!.id })
-        .eq("entity_type", "PURCHASE_ORDER")
-        .eq("entity_id", poId)
-        .eq("action", "UPDATE")
-        .is("user_id", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
+      // Audit log
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "UPDATE",
+          p_entity_type: "PURCHASE_ORDER",
+          p_entity_id: poId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { po_number: existing.po_number, ...updateData },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
 
       // Fetch updated PO
       const { data: updatedPO } = await supabaseAdmin
@@ -505,16 +508,19 @@ router.patch(
         return;
       }
 
-      // Update audit log user_id
-      await supabaseAdmin
-        .from("audit_logs")
-        .update({ user_id: req.user!.id })
-        .eq("entity_type", "PURCHASE_ORDER")
-        .eq("entity_id", poId)
-        .eq("action", "UPDATE")
-        .is("user_id", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
+      // Audit log
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "SUBMIT",
+          p_entity_type: "PURCHASE_ORDER",
+          p_entity_id: poId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { po_number: po.po_number, status: "submitted" },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
 
       const { data: updated } = await supabaseAdmin
         .from("purchase_orders")

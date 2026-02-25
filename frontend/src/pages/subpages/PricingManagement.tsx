@@ -387,7 +387,7 @@ export function PricingManagement() {
             className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
           >
             <LuPlus className="w-4 h-4" />
-            Add Pricing Rule
+            Add Pricing Matrix
           </button>
         )}
       </div>
@@ -438,7 +438,7 @@ export function PricingManagement() {
               <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-900" />
               <input
                 type="text"
-                placeholder="Search pricing rules..."
+                placeholder="Search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 pr-4 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-primary w-full sm:w-64"
@@ -819,11 +819,11 @@ export function PricingManagement() {
         )}
       </Modal>
 
-      {/* Add Pricing Rule Modal */}
+      {/* Add Pricing Matrix Modal */}
       <Modal
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
-        title="Add Pricing Rule"
+        title="Add Pricing Matrix"
         maxWidth="lg"
       >
         <form onSubmit={handleAdd}>
@@ -887,7 +887,7 @@ export function PricingManagement() {
 
           <ModalButtons
             onCancel={() => setShowAddModal(false)}
-            submitText={addingItem ? "Creating..." : "Create Pricing Rule"}
+            submitText={addingItem ? "Creating..." : "Create Pricing"}
             loading={addingItem}
           />
         </form>
