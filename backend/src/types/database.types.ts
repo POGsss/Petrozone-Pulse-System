@@ -294,6 +294,7 @@ export type Database = {
           created_by: string | null
           customer_id: string
           id: string
+          is_deleted: boolean
           notes: string | null
           order_number: string
           status: Database["public"]["Enums"]["job_order_status"]
@@ -310,6 +311,7 @@ export type Database = {
           created_by?: string | null
           customer_id: string
           id?: string
+          is_deleted?: boolean
           notes?: string | null
           order_number: string
           status?: Database["public"]["Enums"]["job_order_status"]
@@ -326,6 +328,7 @@ export type Database = {
           created_by?: string | null
           customer_id?: string
           id?: string
+          is_deleted?: boolean
           notes?: string | null
           order_number?: string
           status?: Database["public"]["Enums"]["job_order_status"]
@@ -579,6 +582,7 @@ export type Database = {
           created_by: string | null
           description: string
           id: string
+          is_deleted: boolean
           job_order_id: string
           notes: string | null
           provider_name: string
@@ -591,6 +595,7 @@ export type Database = {
           created_by?: string | null
           description: string
           id?: string
+          is_deleted?: boolean
           job_order_id: string
           notes?: string | null
           provider_name: string
@@ -603,6 +608,7 @@ export type Database = {
           created_by?: string | null
           description?: string
           id?: string
+          is_deleted?: boolean
           job_order_id?: string
           notes?: string | null
           provider_name?: string

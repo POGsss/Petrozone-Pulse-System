@@ -151,13 +151,13 @@ export function ProfileSettings() {
         <form onSubmit={handleProfileSubmit} className="space-y-4">
           {profileError && (
             <div className="flex items-center gap-2 p-3 bg-negative-100 border border-negative rounded-lg text-sm text-negative-950">
-              <LuCircleAlert className="w-4 h-4 flex-shrink-0" />
+              <LuCircleAlert className="w-4 h-4 shrink-0" />
               {profileError}
             </div>
           )}
           {profileSuccess && (
             <div className="flex items-center gap-2 p-3 bg-positive-100 border border-positive rounded-lg text-sm text-positive-950">
-              <LuCheck className="w-4 h-4 flex-shrink-0" />
+              <LuCheck className="w-4 h-4 shrink-0" />
               {profileSuccess}
             </div>
           )}
@@ -237,13 +237,13 @@ export function ProfileSettings() {
         <form onSubmit={handlePasswordSubmit} className="space-y-4">
           {passwordError && (
             <div className="flex items-center gap-2 p-3 bg-negative-100 border border-negative rounded-lg text-sm text-negative-950">
-              <LuCircleAlert className="w-4 h-4 flex-shrink-0" />
+              <LuCircleAlert className="w-4 h-4 shrink-0" />
               {passwordError}
             </div>
           )}
           {passwordSuccess && (
             <div className="flex items-center gap-2 p-3 bg-positive-100 border border-positive rounded-lg text-sm text-positive-950">
-              <LuCheck className="w-4 h-4 flex-shrink-0" />
+              <LuCheck className="w-4 h-4 shrink-0" />
               {passwordSuccess}
             </div>
           )}

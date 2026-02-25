@@ -431,7 +431,7 @@ export function UserManagement() {
   if (error) {
     return (
       <div className="bg-negative-200 border border-negative rounded-lg p-4 flex items-center gap-3">
-        <LuCircleAlert className="w-5 h-5 text-negative-950 flex-shrink-0" />
+        <LuCircleAlert className="w-5 h-5 text-negative-950 shrink-0" />
         <div>
           <p className="text-sm text-negative-950">{error}</p>
           <button
@@ -1022,7 +1022,7 @@ export function UserManagement() {
               const targetUser = users.find(u => u.id === editUserForm.id);
               return targetUser && isUserLocked(targetUser) ? (
                 <div className="flex items-center gap-4 p-4 bg-negative-100 border border-negative rounded-lg">
-                  <LuLock className="w-5 h-5 text-negative-950 flex-shrink-0" />
+                  <LuLock className="w-5 h-5 text-negative-950 shrink-0" />
                   <div className="flex-1">
                     <p className="text-sm font-medium text-negative-950">This account is locked.</p>
                     <p className="text-xs text-negative-900 mt-0.5">

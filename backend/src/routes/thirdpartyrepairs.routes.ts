@@ -344,7 +344,7 @@ router.put(
           p_entity_id: repairId,
           p_performed_by_user_id: req.user!.id,
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
-          p_new_values: updateData,
+          p_new_values: updateData as unknown as Record<string, string>,
         });
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);

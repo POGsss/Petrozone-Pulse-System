@@ -505,7 +505,7 @@ export function InventoryManagement() {
   if (error) {
     return (
       <div className="bg-negative-200 border border-negative rounded-lg p-4 flex items-center gap-3">
-        <LuCircleAlert className="w-5 h-5 text-negative-950 flex-shrink-0" />
+        <LuCircleAlert className="w-5 h-5 text-negative-950 shrink-0" />
         <div>
           <p className="text-sm text-negative-950">{error}</p>
           <button

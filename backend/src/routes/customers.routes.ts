@@ -537,7 +537,7 @@ router.delete(
             p_entity_id: customerId,
             p_performed_by_user_id: req.user!.id,
             p_performed_by_branch_id: req.user!.branchIds[0] || null,
-            p_new_values: { name: existing.name, deleted: true },
+            p_new_values: { name: existing.full_name, deleted: true },
           });
         } catch (auditErr) {
           console.error("Audit log error:", auditErr);

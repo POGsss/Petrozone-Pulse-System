@@ -381,7 +381,7 @@ export function CustomerManagement() {
   if (error && allCustomers.length === 0) {
     return (
       <div className="bg-negative-200 border border-negative rounded-lg p-4 flex items-center gap-3">
-        <LuCircleAlert className="w-5 h-5 text-negative-950 flex-shrink-0" />
+        <LuCircleAlert className="w-5 h-5 text-negative-950 shrink-0" />
         <div>
           <p className="text-sm text-negative-950">{error}</p>
           <button
@@ -628,7 +628,7 @@ export function CustomerManagement() {
 
         {/* Desktop Table View */}
         <div className="hidden md:block overflow-x-auto">
-          <table className="w-full table-fixed min-w-[700px]">
+          <table className="w-full table-fixed min-w-175">
             <thead>
               <tr className="border-b border-neutral-200 bg-neutral-100">
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap w-[22%]">Name</th>

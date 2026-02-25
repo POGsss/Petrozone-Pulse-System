@@ -152,7 +152,7 @@ export function SystemSettings() {
                                     }`}
                             >
                                 <span
-                                    className="w-8 h-8 rounded-full flex-shrink-0 ring-2 ring-white shadow-sm"
+                                    className="w-8 h-8 rounded-full shrink-0 ring-2 ring-white shadow-sm"
                                     style={{ backgroundColor: preset.value }}
                                 />
                                 <span className="text-sm font-medium text-neutral-950 truncate hidden sm:block">{preset.name}</span>
