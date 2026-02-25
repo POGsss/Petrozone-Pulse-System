@@ -20,12 +20,12 @@ Draft  ──→  Submitted  ──→  Received
   └──→  Deleted (soft delete: is_deleted = true, status = cancelled)
 ```
 
-| Status       | Description                                                                  |
-|--------------|------------------------------------------------------------------------------|
-| `draft`      | Newly created PO. Can be edited, submitted, cancelled, or deleted.           |
-| `submitted`  | PO sent for processing. Can be received, edited, cancelled, or deleted.      |
-| `received`   | PO items have been received and stocked in. **Cannot be edited or deleted.** |
-| `cancelled`  | PO was manually cancelled. **Cannot be edited or re-submitted.**             |
+| Status      | Description                                                                  |
+| ----------- | ---------------------------------------------------------------------------- |
+| `draft`     | Newly created PO. Can be edited, submitted, cancelled, or deleted.           |
+| `submitted` | PO sent for processing. Can be received, edited, cancelled, or deleted.      |
+| `received`  | PO items have been received and stocked in. **Cannot be edited or deleted.** |
+| `cancelled` | PO was manually cancelled. **Cannot be edited or re-submitted.**             |
 
 ### Key Business Rules
 
@@ -38,28 +38,28 @@ Draft  ──→  Submitted  ──→  Received
 
 ### RBAC (Roles & Permissions)
 
-| Action                          | HM | POC | JS | R |
-|---------------------------------|:--:|:---:|:--:|:-:|
-| Create Purchase Order (UC49)    | ✅ | ✅  | ✅ | ✅ |
-| View Purchase Orders (UC50)     | ✅ | ✅  | ✅ | ✅ |
-| Update Purchase Order (UC51)    | ✅ | ✅  | ✅ | ✅ |
-| Delete Purchase Order (UC52)    | ✅ | ✅  | ✅ | ✅ |
-| Submit PO                       | ✅ | ✅  | ✅ | ✅ |
-| Receive PO (Stock-In)           | ✅ | ✅  | ✅ | ✅ |
-| Cancel PO                       | ✅ | ✅  | ✅ | ✅ |
+| Action                       | HM  | POC | JS  |  R  |
+| ---------------------------- | :-: | :-: | :-: | :-: |
+| Create Purchase Order (UC49) | ✅  | ✅  | ✅  | ✅  |
+| View Purchase Orders (UC50)  | ✅  | ✅  | ✅  | ✅  |
+| Update Purchase Order (UC51) | ✅  | ✅  | ✅  | ✅  |
+| Delete Purchase Order (UC52) | ✅  | ✅  | ✅  | ✅  |
+| Submit PO                    | ✅  | ✅  | ✅  | ✅  |
+| Receive PO (Stock-In)        | ✅  | ✅  | ✅  | ✅  |
+| Cancel PO                    | ✅  | ✅  | ✅  | ✅  |
 
 ### API Endpoints
 
-| Method   | Endpoint                              | Description                         |
-|----------|---------------------------------------|-------------------------------------|
-| `GET`    | `/api/purchase-orders`                | List all POs (paginated, filterable)|
-| `GET`    | `/api/purchase-orders/:id`            | Get single PO with items            |
-| `POST`   | `/api/purchase-orders`                | Create new PO with items            |
-| `PUT`    | `/api/purchase-orders/:id`            | Update PO (draft/submitted only)    |
-| `PATCH`  | `/api/purchase-orders/:id/submit`     | Submit PO (draft → submitted)       |
-| `PATCH`  | `/api/purchase-orders/:id/receive`    | Receive PO (submitted → received)   |
-| `PATCH`  | `/api/purchase-orders/:id/cancel`     | Cancel PO (draft/submitted only)    |
-| `DELETE` | `/api/purchase-orders/:id`            | Soft-delete PO (not received)       |
+| Method   | Endpoint                           | Description                          |
+| -------- | ---------------------------------- | ------------------------------------ |
+| `GET`    | `/api/purchase-orders`             | List all POs (paginated, filterable) |
+| `GET`    | `/api/purchase-orders/:id`         | Get single PO with items             |
+| `POST`   | `/api/purchase-orders`             | Create new PO with items             |
+| `PUT`    | `/api/purchase-orders/:id`         | Update PO (draft/submitted only)     |
+| `PATCH`  | `/api/purchase-orders/:id/submit`  | Submit PO (draft → submitted)        |
+| `PATCH`  | `/api/purchase-orders/:id/receive` | Receive PO (submitted → received)    |
+| `PATCH`  | `/api/purchase-orders/:id/cancel`  | Cancel PO (draft/submitted only)     |
+| `DELETE` | `/api/purchase-orders/:id`         | Soft-delete PO (not received)        |
 
 ---
 
@@ -69,13 +69,13 @@ Draft  ──→  Submitted  ──→  Received
 
 Use the **Create Purchase Order** button on the Purchase Orders page. Create each PO below:
 
-| # | Supplier Name          | Branch   | Notes                           | Items (from Inventory)                                       |
-|---|------------------------|----------|---------------------------------|-------------------------------------------------------------|
-| 1 | AutoParts Supply Corp  | Branch A | Monthly oil replenishment       | Shell Helix Ultra 5W-40 × 20 @ ₱650, Denso Oil Filter × 10 @ ₱280 |
-| 2 | BrakePro Philippines   | Branch A | Emergency brake parts order     | Brembo Brake Pad Set × 5 @ ₱2,400                          |
-| 3 | TireMaster Wholesale   | Branch B | Tire stock replenishment        | Bridgestone Ecopia 195/65R15 × 10 @ ₱4,200                 |
-| 4 | PowerBattery Inc       | Branch B | Battery stock-up                | Motolite Gold Battery NS60 × 8 @ ₱5,500                    |
-| 5 | CleanAuto Distributors | Branch A | Cleaning supplies reorder       | Armor All Cleaner × 15 @ ₱320, Blade Freshener × 30 @ ₱85  |
+| #   | Supplier Name          | Branch   | Notes                       | Items (from Inventory)                                            |
+| --- | ---------------------- | -------- | --------------------------- | ----------------------------------------------------------------- |
+| 1   | AutoParts Supply Corp  | Branch A | Monthly oil replenishment   | Shell Helix Ultra 5W-40 × 20 @ ₱650, Denso Oil Filter × 10 @ ₱280 |
+| 2   | BrakePro Philippines   | Branch A | Emergency brake parts order | Brembo Brake Pad Set × 5 @ ₱2,400                                 |
+| 3   | TireMaster Wholesale   | Branch B | Tire stock replenishment    | Bridgestone Ecopia 195/65R15 × 10 @ ₱4,200                        |
+| 4   | PowerBattery Inc       | Branch B | Battery stock-up            | Motolite Gold Battery NS60 × 8 @ ₱5,500                           |
+| 5   | CleanAuto Distributors | Branch A | Cleaning supplies reorder   | Armor All Cleaner × 15 @ ₱320, Blade Freshener × 30 @ ₱85         |
 
 > **Tip:** Leave the PO Number field blank to test auto-generation. Fill it in manually for PO #3 (e.g., `PO-CUSTOM-001`) to test manual entry.
 
@@ -120,6 +120,7 @@ Use the **Create Purchase Order** button on the Purchase Orders page. Create eac
 9. Repeat for all 5 sample POs
 
 **Edge cases to test:**
+
 - Try submitting with no items → should show validation error "At least one item is required"
 - Try submitting without selecting a branch → should show "Branch is required"
 - Try adding a duplicate inventory item → should show "This item is already added"
@@ -170,6 +171,7 @@ Use the **Create Purchase Order** button on the Purchase Orders page. Create eac
    - ✅ View modal shows updated items (Shell Helix + NGK, no Denso)
 
 **Edge cases to test:**
+
 - Try removing all items and saving → should show "At least one item is required"
 - PO Number field should be disabled (read-only) in edit modal
 - Branch field should be disabled (read-only) in edit modal
@@ -191,6 +193,7 @@ Use the **Create Purchase Order** button on the Purchase Orders page. Create eac
 5. Submit PO #2 as well (for testing receive later)
 
 **Edge cases to test:**
+
 - Only `draft` POs can be submitted → `submitted`/`received`/`cancelled` POs should not show "Submit PO" option
 - After submission, the PO should still be editable (draft + submitted are both editable)
 
@@ -201,23 +204,22 @@ Use the **Create Purchase Order** button on the Purchase Orders page. Create eac
 **Goal:** Verify receiving a PO creates stock movements and updates inventory.
 
 **Before receiving:**
+
 1. Navigate to **Inventory** and note the current stock levels:
    - Shell Helix Ultra 5W-40: note the current quantity (e.g., 25)
    - NGK Spark Plug: note the current quantity (e.g., 20)
 
-**Receive the PO:**
-2. Navigate back to **Purchase Orders**
-3. On PO #1 (Submitted), click the **three-dots menu** → **Receive & Stock In**
-4. Verify:
-   - ✅ Success toast: `"PO PO-XXXX received — stock has been updated"`
-   - ✅ Status changes to `Received`
-   - ✅ Stats card: Received count increases by 1
+**Receive the PO:** 2. Navigate back to **Purchase Orders** 3. On PO #1 (Submitted), click the **three-dots menu** → **Receive & Stock In** 4. Verify:
 
-**Verify stock-in:**
-5. Navigate to **Inventory**
-6. Check stock levels:
-   - ✅ Shell Helix Ultra: increased by 20 (e.g., 25 → 45)
-   - ✅ NGK Spark Plug: increased by 5 (e.g., 20 → 25)
+- ✅ Success toast: `"PO PO-XXXX received — stock has been updated"`
+- ✅ Status changes to `Received`
+- ✅ Stats card: Received count increases by 1
+
+**Verify stock-in:** 5. Navigate to **Inventory** 6. Check stock levels:
+
+- ✅ Shell Helix Ultra: increased by 20 (e.g., 25 → 45)
+- ✅ NGK Spark Plug: increased by 5 (e.g., 20 → 25)
+
 7. Click the **Movement History** icon on Shell Helix Ultra
 8. Verify:
    - ✅ A new `Stock In` entry exists with quantity `20`
@@ -225,6 +227,7 @@ Use the **Create Purchase Order** button on the Purchase Orders page. Create eac
    - ✅ Reason shows `"Received from PO PO-XXXX"`
 
 **Edge cases to test:**
+
 - Only `submitted` POs can be received → `draft`/`cancelled`/`received` POs should not show "Receive" option
 - A received PO should have no edit/delete actions available
 - The PO view modal should show `quantity_received` values after receiving
@@ -244,13 +247,13 @@ Use the **Create Purchase Order** button on the Purchase Orders page. Create eac
    - ✅ Edit/Submit/Receive actions disappear for this PO
    - ✅ Delete action may still be available (soft-deletes the cancelled PO)
 
-**Cancel a submitted PO:**
-5. Submit PO #4 (PowerBattery) first, then cancel it
-6. Verify:
-   - ✅ Submitted PO can also be cancelled
-   - ✅ No stock movements were created (since it was never received)
+**Cancel a submitted PO:** 5. Submit PO #4 (PowerBattery) first, then cancel it 6. Verify:
+
+- ✅ Submitted PO can also be cancelled
+- ✅ No stock movements were created (since it was never received)
 
 **Edge cases to test:**
+
 - `received` POs cannot be cancelled → no "Cancel PO" option should appear
 - `cancelled` POs cannot be cancelled again → no "Cancel PO" option should appear
 
@@ -270,6 +273,7 @@ Use the **Create Purchase Order** button on the Purchase Orders page. Create eac
 5. Filter by "Cancelled" status → the deleted PO should NOT appear (it's soft-deleted, not just cancelled)
 
 **Edge cases to test:**
+
 - `received` POs cannot be deleted → trash icon should not appear for received POs
 - Error message: `"Cannot delete a received purchase order. Cancel it instead if needed."`
 - The Delete action still works on `cancelled` POs (to fully soft-delete them)
@@ -335,11 +339,13 @@ Use the **Create Purchase Order** button on the Purchase Orders page. Create eac
 **Goal:** Verify the page works on both desktop and mobile.
 
 **Desktop (≥768px):**
+
 1. Verify the table view displays with 6 columns: PO Number, Supplier, Total, Branch, Status, Actions
 2. Verify table rows are clickable (opens view modal)
 3. Verify action icons (Edit, Delete) and three-dots dropdown work correctly
 
 **Mobile (<768px):**
+
 1. Resize browser window to mobile width (or use DevTools)
 2. Verify the table switches to card-based layout
 3. Each card should show: PO Number, Branch code, Status badge, Total, Supplier, Date
@@ -353,6 +359,7 @@ Use the **Create Purchase Order** button on the Purchase Orders page. Create eac
 **Goal:** Verify summary stats reflect actual data.
 
 After completing all tests above:
+
 1. Count the visible POs in the table
 2. Compare with stats cards:
    - ✅ **Total:** matches the count of all non-deleted POs
@@ -403,8 +410,8 @@ After completing all tests above:
 
 ## Summary Checklist
 
-| Requirement                                | Status |
-|-------------------------------------------|--------|
+| Requirement                               | Status |
+| ----------------------------------------- | ------ |
 | UC49 — Create Purchase Order              | ⬜     |
 | UC50 — View Purchase Orders               | ⬜     |
 | UC51 — Update Purchase Order              | ⬜     |

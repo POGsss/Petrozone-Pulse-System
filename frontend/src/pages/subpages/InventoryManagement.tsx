@@ -690,11 +690,10 @@ export function InventoryManagement() {
                     </div>
                   </div>
                   <span
-                    className={`px-2 py-1 rounded text-xs font-medium ${
-                      item.status === "active"
-                        ? "bg-positive-100 text-positive"
-                        : "bg-negative-100 text-negative"
-                    }`}
+                    className={`px-2 py-1 rounded text-xs font-medium ${item.status === "active"
+                      ? "bg-positive-100 text-positive"
+                      : "bg-negative-100 text-negative"
+                      }`}
                   >
                     {item.status === "active" ? "Active" : "Inactive"}
                   </span>
@@ -741,7 +740,7 @@ export function InventoryManagement() {
                     {openDropdownId === `card-${item.id}` && (
                       <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
                         <button
-                          onClick={(e) => { e.stopPropagation(); closeDropdown(); setShowMovementsModal(true); setMovementsItem(item); setMovements([]); setMovementsLoading(true); inventoryApi.getMovements(item.id, { limit: 100 }).then((res) => { setMovements(res.data); }).catch(() => {}).finally(() => { setMovementsLoading(false); }); }}
+                          onClick={(e) => { e.stopPropagation(); closeDropdown(); setShowMovementsModal(true); setMovementsItem(item); setMovements([]); setMovementsLoading(true); inventoryApi.getMovements(item.id, { limit: 100 }).then((res) => { setMovements(res.data); }).catch(() => { }).finally(() => { setMovementsLoading(false); }); }}
                           className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
                         >
                           <LuHistory className="w-4 h-4" /> Movement History
@@ -853,7 +852,7 @@ export function InventoryManagement() {
                         {openDropdownId === `table-${item.id}` && (
                           <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
                             <button
-                              onClick={(e) => { e.stopPropagation(); closeDropdown(); setShowMovementsModal(true); setMovementsItem(item); setMovements([]); setMovementsLoading(true); inventoryApi.getMovements(item.id, { limit: 100 }).then((res) => { setMovements(res.data); }).catch(() => {}).finally(() => { setMovementsLoading(false); }); }}
+                              onClick={(e) => { e.stopPropagation(); closeDropdown(); setShowMovementsModal(true); setMovementsItem(item); setMovements([]); setMovementsLoading(true); inventoryApi.getMovements(item.id, { limit: 100 }).then((res) => { setMovements(res.data); }).catch(() => { }).finally(() => { setMovementsLoading(false); }); }}
                               className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
                             >
                               <LuHistory className="w-4 h-4" /> Movement History
@@ -986,22 +985,22 @@ export function InventoryManagement() {
             </ModalSection>
 
             <ModalSection title="Item Information">
-              <ModalInput type="text" value={viewItem.item_name} onChange={() => {}} placeholder="Item Name" disabled />
+              <ModalInput type="text" value={viewItem.item_name} onChange={() => { }} placeholder="Item Name" disabled />
               <div className="grid grid-cols-2 gap-4">
-                <ModalInput type="text" value={viewItem.sku_code} onChange={() => {}} placeholder="SKU Code" disabled />
-                <ModalInput type="text" value={viewItem.category} onChange={() => {}} placeholder="Category" disabled />
+                <ModalInput type="text" value={viewItem.sku_code} onChange={() => { }} placeholder="SKU Code" disabled />
+                <ModalInput type="text" value={viewItem.category} onChange={() => { }} placeholder="Category" disabled />
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <ModalInput type="text" value={viewItem.unit_of_measure} onChange={() => {}} placeholder="Unit of Measure" disabled />
-                <ModalInput type="text" value={formatPrice(viewItem.cost_price)} onChange={() => {}} placeholder="Cost Price" disabled />
+                <ModalInput type="text" value={viewItem.unit_of_measure} onChange={() => { }} placeholder="Unit of Measure" disabled />
+                <ModalInput type="text" value={formatPrice(viewItem.cost_price)} onChange={() => { }} placeholder="Cost Price" disabled />
               </div>
-              <ModalInput type="text" value={viewItem.branches ? `${viewItem.branches.name} (${viewItem.branches.code})` : viewItem.branch_id} onChange={() => {}} placeholder="Branch" disabled />
+              <ModalInput type="text" value={viewItem.branches ? `${viewItem.branches.name} (${viewItem.branches.code})` : viewItem.branch_id} onChange={() => { }} placeholder="Branch" disabled />
             </ModalSection>
 
             <ModalSection title="Timestamps">
               <div className="grid grid-cols-2 gap-4">
-                <ModalInput type="text" value={formatDate(viewItem.created_at)} onChange={() => {}} placeholder="Created" disabled />
-                <ModalInput type="text" value={formatDate(viewItem.updated_at)} onChange={() => {}} placeholder="Updated" disabled />
+                <ModalInput type="text" value={formatDate(viewItem.created_at)} onChange={() => { }} placeholder="Created" disabled />
+                <ModalInput type="text" value={formatDate(viewItem.updated_at)} onChange={() => { }} placeholder="Updated" disabled />
               </div>
             </ModalSection>
           </div>
@@ -1149,7 +1148,7 @@ export function InventoryManagement() {
         {movementsItem && (
           <div>
             <ModalSection title="Item">
-              <ModalInput type="text" value={movementsItem.item_name} onChange={() => {}} placeholder="Item" disabled />
+              <ModalInput type="text" value={movementsItem.item_name} onChange={() => { }} placeholder="Item" disabled />
             </ModalSection>
 
             <ModalSection title="History">

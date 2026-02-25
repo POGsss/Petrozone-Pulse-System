@@ -6,16 +6,16 @@
 
 Use the **Add New Item** button on the Inventory page. Enter each item below into the form.
 
-| # | Item Name | SKU Code | Category | Unit of Measure | Cost Price | Reorder Threshold | Initial Stock |
-|---|-----------|----------|----------|-----------------|------------|-------------------|---------------|
-| 1 | Shell Helix Ultra 5W-40 (1L) | OIL-SHU540 | Oil & Lubricants | Bottles | 650 | 10 | 25 |
-| 2 | Denso Oil Filter (Universal) | FLT-DNSO01 | Filters | Pieces (pcs) | 280 | 8 | 15 |
-| 3 | Brembo Brake Pad Set (Front) | BRK-BRM01 | Brake Parts | Sets | 2400 | 4 | 6 |
-| 4 | NGK Spark Plug (Iridium IX) | ENG-NGK01 | Engine Parts | Pieces (pcs) | 450 | 12 | 20 |
-| 5 | Bridgestone Ecopia 195/65R15 | TIR-BSE195 | Tires | Pieces (pcs) | 4200 | 4 | 8 |
-| 6 | Motolite Gold Battery (NS60) | BAT-MLG60 | Batteries | Pieces (pcs) | 5500 | 3 | 5 |
-| 7 | Blade Car Freshener (Lemon) | ACC-BCFL01 | Accessories | Pieces (pcs) | 85 | 20 | 50 |
-| 8 | Armor All Multi-Purpose Cleaner 500ml | CLN-AAM500 | Cleaning Supplies | Bottles | 320 | 6 | 12 |
+| #   | Item Name                             | SKU Code   | Category          | Unit of Measure | Cost Price | Reorder Threshold | Initial Stock |
+| --- | ------------------------------------- | ---------- | ----------------- | --------------- | ---------- | ----------------- | ------------- |
+| 1   | Shell Helix Ultra 5W-40 (1L)          | OIL-SHU540 | Oil & Lubricants  | Bottles         | 650        | 10                | 25            |
+| 2   | Denso Oil Filter (Universal)          | FLT-DNSO01 | Filters           | Pieces (pcs)    | 280        | 8                 | 15            |
+| 3   | Brembo Brake Pad Set (Front)          | BRK-BRM01  | Brake Parts       | Sets            | 2400       | 4                 | 6             |
+| 4   | NGK Spark Plug (Iridium IX)           | ENG-NGK01  | Engine Parts      | Pieces (pcs)    | 450        | 12                | 20            |
+| 5   | Bridgestone Ecopia 195/65R15          | TIR-BSE195 | Tires             | Pieces (pcs)    | 4200       | 4                 | 8             |
+| 6   | Motolite Gold Battery (NS60)          | BAT-MLG60  | Batteries         | Pieces (pcs)    | 5500       | 3                 | 5             |
+| 7   | Blade Car Freshener (Lemon)           | ACC-BCFL01 | Accessories       | Pieces (pcs)    | 85         | 20                | 50            |
+| 8   | Armor All Multi-Purpose Cleaner 500ml | CLN-AAM500 | Cleaning Supplies | Bottles         | 320        | 6                 | 12            |
 
 > **Note:** Select the appropriate branch when adding each item. For multi-branch testing, add some items to Branch A and others to Branch B.
 
@@ -48,6 +48,7 @@ Use the **Add New Item** button on the Inventory page. Enter each item below int
 6. Repeat for all 8 sample items
 
 **Edge cases to test:**
+
 - Try submitting with empty Item Name → should show validation error
 - Try adding a duplicate SKU in the same branch → should fail
 - Try entering a negative cost price → should be blocked
@@ -123,6 +124,7 @@ Use the **Add New Item** button on the Inventory page. Enter each item below int
 **Goal:** Verify manual stock corrections with audit trail.
 
 **6a — Decrease adjustment:**
+
 1. Click the **blue down-arrow icon** (Adjust) on the Bridgestone tire row
 2. Select **Decrease Stock**
 3. Enter Quantity: `2`
@@ -133,6 +135,7 @@ Use the **Add New Item** button on the Inventory page. Enter each item below int
    - ✅ Success toast appears
 
 **6b — Increase adjustment:**
+
 1. Open Adjust modal for the same tire item
 2. Select **Increase Stock**
 3. Enter Quantity: `1`
@@ -142,6 +145,7 @@ Use the **Add New Item** button on the Inventory page. Enter each item below int
    - ✅ Stock updates from `6` to `7`
 
 **6c — Prevent negative stock:**
+
 1. Open Adjust modal for Brembo Brake Pad (stock = 6)
 2. Select **Decrease Stock** → Quantity: `100`
 3. Enter a reason and submit
@@ -149,6 +153,7 @@ Use the **Add New Item** button on the Inventory page. Enter each item below int
    - ✅ Error message: cannot reduce stock below zero
 
 **6d — RBAC check:**
+
 1. Log in as a user with **JS** (Job Specialist) role
 2. Navigate to Inventory
 3. Verify:
@@ -205,6 +210,7 @@ Use the **Add New Item** button on the Inventory page. Enter each item below int
    - ✅ Movement History shows a `Stock Out` entry with reference type `Job Order`
 
 **Test insufficient stock block:**
+
 1. Adjust Shell Helix stock to `1` (decrease by 22)
 2. Create another JO with Shell Helix quantity `5`
 3. Try to approve it
@@ -255,22 +261,22 @@ Use the **Add New Item** button on the Inventory page. Enter each item below int
 
 ## Summary Checklist
 
-| Requirement | Status |
-|------------|--------|
-| UC45 — Add Inventory | ⬜ |
-| UC46 — View Inventory | ⬜ |
-| UC47 — Update Inventory | ⬜ |
-| UC48 — Delete (Soft) Inventory | ⬜ |
-| FR-3 — Stock Deduction on JO Approval | ⬜ |
-| FR-3 — Block Approval on Insufficient Stock | ⬜ |
-| FR-3 — Stock Restore on JO Cancellation | ⬜ |
-| FR-4 — Low-Stock Dashboard Indicator | ⬜ |
-| FR-6 — View Current Stock Levels | ⬜ |
-| Manual Stock In | ⬜ |
-| Manual Stock Adjustment (HM/POC) | ⬜ |
-| Movement History Ledger | ⬜ |
-| SKU Uniqueness per Branch | ⬜ |
-| No Negative Stock | ⬜ |
-| Audit Logging | ⬜ |
-| Branch Isolation (RLS) | ⬜ |
-| RBAC Enforcement | ⬜ |
+| Requirement                                 | Status |
+| ------------------------------------------- | ------ |
+| UC45 — Add Inventory                        | ⬜     |
+| UC46 — View Inventory                       | ⬜     |
+| UC47 — Update Inventory                     | ⬜     |
+| UC48 — Delete (Soft) Inventory              | ⬜     |
+| FR-3 — Stock Deduction on JO Approval       | ⬜     |
+| FR-3 — Block Approval on Insufficient Stock | ⬜     |
+| FR-3 — Stock Restore on JO Cancellation     | ⬜     |
+| FR-4 — Low-Stock Dashboard Indicator        | ⬜     |
+| FR-6 — View Current Stock Levels            | ⬜     |
+| Manual Stock In                             | ⬜     |
+| Manual Stock Adjustment (HM/POC)            | ⬜     |
+| Movement History Ledger                     | ⬜     |
+| SKU Uniqueness per Branch                   | ⬜     |
+| No Negative Stock                           | ⬜     |
+| Audit Logging                               | ⬜     |
+| Branch Isolation (RLS)                      | ⬜     |
+| RBAC Enforcement                            | ⬜     |
