@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
-import { logFailedAction } from "../lib/auditLogger.js";
+import { logFailedAction, fixAuditLogUser, filterUnchangedFields } from "../lib/auditLogger.js";
 
 const router = Router();
 
@@ -230,16 +230,8 @@ router.post(
         return;
       }
 
-      // Update audit log with user_id
-      await supabaseAdmin
-        .from("audit_logs")
-        .update({ user_id: req.user!.id })
-        .eq("entity_type", "THIRD_PARTY_REPAIR")
-        .eq("entity_id", repair.id)
-        .eq("action", "CREATE")
-        .is("user_id", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
+      // Fix audit log user_id (trigger may set it from created_by)
+      await fixAuditLogUser("THIRD_PARTY_REPAIR", repair.id, "CREATE", req.user!.id, req.user!.branchIds[0] || null);
 
       res.status(201).json(repair);
     } catch (error) {
@@ -308,9 +300,32 @@ router.put(
       if (repair_date !== undefined) updateData.repair_date = repair_date;
       if (notes !== undefined) updateData.notes = notes?.trim() || null;
 
+      // Filter out fields that haven't actually changed
+      const existingFull = await supabaseAdmin
+        .from("third_party_repairs")
+        .select("*")
+        .eq("id", repairId)
+        .single();
+
+      const actualChanges = existingFull.data
+        ? filterUnchangedFields(updateData, existingFull.data)
+        : updateData;
+
+      if (Object.keys(actualChanges).length === 0) {
+        // No real changes — return existing data without triggering an update
+        const { data: current } = await supabaseAdmin
+          .from("third_party_repairs")
+          .select(`*, job_orders(id, order_number, branch_id, customers(id, full_name), vehicles(id, plate_number, model))`)
+          .eq("id", repairId)
+          .eq("is_deleted", false)
+          .single();
+        res.json(current);
+        return;
+      }
+
       const { error: updateError } = await supabaseAdmin
         .from("third_party_repairs")
-        .update(updateData)
+        .update(actualChanges)
         .eq("id", repairId);
 
       if (updateError) {

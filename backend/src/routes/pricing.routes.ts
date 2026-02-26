@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
-import { logFailedAction } from "../lib/auditLogger.js";
+import { logFailedAction, fixAuditLogUser, filterUnchangedFields } from "../lib/auditLogger.js";
 
 const router = Router();
 
@@ -437,16 +437,8 @@ router.post(
         return;
       }
 
-      // Update audit log with user_id
-      await supabaseAdmin
-        .from("audit_logs")
-        .update({ user_id: req.user!.id })
-        .eq("entity_type", "PRICING_MATRIX")
-        .eq("entity_id", item.id)
-        .eq("action", "CREATE")
-        .is("user_id", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
+      // Fix audit log user_id (trigger may set it from created_by)
+      await fixAuditLogUser("PRICING_MATRIX", item.id, "CREATE", req.user!.id, req.user!.branchIds[0] || null);
 
       res.status(201).json(item);
     } catch (error) {
@@ -582,11 +574,24 @@ router.put(
         return;
       }
 
+      // Filter out fields that haven't actually changed
+      const actualChanges = filterUnchangedFields(updateData, existing);
+      if (Object.keys(actualChanges).length === 0) {
+        // No real changes — return existing data without triggering an update
+        const { data: current } = await supabaseAdmin
+          .from("pricing_matrices")
+          .select(`*, catalog_items(id, name, type, base_price), branches(id, name, code)`)
+          .eq("id", id)
+          .single();
+        res.json(current);
+        return;
+      }
+
       // Conflict detection when activating or changing key fields
-      const newStatus = (updateData.status as string) || existing.status;
-      const newCatalogItemId = (updateData.catalog_item_id as string) || existing.catalog_item_id;
-      const newPricingType = (updateData.pricing_type as string) || existing.pricing_type;
-      const newBranchId = (updateData.branch_id as string) || existing.branch_id;
+      const newStatus = (actualChanges.status as string) || existing.status;
+      const newCatalogItemId = (actualChanges.catalog_item_id as string) || existing.catalog_item_id;
+      const newPricingType = (actualChanges.pricing_type as string) || existing.pricing_type;
+      const newBranchId = (actualChanges.branch_id as string) || existing.branch_id;
 
       if (newStatus === "active") {
         const { data: conflicting, error: conflictError } = await supabaseAdmin
@@ -614,7 +619,7 @@ router.put(
 
       const { data: item, error } = await supabaseAdmin
         .from("pricing_matrices")
-        .update(updateData)
+        .update(actualChanges)
         .eq("id", id)
         .select(
           `
@@ -636,16 +641,8 @@ router.put(
         return;
       }
 
-      // Update audit log with user_id
-      await supabaseAdmin
-        .from("audit_logs")
-        .update({ user_id: req.user!.id })
-        .eq("entity_type", "PRICING_MATRIX")
-        .eq("entity_id", id)
-        .eq("action", "UPDATE")
-        .is("user_id", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
+      // Fix audit log user_id (trigger may set it from created_by)
+      await fixAuditLogUser("PRICING_MATRIX", id, "UPDATE", req.user!.id, req.user!.branchIds[0] || null);
 
       res.json(item);
     } catch (error) {

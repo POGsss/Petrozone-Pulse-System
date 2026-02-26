@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
-import { logFailedAction } from "../lib/auditLogger.js";
+import { logFailedAction, fixAuditLogUser, filterUnchangedFields } from "../lib/auditLogger.js";
 
 const router = Router();
 
@@ -275,16 +275,8 @@ router.post(
         return;
       }
 
-      // Update audit log with user_id
-      await supabaseAdmin
-        .from("audit_logs")
-        .update({ user_id: req.user!.id })
-        .eq("entity_type", "CATALOG_ITEM")
-        .eq("entity_id", item.id)
-        .eq("action", "CREATE")
-        .is("user_id", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
+      // Fix audit log user_id (trigger may set it from created_by)
+      await fixAuditLogUser("CATALOG_ITEM", item.id, "CREATE", req.user!.id, req.user!.branchIds[0] || null);
 
       res.status(201).json(item);
     } catch (error) {
@@ -441,9 +433,22 @@ router.put(
         return;
       }
 
+      // Filter out fields that haven't actually changed
+      const actualChanges = filterUnchangedFields(updateData, existing);
+      if (Object.keys(actualChanges).length === 0) {
+        // No real changes — return existing data without triggering an update
+        const { data: current } = await supabaseAdmin
+          .from("catalog_items")
+          .select(`*, branches(id, name, code)`)
+          .eq("id", itemId)
+          .single();
+        res.json(current);
+        return;
+      }
+
       const { data: item, error } = await supabaseAdmin
         .from("catalog_items")
-        .update(updateData)
+        .update(actualChanges)
         .eq("id", itemId)
         .select(
           `
@@ -458,16 +463,8 @@ router.put(
         return;
       }
 
-      // Update audit log with user_id
-      await supabaseAdmin
-        .from("audit_logs")
-        .update({ user_id: req.user!.id })
-        .eq("entity_type", "CATALOG_ITEM")
-        .eq("entity_id", itemId)
-        .eq("action", "UPDATE")
-        .is("user_id", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
+      // Fix audit log user_id (trigger may set it from created_by)
+      await fixAuditLogUser("CATALOG_ITEM", itemId, "UPDATE", req.user!.id, req.user!.branchIds[0] || null);
 
       res.json(item);
     } catch (error) {

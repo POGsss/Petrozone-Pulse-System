@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
-import { logFailedAction } from "../lib/auditLogger.js";
+import { logFailedAction, fixAuditLogUser } from "../lib/auditLogger.js";
 import { deductStockForJobOrder, restoreStockForJobOrder } from "./inventory.routes.js";
 
 const router = Router();
@@ -331,16 +331,8 @@ router.post(
         return;
       }
 
-      // Update audit log with user_id
-      await supabaseAdmin
-        .from("audit_logs")
-        .update({ user_id: req.user!.id })
-        .eq("entity_type", "JOB_ORDER")
-        .eq("entity_id", order.id)
-        .eq("action", "CREATE")
-        .is("user_id", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
+      // Fix audit log user_id (trigger may set it from created_by)
+      await fixAuditLogUser("JOB_ORDER", order.id, "CREATE", req.user!.id, req.user!.branchIds[0] || null);
 
       res.status(201).json({
         ...order,
@@ -371,7 +363,7 @@ router.put(
       // Get existing order
       const { data: existing, error: fetchError } = await supabaseAdmin
         .from("job_orders")
-        .select("id, branch_id")
+        .select("id, branch_id, notes")
         .eq("id", orderId)
         .eq("is_deleted", false)
         .single();
@@ -394,9 +386,23 @@ router.put(
         return;
       }
 
+      // Check if notes actually changed
+      const newNotes = notes?.trim() || null;
+      if (newNotes === (existing as any).notes) {
+        // No real changes — return existing data without triggering an update
+        const { data: current } = await supabaseAdmin
+          .from("job_orders")
+          .select(`*, customers(id, full_name, contact_number, email), vehicles(id, plate_number, model, vehicle_type), branches(id, name, code), job_order_items(*)`)
+          .eq("id", orderId)
+          .eq("is_deleted", false)
+          .single();
+        res.json(current);
+        return;
+      }
+
       const { error: updateError } = await supabaseAdmin
         .from("job_orders")
-        .update({ notes: notes?.trim() || null })
+        .update({ notes: newNotes })
         .eq("id", orderId);
 
       if (updateError) {
@@ -433,7 +439,7 @@ router.put(
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
-          p_new_values: { notes: notes?.trim() || null },
+          p_new_values: { notes: newNotes },
         });
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);

@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
-import { logFailedAction } from "../lib/auditLogger.js";
+import { logFailedAction, fixAuditLogUser, filterUnchangedFields } from "../lib/auditLogger.js";
 
 const router = Router();
 
@@ -303,16 +303,8 @@ router.post(
         return;
       }
 
-      // Update audit log with user_id
-      await supabaseAdmin
-        .from("audit_logs")
-        .update({ user_id: req.user!.id })
-        .eq("entity_type", "VEHICLE")
-        .eq("entity_id", vehicle.id)
-        .eq("action", "CREATE")
-        .is("user_id", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
+      // Fix audit log user_id (trigger may set it from created_by)
+      await fixAuditLogUser("VEHICLE", vehicle.id, "CREATE", req.user!.id, req.user!.branchIds[0] || null);
 
       res.status(201).json(vehicle);
     } catch (error) {
@@ -487,9 +479,22 @@ router.put(
         return;
       }
 
+      // Filter out fields that haven't actually changed
+      const actualChanges = filterUnchangedFields(updateData, existing);
+      if (Object.keys(actualChanges).length === 0) {
+        // No real changes — return existing data without triggering an update
+        const { data: current } = await supabaseAdmin
+          .from("vehicles")
+          .select(`*, branches(id, name, code), customers(id, full_name, contact_number, email)`)
+          .eq("id", vehicleId)
+          .single();
+        res.json(current);
+        return;
+      }
+
       const { data: vehicle, error } = await supabaseAdmin
         .from("vehicles")
-        .update(updateData)
+        .update(actualChanges)
         .eq("id", vehicleId)
         .select(
           `
@@ -509,16 +514,8 @@ router.put(
         return;
       }
 
-      // Update audit log with user_id
-      await supabaseAdmin
-        .from("audit_logs")
-        .update({ user_id: req.user!.id })
-        .eq("entity_type", "VEHICLE")
-        .eq("entity_id", vehicleId)
-        .eq("action", "UPDATE")
-        .is("user_id", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
+      // Fix audit log user_id (trigger may set it from created_by)
+      await fixAuditLogUser("VEHICLE", vehicleId, "UPDATE", req.user!.id, req.user!.branchIds[0] || null);
 
       res.json(vehicle);
     } catch (error) {

@@ -860,7 +860,7 @@ export function JobOrderManagement() {
     setShowHistoryModal(true);
     jobOrdersApi.getHistory(order.id)
       .then((res) => { setHistory(res); })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => { setLoadingHistory(false); });
   }
 
@@ -1877,11 +1877,43 @@ export function JobOrderManagement() {
                 <p className="text-sm text-neutral-900 text-center py-4">Loading items...</p>
               ) : (
                 <>
+                  {/* Add item row */}
+                  <div className="flex gap-2 items-end mt-2">
+                    <div className="flex-1">
+                      <ModalSelect
+                        value={editSelectedCatalogId}
+                        onChange={setEditSelectedCatalogId}
+                        placeholder="Select Catalog Item"
+                        options={editCatalogItemOptions}
+                      />
+                    </div>
+                    <div className="w-20">
+                      <ModalInput
+                        type="number"
+                        value={editSelectedQty}
+                        onChange={setEditSelectedQty}
+                        placeholder="Qty"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddEditDraftItem}
+                      disabled={!editSelectedCatalogId || editResolvingPrice}
+                      className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+                    >
+                      {editResolvingPrice ? (
+                        <LuRefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <LuPlus className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+
                   {/* Existing items */}
                   {editItems.map((item) => (
                     <div
                       key={item.id}
-                      className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3 mb-2"
+                      className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3 mb-4"
                     >
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-neutral-950 text-sm truncate">
@@ -1921,7 +1953,7 @@ export function JobOrderManagement() {
                   {editDraftItems.map((item) => (
                     <div
                       key={item.catalog_item_id}
-                      className="flex items-center justify-between bg-primary-100 rounded-xl px-4 py-3 mb-2"
+                      className="flex items-center justify-between bg-primary-100 rounded-xl px-4 py-3 mb-4"
                     >
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-neutral-950 text-sm truncate">
@@ -1951,38 +1983,6 @@ export function JobOrderManagement() {
                       </div>
                     </div>
                   ))}
-
-                  {/* Add item row */}
-                  <div className="flex gap-2 items-end mt-2">
-                    <div className="flex-1">
-                      <ModalSelect
-                        value={editSelectedCatalogId}
-                        onChange={setEditSelectedCatalogId}
-                        placeholder="Select Catalog Item"
-                        options={editCatalogItemOptions}
-                      />
-                    </div>
-                    <div className="w-20">
-                      <ModalInput
-                        type="number"
-                        value={editSelectedQty}
-                        onChange={setEditSelectedQty}
-                        placeholder="Qty"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleAddEditDraftItem}
-                      disabled={!editSelectedCatalogId || editResolvingPrice}
-                      className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
-                    >
-                      {editResolvingPrice ? (
-                        <LuRefreshCw className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <LuPlus className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
 
                   {/* Total */}
                   {(editItems.length > 0 || editDraftItems.length > 0) && (

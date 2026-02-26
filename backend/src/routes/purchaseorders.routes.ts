@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
-import { logFailedAction } from "../lib/auditLogger.js";
+import { logFailedAction, fixAuditLogUser, filterUnchangedFields } from "../lib/auditLogger.js";
 
 const router = Router();
 
@@ -264,16 +264,8 @@ router.post(
         return;
       }
 
-      // Update audit log user_id
-      await supabaseAdmin
-        .from("audit_logs")
-        .update({ user_id: req.user!.id })
-        .eq("entity_type", "PURCHASE_ORDER")
-        .eq("entity_id", po.id)
-        .eq("action", "CREATE")
-        .is("user_id", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
+      // Fix audit log user_id (trigger may set it from created_by)
+      await fixAuditLogUser("PURCHASE_ORDER", po.id, "CREATE", req.user!.id, req.user!.branchIds[0] || null);
 
       // Fetch full PO with items
       const { data: fullPO } = await supabaseAdmin
@@ -357,6 +349,7 @@ router.put(
       if (notes !== undefined) updateData.notes = notes?.trim() || null;
 
       // Update items if provided
+      let itemsChanged = false;
       if (items && Array.isArray(items)) {
         if (items.length === 0) {
           res.status(400).json({ error: "At least one item is required" });
@@ -410,12 +403,27 @@ router.put(
           0
         );
         updateData.total_amount = total;
+        itemsChanged = true;
       }
 
-      if (Object.keys(updateData).length > 0) {
+      // Filter out unchanged header fields
+      const headerChanges = filterUnchangedFields(updateData, existing);
+
+      if (Object.keys(headerChanges).length === 0 && !itemsChanged) {
+        // No real changes — return existing data without triggering an update
+        const { data: currentPO } = await supabaseAdmin
+          .from("purchase_orders")
+          .select("*, branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))")
+          .eq("id", poId)
+          .single();
+        res.json(currentPO);
+        return;
+      }
+
+      if (Object.keys(headerChanges).length > 0) {
         const { error: updateError } = await supabaseAdmin
           .from("purchase_orders")
-          .update(updateData)
+          .update(headerChanges)
           .eq("id", poId);
 
         if (updateError) {

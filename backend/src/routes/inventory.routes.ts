@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
-import { logFailedAction } from "../lib/auditLogger.js";
+import { logFailedAction, fixAuditLogUser, filterUnchangedFields } from "../lib/auditLogger.js";
 import type { Database } from "../types/database.types.js";
 
 const router = Router();
@@ -326,16 +326,8 @@ router.post(
         current_quantity = parseInt(initial_stock);
       }
 
-      // Update audit log with user_id
-      await supabaseAdmin
-        .from("audit_logs")
-        .update({ user_id: req.user!.id })
-        .eq("entity_type", "INVENTORY_ITEM")
-        .eq("entity_id", item.id)
-        .eq("action", "CREATE")
-        .is("user_id", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
+      // Fix audit log user_id (trigger may set it from created_by)
+      await fixAuditLogUser("INVENTORY_ITEM", item.id, "CREATE", req.user!.id, req.user!.branchIds[0] || null);
 
       res.status(201).json({
         ...item,
@@ -478,9 +470,22 @@ router.put(
         return;
       }
 
+      // Filter out fields that haven't actually changed
+      const actualChanges = filterUnchangedFields(updateData, existing);
+      if (Object.keys(actualChanges).length === 0) {
+        // No real changes — return existing data without triggering an update
+        const current_quantity = await getOnHandSingle(itemId);
+        res.json({
+          ...existing,
+          current_quantity,
+          is_low_stock: current_quantity <= existing.reorder_threshold,
+        });
+        return;
+      }
+
       const { data: updated, error: updateError } = await supabaseAdmin
         .from("inventory_items")
-        .update(updateData)
+        .update(actualChanges)
         .eq("id", itemId)
         .select("*, branches(id, name, code)")
         .single();
@@ -490,16 +495,8 @@ router.put(
         return;
       }
 
-      // Update audit log with user_id
-      await supabaseAdmin
-        .from("audit_logs")
-        .update({ user_id: req.user!.id })
-        .eq("entity_type", "INVENTORY_ITEM")
-        .eq("entity_id", itemId)
-        .eq("action", "UPDATE")
-        .is("user_id", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
+      // Fix audit log user_id (trigger may set it from created_by)
+      await fixAuditLogUser("INVENTORY_ITEM", itemId, "UPDATE", req.user!.id, req.user!.branchIds[0] || null);
 
       const current_quantity = await getOnHandSingle(itemId);
       res.json({

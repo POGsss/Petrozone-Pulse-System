@@ -293,8 +293,8 @@ Tasks:
 1. Design suppliers schema with constraints
 2. Implement backend CRUD APIs for supplier profiles with validation
 3. Apply Supabase RLS policies for branch isolation
-4. Build Supplier Management page (card/table style consistent with other management pages)
-5. Add Supplier sidebar item under Inventory section
+4. Build Supplier Management page (grid card style consistent with other management pages[use Branch Management as the reference, exact layout styling and implementation])
+5. Add Supplier sidebar item under Purchase Orders section
 6. Audit log all mutations
 7. Maintain consistent styling and use available modal components
 ```
