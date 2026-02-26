@@ -1,11 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
-import { LuPlus, LuCircleAlert, LuRefreshCw, LuPencil, LuTrash2, LuTruck } from "react-icons/lu";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { LuPlus, LuCircleAlert, LuRefreshCw, LuPencil, LuTrash2, LuTruck, LuPackage, LuEllipsisVertical, LuX, LuCheck } from "react-icons/lu";
 import { useAuth } from "../../auth";
-import { suppliersApi, branchesApi } from "../../lib/api";
+import { suppliersApi, branchesApi, supplierProductsApi, inventoryApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
 import { Modal, ModalSection, ModalInput, ModalSelect, ModalButtons, ModalError, SearchFilter } from "../../components";
 import type { FilterGroup } from "../../components";
-import type { Supplier, Branch } from "../../types";
+import type { Supplier, Branch, SupplierProduct, InventoryItem } from "../../types";
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-US", {
@@ -60,6 +60,35 @@ export function SupplierManagement() {
   const [showViewModal, setShowViewModal] = useState(false);
   const [viewSupplier, setViewSupplier] = useState<Supplier | null>(null);
 
+  // Supplier Products state
+  const [supplierProducts, setSupplierProducts] = useState<SupplierProduct[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+
+  // Manage Products modal
+  const [showManageProductsModal, setShowManageProductsModal] = useState(false);
+  const [manageProductsSupplier, setManageProductsSupplier] = useState<Supplier | null>(null);
+
+  // Inline add/edit product form in manage modal
+  const [productFormName, setProductFormName] = useState("");
+  const [productFormInventoryId, setProductFormInventoryId] = useState("");
+  const [productFormCost, setProductFormCost] = useState("");
+  const [productFormLeadTime, setProductFormLeadTime] = useState("");
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [productFormError, setProductFormError] = useState<string | null>(null);
+  const [savingProduct, setSavingProduct] = useState(false);
+
+  // Delete supplier product confirmation
+  const [showDeleteProductConfirm, setShowDeleteProductConfirm] = useState(false);
+  const [deletingProduct, setDeletingProduct] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<SupplierProduct | null>(null);
+
+  // Actions overflow dropdown
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const closeDropdown = useCallback(() => setOpenDropdownId(null), []);
+
   // Search & filters
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
@@ -78,6 +107,19 @@ export function SupplierManagement() {
       setAddForm(prev => ({ ...prev, branch_id: defaultBranchId }));
     }
   }, [branches, user]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        closeDropdown();
+      }
+    }
+    if (openDropdownId) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [openDropdownId, closeDropdown]);
 
   async function fetchSuppliers() {
     try {
@@ -98,6 +140,27 @@ export function SupplierManagement() {
       setBranches(data.filter((b: Branch) => b.is_active));
     } catch (err) {
       console.error("Failed to fetch branches:", err);
+    }
+  }
+
+  async function fetchSupplierProducts(supplierId: string) {
+    try {
+      setLoadingProducts(true);
+      const result = await supplierProductsApi.getAll({ supplier_id: supplierId });
+      setSupplierProducts(result.data);
+    } catch (err) {
+      console.error("Failed to fetch supplier products:", err);
+    } finally {
+      setLoadingProducts(false);
+    }
+  }
+
+  async function fetchInventoryItems() {
+    try {
+      const result = await inventoryApi.getAll({ status: "active", limit: 500 });
+      setInventoryItems(result.data);
+    } catch (err) {
+      console.error("Failed to fetch inventory items:", err);
     }
   }
 
@@ -140,16 +203,16 @@ export function SupplierManagement() {
     if (!form.supplier_name.trim()) return "Supplier name is required";
     if (!form.contact_person.trim()) return "Contact person is required";
     if (!form.email.trim()) return "Email is required";
-    
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(form.email)) return "Invalid email format";
-    
+
     if (!form.phone.trim()) return "Phone number is required";
     const phoneDigits = form.phone.replace(/[^0-9]/g, "");
     if (phoneDigits.length < 7 || phoneDigits.length > 20) return "Phone number must be between 7 and 20 digits";
-    
+
     if (!form.address.trim()) return "Address is required";
-    
+
     return null;
   }
 
@@ -284,6 +347,119 @@ export function SupplierManagement() {
     }
   }
 
+  // --- Supplier Product Handlers ---
+
+  function openViewSupplierWithProducts(supplier: Supplier) {
+    setViewSupplier(supplier);
+    setShowViewModal(true);
+    fetchSupplierProducts(supplier.id);
+  }
+
+  function openManageProductsModal(supplier: Supplier) {
+    setManageProductsSupplier(supplier);
+    setShowManageProductsModal(true);
+    fetchSupplierProducts(supplier.id);
+    fetchInventoryItems();
+    resetProductForm();
+  }
+
+  function resetProductForm() {
+    setProductFormName("");
+    setProductFormInventoryId("");
+    setProductFormCost("");
+    setProductFormLeadTime("");
+    setEditingProductId(null);
+    setProductFormError(null);
+  }
+
+  function startEditProduct(product: SupplierProduct) {
+    setEditingProductId(product.id);
+    setProductFormName(product.product_name);
+    setProductFormInventoryId(product.inventory_item_id || "");
+    setProductFormCost(String(product.unit_cost));
+    setProductFormLeadTime(product.lead_time_days !== null ? String(product.lead_time_days) : "");
+    setProductFormError(null);
+  }
+
+  function cancelEditProduct() {
+    resetProductForm();
+  }
+
+  async function handleSaveProduct() {
+    if (!manageProductsSupplier) return;
+    setProductFormError(null);
+
+    if (!productFormName.trim()) {
+      setProductFormError("Product name is required");
+      return;
+    }
+    if (!productFormCost || parseFloat(productFormCost) < 0) {
+      setProductFormError("Unit cost is required and must be non-negative");
+      return;
+    }
+    if (productFormLeadTime && parseInt(productFormLeadTime) < 0) {
+      setProductFormError("Lead time days must be non-negative");
+      return;
+    }
+
+    try {
+      setSavingProduct(true);
+
+      if (editingProductId) {
+        // Update existing product
+        await supplierProductsApi.update(editingProductId, {
+          product_name: productFormName.trim(),
+          inventory_item_id: productFormInventoryId || null,
+          unit_cost: parseFloat(productFormCost),
+          lead_time_days: productFormLeadTime ? parseInt(productFormLeadTime) : null,
+        });
+        showToast.success("Supplier product updated successfully");
+      } else {
+        // Create new product
+        await supplierProductsApi.create({
+          supplier_id: manageProductsSupplier.id,
+          inventory_item_id: productFormInventoryId || null,
+          product_name: productFormName.trim(),
+          unit_cost: parseFloat(productFormCost),
+          lead_time_days: productFormLeadTime ? parseInt(productFormLeadTime) : null,
+          branch_id: manageProductsSupplier.branch_id,
+        });
+        showToast.success("Supplier product created successfully");
+      }
+
+      resetProductForm();
+      fetchSupplierProducts(manageProductsSupplier.id);
+    } catch (err) {
+      setProductFormError(err instanceof Error ? err.message : "Failed to save supplier product");
+      showToast.error(err instanceof Error ? err.message : "Failed to save supplier product");
+    } finally {
+      setSavingProduct(false);
+    }
+  }
+
+  function openDeleteProductConfirm(product: SupplierProduct) {
+    setProductToDelete(product);
+    setShowDeleteProductConfirm(true);
+  }
+
+  async function handleDeleteProduct() {
+    if (!productToDelete || !manageProductsSupplier) return;
+
+    try {
+      setDeletingProduct(true);
+      await supplierProductsApi.delete(productToDelete.id);
+
+      setShowDeleteProductConfirm(false);
+      setProductToDelete(null);
+      showToast.success("Supplier product deleted successfully");
+      fetchSupplierProducts(manageProductsSupplier.id);
+    } catch (err) {
+      showToast.error(err instanceof Error ? err.message : "Failed to delete supplier product");
+    } finally {
+      setDeletingProduct(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -345,11 +521,8 @@ export function SupplierManagement() {
         {filteredSuppliers.map((supplier) => (
           <div
             key={supplier.id}
-            onClick={() => {
-              setViewSupplier(supplier);
-              setShowViewModal(true);
-            }}
-            className="bg-white rounded-xl border p-4 border-neutral-200 cursor-pointer hover:bg-neutral-50 transition-colors"
+            onClick={() => openViewSupplierWithProducts(supplier)}
+            className="bg-white rounded-xl border p-4 border-neutral-200 cursor-pointer hover:bg-neutral-100 transition-colors"
           >
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-3">
@@ -367,8 +540,8 @@ export function SupplierManagement() {
               </div>
               <span
                 className={`px-2 py-1 rounded text-xs font-medium ${supplier.status === "active"
-                    ? "bg-positive-100 text-positive"
-                    : "bg-negative-100 text-negative"
+                  ? "bg-positive-100 text-positive"
+                  : "bg-negative-100 text-negative"
                   }`}
               >
                 {supplier.status === "active" ? "Active" : "Inactive"}
@@ -404,6 +577,26 @@ export function SupplierManagement() {
                 <LuTrash2 className="w-4 h-4" />
                 Delete
               </button>
+              {/* More actions dropdown */}
+              <div className="relative" ref={openDropdownId === `card-${supplier.id}` ? dropdownRef : undefined}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${supplier.id}` ? null : `card-${supplier.id}`); }}
+                  className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+                  title="More actions"
+                >
+                  <LuEllipsisVertical className="w-4 h-4" /> More
+                </button>
+                {openDropdownId === `card-${supplier.id}` && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); closeDropdown(); openManageProductsModal(supplier); }}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                    >
+                      <LuPackage className="w-4 h-4" /> Manage Products
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         ))}
@@ -631,7 +824,10 @@ export function SupplierManagement() {
       {/* View Supplier Modal */}
       <Modal
         isOpen={showViewModal && !!viewSupplier}
-        onClose={() => setShowViewModal(false)}
+        onClose={() => {
+          setShowViewModal(false);
+          setSupplierProducts([]);
+        }}
         title="Supplier Details"
       >
         {viewSupplier && (
@@ -694,6 +890,49 @@ export function SupplierManagement() {
               />
             </ModalSection>
 
+            {/* Linked Products (read-only) */}
+            <ModalSection title="Linked Products">
+              {loadingProducts ? (
+                <div className="flex items-center justify-center py-4">
+                  <LuRefreshCw className="w-4 h-4 animate-spin text-primary" />
+                </div>
+              ) : supplierProducts.filter(p => p.status === "active").length === 0 ? (
+                <p className="text-sm text-neutral-500 text-center py-3">
+                  No active products linked to this supplier.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {supplierProducts.filter(p => p.status === "active").map((product) => (
+                    <div
+                      key={product.id}
+                      className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-neutral-950 text-sm truncate">
+                          {product.product_name}
+                        </p>
+                        <div className="flex items-center gap-3 mt-0.5">
+                          <span className="text-xs text-neutral-900">
+                            ₱{Number(product.unit_cost).toFixed(2)}
+                          </span>
+                          {product.inventory_items && (
+                            <span className="text-xs text-primary font-mono">
+                              {product.inventory_items.sku_code}
+                            </span>
+                          )}
+                          {product.lead_time_days !== null && (
+                            <span className="text-xs text-neutral-900">
+                              Lead: {product.lead_time_days}d
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ModalSection>
+
             {viewSupplier.notes && (
               <ModalSection title="Notes">
                 <ModalInput
@@ -724,6 +963,218 @@ export function SupplierManagement() {
                 />
               </div>
             </ModalSection>
+          </div>
+        )}
+      </Modal>
+
+      {/* --- Manage Products Modal (JO Repairs style) --- */}
+      <Modal
+        isOpen={showManageProductsModal && !!manageProductsSupplier}
+        onClose={() => { setShowManageProductsModal(false); setManageProductsSupplier(null); resetProductForm(); }}
+        title="Supplier Products"
+        maxWidth="lg"
+      >
+        {/* Delete Supplier Product Confirmation */}
+        <Modal
+          isOpen={showDeleteProductConfirm && !!productToDelete}
+          onClose={() => setShowDeleteProductConfirm(false)}
+          title="Delete Supplier Product"
+          maxWidth="sm"
+        >
+          {productToDelete && (
+            <div>
+              <div className="bg-neutral-100 rounded-xl p-4 my-4">
+                <p className="text-neutral-900">
+                  Are you sure you want to delete <strong className="text-neutral-950">{productToDelete.product_name}</strong>?
+                </p>
+              </div>
+              <p className="text-sm text-neutral-900 mb-2">
+                The product will be permanently deleted and removed from records. This action cannot be undone.
+              </p>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteProductConfirm(false)}
+                  className="flex-1 px-4 py-3.5 border-2 border-negative text-negative rounded-xl font-semibold hover:bg-negative-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteProduct}
+                  disabled={deletingProduct}
+                  className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {deletingProduct ? "Deleting..." : "Delete"}
+                </button>
+              </div>
+            </div>
+          )}
+        </Modal>
+        
+        {manageProductsSupplier && (
+          <div>
+            <ModalSection title={editingProductId ? "Edit Product" : "Add Product"}>
+              <ModalInput
+                type="text"
+                value={productFormName}
+                onChange={setProductFormName}
+                placeholder="Product Name *"
+              />
+              <ModalSelect
+                value={productFormInventoryId}
+                onChange={(v) => {
+                  setProductFormInventoryId(v);
+                  // Auto-fill product name from inventory item if selected and name is empty
+                  if (v && !productFormName.trim()) {
+                    const item = inventoryItems.find(i => i.id === v);
+                    if (item) setProductFormName(item.item_name);
+                  }
+                }}
+                options={[
+                  { value: "", label: "No linked inventory item" },
+                  ...inventoryItems.map(i => ({
+                    value: i.id,
+                    label: `${i.item_name} (${i.sku_code})`,
+                  })),
+                ]}
+                placeholder="Link to Inventory Item (optional)"
+              />
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <ModalInput
+                    type="number"
+                    value={productFormCost}
+                    onChange={setProductFormCost}
+                    placeholder="Unit Cost (PHP) *"
+                  />
+                </div>
+                <div className="flex-1">
+                  <ModalInput
+                    type="number"
+                    value={productFormLeadTime}
+                    onChange={setProductFormLeadTime}
+                    placeholder="Lead Time (days)"
+                  />
+                </div>
+                {editingProductId ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleSaveProduct}
+                      disabled={savingProduct}
+                      className="px-4.5 py-4.5 bg-positive text-white rounded-xl hover:bg-positive-950 disabled:opacity-50 transition-colors shrink-0"
+                      title="Save changes"
+                    >
+                      <LuCheck className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelEditProduct}
+                      className="px-4.5 py-4.5 bg-neutral-200 text-neutral-900 rounded-xl hover:bg-neutral-300 transition-colors shrink-0"
+                      title="Cancel edit"
+                    >
+                      <LuX className="w-4 h-4" />
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleSaveProduct}
+                    disabled={savingProduct}
+                    className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 transition-colors shrink-0"
+                    title="Add product"
+                  >
+                    <LuPlus className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              <ModalError message={productFormError} />
+            </ModalSection>
+
+            <ModalSection title="Products">
+              {loadingProducts ? (
+                <div className="space-y-4">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
+                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
+                    </div>
+                  ))}
+                </div>
+              ) : supplierProducts.length > 0 ? (
+                <div className="space-y-4">
+                  {supplierProducts.map((product) => (
+                    <div
+                      key={product.id}
+                      className={`flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3 ${editingProductId === product.id ? "ring-2 ring-primary" : ""}`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-neutral-950 text-sm truncate">
+                            {product.product_name}
+                          </p>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-xs font-medium ${product.status === "active"
+                                ? "bg-positive-100 text-positive"
+                                : "bg-negative-100 text-negative"
+                              }`}
+                          >
+                            {product.status}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 mt-0.5">
+                          <span className="text-xs text-neutral-900">
+                            ₱{Number(product.unit_cost).toFixed(2)}
+                          </span>
+                          {product.inventory_items && (
+                            <span className="text-xs text-primary font-mono">
+                              {product.inventory_items.sku_code}
+                            </span>
+                          )}
+                          {product.lead_time_days !== null && (
+                            <span className="text-xs text-neutral-900">
+                              Lead: {product.lead_time_days}d
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 ml-3">
+                        <button
+                          type="button"
+                          onClick={() => startEditProduct(product)}
+                          className="text-primary hover:text-primary-900 p-1"
+                          title="Edit product"
+                        >
+                          <LuPencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openDeleteProductConfirm(product)}
+                          className="text-negative hover:text-negative-900 p-1"
+                          title="Delete product"
+                        >
+                          <LuX className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-neutral-900 text-center py-4">
+                  No products yet. Fill in the details above and click +.
+                </p>
+              )}
+            </ModalSection>
+
+            <ModalButtons
+              onCancel={() => { setShowManageProductsModal(false); setManageProductsSupplier(null); resetProductForm(); }}
+              submitText="Done"
+              onSubmit={() => { setShowManageProductsModal(false); setManageProductsSupplier(null); resetProductForm(); }}
+              type="button"
+            />
           </div>
         )}
       </Modal>

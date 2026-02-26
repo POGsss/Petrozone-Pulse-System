@@ -12,6 +12,7 @@ import {
   LuSend,
   LuPackageCheck,
   LuBan,
+  LuBadgeCheck,
   LuClipboardList,
   LuX,
   LuSearch,
@@ -63,6 +64,8 @@ function statusBadge(status: string) {
       return "bg-neutral-100 text-neutral-950";
     case "submitted":
       return "bg-primary-100 text-primary-950";
+    case "approved":
+      return "bg-positive-100 text-positive-950";
     case "received":
       return "bg-positive-100 text-positive-950";
     case "cancelled":
@@ -160,6 +163,11 @@ export function PurchaseOrderManagement() {
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [orderToSubmit, setOrderToSubmit] = useState<PurchaseOrder | null>(null);
   const [processingSubmit, setProcessingSubmit] = useState(false);
+
+  // Approve confirmation modal
+  const [showApproveConfirm, setShowApproveConfirm] = useState(false);
+  const [orderToApprove, setOrderToApprove] = useState<PurchaseOrder | null>(null);
+  const [processingApprove, setProcessingApprove] = useState(false);
 
   // Cancel confirmation modal
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -572,6 +580,28 @@ export function PurchaseOrderManagement() {
     }
   }
 
+  // ─── Approve PO confirmation ─────────────────────────────────────────
+  function openApproveConfirm(order: PurchaseOrder) {
+    setOrderToApprove(order);
+    setShowApproveConfirm(true);
+  }
+
+  async function handleConfirmApprove() {
+    if (!orderToApprove) return;
+    try {
+      setProcessingApprove(true);
+      await purchaseOrdersApi.approve(orderToApprove.id);
+      showToast.success(`PO ${orderToApprove.po_number} approved`);
+      setShowApproveConfirm(false);
+      setOrderToApprove(null);
+      fetchData();
+    } catch (err) {
+      showToast.error(err instanceof Error ? err.message : "Failed to approve PO");
+    } finally {
+      setProcessingApprove(false);
+    }
+  }
+
   // ─── Receive PO ─────────────────────────────────────────────────────
   async function handleReceivePO(order: PurchaseOrder) {
     try {
@@ -587,7 +617,8 @@ export function PurchaseOrderManagement() {
   function getDropdownActions(order: PurchaseOrder) {
     const actions: string[] = [];
     if (order.status === "draft") actions.push("submit");
-    if (order.status === "submitted") actions.push("receive");
+    if (order.status === "submitted") actions.push("approve");
+    if (order.status === "approved") actions.push("receive");
     if (["draft", "submitted"].includes(order.status)) actions.push("cancel");
     return actions;
   }
@@ -693,6 +724,7 @@ export function PurchaseOrderManagement() {
                 <option value="all">All Status</option>
                 <option value="draft">Draft</option>
                 <option value="submitted">Submitted</option>
+                <option value="approved">Approved</option>
                 <option value="received">Received</option>
                 <option value="cancelled">Cancelled</option>
               </select>
@@ -759,7 +791,7 @@ export function PurchaseOrderManagement() {
                 <div
                   key={order.id}
                   onClick={() => openViewModal(order)}
-                  className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-50 transition-colors"
+                  className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-100 transition-colors"
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">
@@ -808,6 +840,9 @@ export function PurchaseOrderManagement() {
                               <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openSubmitConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuSend className="w-4 h-4" /> Submit PO</button>
                             )}
                             {order.status === "submitted" && (
+                              <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openApproveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBadgeCheck className="w-4 h-4" /> Approve PO</button>
+                            )}
+                            {order.status === "approved" && (
                               <button onClick={(e) => { e.stopPropagation(); closeDropdown(); handleReceivePO(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuPackageCheck className="w-4 h-4" /> Receive &amp; Stock In</button>
                             )}
                             {["draft", "submitted"].includes(order.status) && (
@@ -905,6 +940,9 @@ export function PurchaseOrderManagement() {
                                   <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openSubmitConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuSend className="w-4 h-4" /> Submit PO</button>
                                 )}
                                 {order.status === "submitted" && (
+                                  <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openApproveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBadgeCheck className="w-4 h-4" /> Approve PO</button>
+                                )}
+                                {order.status === "approved" && (
                                   <button onClick={(e) => { e.stopPropagation(); closeDropdown(); handleReceivePO(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuPackageCheck className="w-4 h-4" /> Receive &amp; Stock In</button>
                                 )}
                                 {["draft", "submitted"].includes(order.status) && (
@@ -1317,7 +1355,7 @@ export function PurchaseOrderManagement() {
               </p>
             </div>
             <p className="text-sm text-neutral-900 mb-2">
-              This will change the status from Draft to Submitted. The PO will be available for receiving.
+              This will change the status from Draft to Submitted. The PO will be available for approval.
             </p>
             <div className="flex gap-3 mt-6">
               <button
@@ -1334,6 +1372,40 @@ export function PurchaseOrderManagement() {
                 className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {processingSubmit ? "Submitting..." : "Submit PO"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ═══════════════════ APPROVE PO CONFIRM MODAL ═══════════════════ */}
+      <Modal isOpen={showApproveConfirm && !!orderToApprove} onClose={() => setShowApproveConfirm(false)} title="Approve Purchase Order" maxWidth="sm">
+        {orderToApprove && (
+          <div>
+            <div className="bg-neutral-100 rounded-xl p-4 my-4">
+              <p className="text-neutral-900">
+                Approve purchase order{" "}
+                <strong className="text-neutral-950">{orderToApprove.po_number}</strong>?
+              </p>
+            </div>
+            <p className="text-sm text-neutral-900 mb-2">
+              This will change the status from Submitted to Approved. The PO will be locked from editing and available for receiving.
+            </p>
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowApproveConfirm(false)}
+                className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmApprove}
+                disabled={processingApprove}
+                className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {processingApprove ? "Approving..." : "Approve PO"}
               </button>
             </div>
           </div>

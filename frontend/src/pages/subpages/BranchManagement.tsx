@@ -341,7 +341,7 @@ export function BranchManagement() {
               setViewBranch(branch);
               setShowViewModal(true);
             }}
-            className="bg-white rounded-xl border p-4 border-neutral-200 cursor-pointer hover:bg-neutral-50 transition-colors"
+            className="bg-white rounded-xl border p-4 border-neutral-200 cursor-pointer hover:bg-neutral-100 transition-colors"
           >
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-3">

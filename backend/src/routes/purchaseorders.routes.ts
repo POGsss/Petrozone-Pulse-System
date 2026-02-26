@@ -544,6 +544,83 @@ router.patch(
   }
 );
 
+// ─── PATCH /api/purchase-orders/:id/approve ────────────────────────────
+// Approve PO — submitted → approved (locks from editing)
+// Roles: HM, POC
+router.patch(
+  "/:id/approve",
+  requireRoles("HM", "POC"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const poId = req.params.id as string;
+
+      const { data: po, error: fetchError } = await supabaseAdmin
+        .from("purchase_orders")
+        .select("*")
+        .eq("id", poId)
+        .eq("is_deleted", false)
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === "PGRST116") {
+          res.status(404).json({ error: "Purchase order not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError.message });
+        return;
+      }
+
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(po.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this branch" });
+        return;
+      }
+
+      if (po.status !== "submitted") {
+        res.status(400).json({ error: "Only submitted purchase orders can be approved" });
+        return;
+      }
+
+      const { error: updateError } = await supabaseAdmin
+        .from("purchase_orders")
+        .update({ status: "approved" })
+        .eq("id", poId);
+
+      if (updateError) {
+        res.status(500).json({ error: updateError.message });
+        return;
+      }
+
+      // Audit log
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "APPROVE",
+          p_entity_type: "PURCHASE_ORDER",
+          p_entity_id: poId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { po_number: po.po_number, status: "approved" },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      const { data: updated } = await supabaseAdmin
+        .from("purchase_orders")
+        .select("*, branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))")
+        .eq("id", poId)
+        .single();
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Approve purchase order error:", error);
+      res.status(500).json({ error: "Failed to approve purchase order" });
+    }
+  }
+);
+
 // ─── PATCH /api/purchase-orders/:id/receive ────────────────────────────
 // Receive PO — stock-in logic (FR-6 stock-in rules)
 // Atomically increases on-hand quantity for each item
@@ -580,9 +657,9 @@ router.patch(
         return;
       }
 
-      if (po.status !== "submitted") {
+      if (po.status !== "approved") {
         res.status(400).json({
-          error: "Only submitted purchase orders can be received",
+          error: "Only approved purchase orders can be received",
         });
         return;
       }

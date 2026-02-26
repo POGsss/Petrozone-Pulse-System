@@ -1027,6 +1027,12 @@ export const purchaseOrdersApi = {
     });
   },
 
+  approve: async (id: string) => {
+    return fetchWithAuth<import("../types").PurchaseOrder>(`/api/purchase-orders/${id}/approve`, {
+      method: "PATCH",
+    });
+  },
+
   receive: async (id: string) => {
     return fetchWithAuth<import("../types").PurchaseOrder>(`/api/purchase-orders/${id}/receive`, {
       method: "PATCH",
@@ -1103,6 +1109,72 @@ export const suppliersApi = {
 
   delete: async (id: string) => {
     return fetchWithAuth<{ message: string }>(`/api/suppliers/${id}`, {
+      method: "DELETE",
+    });
+  },
+};
+
+// Supplier Products API
+export const supplierProductsApi = {
+  getAll: async (params?: {
+    branch_id?: string;
+    supplier_id?: string;
+    status?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
+    const query = searchParams.toString();
+    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").SupplierProduct>>(
+      `/api/supplier-products${query ? `?${query}` : ""}`
+    );
+  },
+
+  getById: async (id: string) => {
+    return fetchWithAuth<import("../types").SupplierProduct>(`/api/supplier-products/${id}`);
+  },
+
+  create: async (data: {
+    supplier_id: string;
+    inventory_item_id?: string | null;
+    product_name: string;
+    unit_cost: number;
+    lead_time_days?: number | null;
+    branch_id: string;
+  }) => {
+    return fetchWithAuth<import("../types").SupplierProduct>("/api/supplier-products", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (
+    id: string,
+    data: {
+      supplier_id?: string;
+      inventory_item_id?: string | null;
+      product_name?: string;
+      unit_cost?: number;
+      lead_time_days?: number | null;
+      status?: string;
+    }
+  ) => {
+    return fetchWithAuth<import("../types").SupplierProduct>(`/api/supplier-products/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: string) => {
+    return fetchWithAuth<{ message: string }>(`/api/supplier-products/${id}`, {
       method: "DELETE",
     });
   },

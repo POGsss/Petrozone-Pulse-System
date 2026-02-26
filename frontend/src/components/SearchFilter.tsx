@@ -113,7 +113,7 @@ export function SearchFilter({
                       onChange={(e) =>
                         onFilterChange?.(group.key, e.target.value)
                       }
-                      className="appearance-none w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-primary"
+                      className="appearance-none w-full px-3 py-2 bg-neutral-100 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-primary"
                     >
                       <option value="all">All</option>
                       {group.options.map((opt) => (

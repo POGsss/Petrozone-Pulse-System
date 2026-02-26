@@ -557,7 +557,7 @@ export function CustomerManagement() {
               <div
                 key={customer.id}
                 onClick={() => openViewModal(customer)}
-                className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-50 transition-colors"
+                className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-100 transition-colors"
               >
                 {/* Card header */}
                 <div className="flex items-start justify-between mb-3">

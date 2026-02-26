@@ -545,6 +545,77 @@ export type Database = {
           },
         ]
       }
+      supplier_products: {
+        Row: {
+          id: string
+          supplier_id: string
+          inventory_item_id: string | null
+          product_name: string
+          unit_cost: number
+          lead_time_days: number | null
+          status: Database["public"]["Enums"]["supplier_product_status"]
+          branch_id: string
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          supplier_id: string
+          inventory_item_id?: string | null
+          product_name: string
+          unit_cost: number
+          lead_time_days?: number | null
+          status?: Database["public"]["Enums"]["supplier_product_status"]
+          branch_id: string
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          supplier_id?: string
+          inventory_item_id?: string | null
+          product_name?: string
+          unit_cost?: number
+          lead_time_days?: number | null
+          status?: Database["public"]["Enums"]["supplier_product_status"]
+          branch_id?: string
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_products_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_products_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_products_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_products_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppliers: {
         Row: {
           id: string
@@ -1096,11 +1167,12 @@ export type Database = {
       customer_type: "individual" | "company"
       inventory_item_status: "active" | "inactive"
       job_order_status: "created" | "pending" | "approved" | "rejected" | "cancelled"
-      purchase_order_status: "draft" | "submitted" | "received" | "cancelled"
+      purchase_order_status: "draft" | "submitted" | "approved" | "received" | "cancelled"
       pricing_matrix_status: "active" | "inactive"
       pricing_type: "labor" | "packaging"
       stock_movement_type: "stock_in" | "stock_out" | "adjustment"
       stock_reference_type: "purchase_order" | "job_order" | "adjustment"
+      supplier_product_status: "active" | "inactive"
       supplier_status: "active" | "inactive"
       user_role: "HM" | "POC" | "JS" | "R" | "T" | "ADMIN"
       vehicle_status: "active" | "inactive"
@@ -1250,6 +1322,7 @@ export const Constants = {
       pricing_type: ["labor", "packaging"],
       stock_movement_type: ["stock_in", "stock_out", "adjustment"],
       stock_reference_type: ["purchase_order", "job_order", "adjustment"],
+      supplier_product_status: ["active", "inactive"],
       supplier_status: ["active", "inactive"],
       user_role: ["HM", "POC", "JS", "R", "T", "ADMIN"],
       vehicle_status: ["active", "inactive"],
@@ -1288,3 +1361,7 @@ export type BranchUpdate = TablesUpdate<"branches">;
 export type SupplierRow = Tables<"suppliers">;
 export type SupplierInsert = TablesInsert<"suppliers">;
 export type SupplierUpdate = TablesUpdate<"suppliers">;
+
+export type SupplierProductRow = Tables<"supplier_products">;
+export type SupplierProductInsert = TablesInsert<"supplier_products">;
+export type SupplierProductUpdate = TablesUpdate<"supplier_products">;

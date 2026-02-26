@@ -334,7 +334,7 @@ export interface StockMovement {
 }
 
 // Purchase Order types
-export type PurchaseOrderStatus = "draft" | "submitted" | "received" | "cancelled";
+export type PurchaseOrderStatus = "draft" | "submitted" | "approved" | "received" | "cancelled";
 
 // Supplier types
 export type SupplierStatus = "active" | "inactive";
@@ -352,6 +352,34 @@ export interface Supplier {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  branches?: Branch;
+}
+
+// Supplier Product types
+export type SupplierProductStatus = "active" | "inactive";
+
+export interface SupplierProduct {
+  id: string;
+  supplier_id: string;
+  inventory_item_id: string | null;
+  product_name: string;
+  unit_cost: number;
+  lead_time_days: number | null;
+  status: SupplierProductStatus;
+  branch_id: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  suppliers?: {
+    id: string;
+    supplier_name: string;
+  };
+  inventory_items?: {
+    id: string;
+    item_name: string;
+    sku_code: string;
+    unit_of_measure: string;
+  } | null;
   branches?: Branch;
 }
 

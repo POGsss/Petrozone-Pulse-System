@@ -332,7 +332,7 @@ export function AuditLogs() {
             <div
               key={log.id}
               onClick={() => openViewModal(log)}
-              className="border border-neutral-200 rounded-xl p-4 space-y-3 cursor-pointer hover:bg-neutral-50 transition-colors"
+              className="border border-neutral-200 rounded-xl p-4 space-y-3 cursor-pointer hover:bg-neutral-100 transition-colors"
             >
               {/* Header */}
               <div className="flex items-start justify-between">
