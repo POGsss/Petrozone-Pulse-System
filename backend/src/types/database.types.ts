@@ -545,6 +545,66 @@ export type Database = {
           },
         ]
       }
+      suppliers: {
+        Row: {
+          id: string
+          supplier_name: string
+          contact_person: string
+          email: string
+          phone: string
+          address: string
+          status: Database["public"]["Enums"]["supplier_status"]
+          branch_id: string
+          notes: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          supplier_name: string
+          contact_person: string
+          email: string
+          phone: string
+          address: string
+          status?: Database["public"]["Enums"]["supplier_status"]
+          branch_id: string
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          supplier_name?: string
+          contact_person?: string
+          email?: string
+          phone?: string
+          address?: string
+          status?: Database["public"]["Enums"]["supplier_status"]
+          branch_id?: string
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "suppliers_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "suppliers_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       system_settings: {
         Row: {
           dark_mode: boolean
@@ -1041,6 +1101,7 @@ export type Database = {
       pricing_type: "labor" | "packaging"
       stock_movement_type: "stock_in" | "stock_out" | "adjustment"
       stock_reference_type: "purchase_order" | "job_order" | "adjustment"
+      supplier_status: "active" | "inactive"
       user_role: "HM" | "POC" | "JS" | "R" | "T" | "ADMIN"
       vehicle_status: "active" | "inactive"
       vehicle_type:
@@ -1189,6 +1250,7 @@ export const Constants = {
       pricing_type: ["labor", "packaging"],
       stock_movement_type: ["stock_in", "stock_out", "adjustment"],
       stock_reference_type: ["purchase_order", "job_order", "adjustment"],
+      supplier_status: ["active", "inactive"],
       user_role: ["HM", "POC", "JS", "R", "T", "ADMIN"],
       vehicle_status: ["active", "inactive"],
       vehicle_type: [
@@ -1222,3 +1284,7 @@ export type UserRole = "HM" | "POC" | "JS" | "R" | "T";
 
 export type BranchInsert = TablesInsert<"branches">;
 export type BranchUpdate = TablesUpdate<"branches">;
+
+export type SupplierRow = Tables<"suppliers">;
+export type SupplierInsert = TablesInsert<"suppliers">;
+export type SupplierUpdate = TablesUpdate<"suppliers">;

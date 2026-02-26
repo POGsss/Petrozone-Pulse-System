@@ -336,6 +336,25 @@ export interface StockMovement {
 // Purchase Order types
 export type PurchaseOrderStatus = "draft" | "submitted" | "received" | "cancelled";
 
+// Supplier types
+export type SupplierStatus = "active" | "inactive";
+
+export interface Supplier {
+  id: string;
+  supplier_name: string;
+  contact_person: string;
+  email: string;
+  phone: string;
+  address: string;
+  status: SupplierStatus;
+  branch_id: string;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  branches?: Branch;
+}
+
 export interface PurchaseOrderItem {
   id: string;
   purchase_order_id: string;

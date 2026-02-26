@@ -137,7 +137,7 @@ export function VehicleManagement() {
       },
       {
         key: "vehicle_type",
-        label: "Vehicle Type",
+        label: "Type",
         options: VEHICLE_TYPE_OPTIONS,
       },
       {

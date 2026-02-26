@@ -20,6 +20,7 @@ import jobOrderRoutes from "./routes/joborders.routes.js";
 import thirdPartyRepairRoutes from "./routes/thirdpartyrepairs.routes.js";
 import inventoryRoutes from "./routes/inventory.routes.js";
 import purchaseOrderRoutes from "./routes/purchaseorders.routes.js";
+import supplierRoutes from "./routes/suppliers.routes.js";
 
 const app = express();
 
@@ -67,6 +68,7 @@ app.use("/api/job-orders", jobOrderRoutes);
 app.use("/api/third-party-repairs", thirdPartyRepairRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/purchase-orders", purchaseOrderRoutes);
+app.use("/api/suppliers", supplierRoutes);
 
 // 404 handler
 app.use((_req, res) => {

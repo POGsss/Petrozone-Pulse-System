@@ -16,6 +16,7 @@ import { PricingManagement } from "./subpages/PricingManagement";
 import { JobOrderManagement } from "./subpages/JobOrderManagement";
 import { InventoryManagement } from "./subpages/InventoryManagement";
 import { PurchaseOrderManagement } from "./subpages/PurchaseOrderManagement";
+import { SupplierManagement } from "./subpages/SupplierManagement";
 import { SystemSettings } from "./subpages/SystemSettings";
 
 // Page content data
@@ -59,6 +60,10 @@ const pageData: Record<string, { title: string; description: string }> = {
   "purchase-orders": {
     title: "Purchase Orders",
     description: "Manage inventory procurement and purchase orders.",
+  },
+  suppliers: {
+    title: "Supplier Management",
+    description: "Manage supplier profiles and contact information.",
   },
   audit: {
     title: "Audit Logs",
@@ -127,6 +132,11 @@ function getNavItemsForRole(roles: string[]): NavItem[] {
     items.push({ id: "purchase-orders", label: "Purchase Orders", icon: <NavIcons.Orders /> });
   }
 
+  // Suppliers: HM, POC, JS (UC53-UC56)
+  if (hasAnyRole("HM", "POC", "JS")) {
+    items.push({ id: "suppliers", label: "Suppliers", icon: <NavIcons.Supplier /> });
+  }
+
   // Audit Logs: HM, POC (US18)
   if (hasAnyRole("HM", "POC")) {
     items.push({ id: "audit", label: "Audit Logs", icon: <NavIcons.Audit /> });
@@ -168,6 +178,7 @@ export function DashboardPage() {
   const canViewCatalog = hasAnyRole("HM", "POC", "JS", "R");
   const canViewInventory = hasAnyRole("HM", "POC", "JS");
   const canViewPurchaseOrders = hasAnyRole("HM", "POC", "JS", "R");
+  const canViewSuppliers = hasAnyRole("HM", "POC", "JS");
   const canAccessSettings = userRoles.includes("HM");
 
   // Get page data
@@ -238,6 +249,11 @@ export function DashboardPage() {
           <PurchaseOrderManagement />
       )}
 
+      {/* Suppliers - HM, POC, JS (UC53-UC56) */}
+      {activeNav === "suppliers" && canViewSuppliers && (
+          <SupplierManagement />
+      )}
+
       {/* Job Orders - All roles */}
       {activeNav === "job-orders" && (
           <JobOrderManagement />
@@ -249,7 +265,7 @@ export function DashboardPage() {
       )}
 
       {/* Empty state for upcoming pages (Settings) */}
-      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && activeNav !== "vehicles" && activeNav !== "catalog" && activeNav !== "inventory" && activeNav !== "purchase-orders" && activeNav !== "job-orders" && activeNav !== "pricing" && (
+      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && activeNav !== "vehicles" && activeNav !== "catalog" && activeNav !== "inventory" && activeNav !== "purchase-orders" && activeNav !== "suppliers" && activeNav !== "job-orders" && activeNav !== "pricing" && (
         <div className="bg-white rounded-xl p-6 border border-neutral-100">
           <p className="text-neutral-900">This feature is coming in the next phase.</p>
         </div>

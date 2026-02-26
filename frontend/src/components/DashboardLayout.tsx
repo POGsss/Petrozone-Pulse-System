@@ -21,6 +21,7 @@ import {
   LuDollarSign,
   LuShoppingCart,
   LuCar,
+  LuTruck,
 } from "react-icons/lu";
 
 // Navigation item type
@@ -250,4 +251,5 @@ export const NavIcons = {
   Sales: () => <LuPackage className="w-5 h-5" />,
   Vehicle: () => <LuCar className="w-5 h-5" />,
   Catalog: () => <LuPackage className="w-5 h-5" />,
+  Supplier: () => <LuTruck className="w-5 h-5" />,
 };

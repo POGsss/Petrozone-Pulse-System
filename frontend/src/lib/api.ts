@@ -1039,3 +1039,71 @@ export const purchaseOrdersApi = {
     });
   },
 };
+
+// Suppliers API
+export const suppliersApi = {
+  getAll: async (params?: {
+    branch_id?: string;
+    status?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
+    const query = searchParams.toString();
+    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").Supplier>>(
+      `/api/suppliers${query ? `?${query}` : ""}`
+    );
+  },
+
+  getById: async (id: string) => {
+    return fetchWithAuth<import("../types").Supplier>(`/api/suppliers/${id}`);
+  },
+
+  create: async (data: {
+    supplier_name: string;
+    contact_person: string;
+    email: string;
+    phone: string;
+    address: string;
+    status?: string;
+    branch_id: string;
+    notes?: string;
+  }) => {
+    return fetchWithAuth<import("../types").Supplier>("/api/suppliers", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (
+    id: string,
+    data: {
+      supplier_name?: string;
+      contact_person?: string;
+      email?: string;
+      phone?: string;
+      address?: string;
+      status?: string;
+      notes?: string | null;
+    }
+  ) => {
+    return fetchWithAuth<import("../types").Supplier>(`/api/suppliers/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: string) => {
+    return fetchWithAuth<{ message: string }>(`/api/suppliers/${id}`, {
+      method: "DELETE",
+    });
+  },
+};
