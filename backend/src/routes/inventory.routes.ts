@@ -50,10 +50,10 @@ async function getOnHandSingle(itemId: string): Promise<number> {
 
 // ─── GET /api/inventory ────────────────────────────────────────────────
 // List inventory items with computed on-hand quantity
-// Roles: HM, POC, JS (view)
+// Roles: HM, POC, JS, R (view — R needs read access for PO item selection)
 router.get(
   "/",
-  requireRoles("HM", "POC", "JS"),
+  requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const {
@@ -885,6 +885,8 @@ router.get(
 /**
  * Deduct stock for a job order's items.
  * Called from the JO approval endpoint.
+ * Uses direct FK links from job_order_item_inventories for precise deduction.
+ * Also handles product-type items without explicit inventory links (legacy name-matching fallback).
  * Returns either { success: true } or { success: false, error: string }
  */
 export async function deductStockForJobOrder(
@@ -898,43 +900,84 @@ export async function deductStockForJobOrder(
   }>,
   userId: string
 ): Promise<{ success: boolean; error?: string }> {
-  // Only deduct for product-type items (services don't consume inventory)
-  const productItems = items.filter((i) => i.catalog_item_type === "product");
+  // 1. Fetch all JO items with their inventory snapshots
+  const { data: joItems } = await supabaseAdmin
+    .from("job_order_items")
+    .select("id, catalog_item_name, catalog_item_type, quantity, job_order_item_inventories(*)")
+    .eq("job_order_id", jobOrderId);
 
-  if (productItems.length === 0) {
-    return { success: true }; // No products to deduct
+  if (!joItems || joItems.length === 0) {
+    return { success: true };
   }
 
-  // Find matching inventory items for each product in this branch
-  for (const item of productItems) {
-    // Try to find inventory item matching catalog item name in this branch
-    const { data: invItems } = await supabaseAdmin
-      .from("inventory_items")
-      .select("id, item_name, reorder_threshold")
-      .eq("branch_id", branchId)
-      .eq("status", "active")
-      .ilike("item_name", item.catalog_item_name);
+  // 2. Collect all inventory deductions from snapshots
+  const deductions: Array<{
+    inventory_item_id: string;
+    inventory_item_name: string;
+    quantity: number;
+  }> = [];
 
-    if (!invItems || invItems.length === 0) {
-      // No matching inventory item — skip (don't block if item not tracked in inventory)
-      continue;
+  for (const joItem of joItems) {
+    const snapshots = (joItem as any).job_order_item_inventories ?? [];
+    if (snapshots.length > 0) {
+      // Use direct FK links from snapshots
+      for (const snap of snapshots) {
+        deductions.push({
+          inventory_item_id: snap.inventory_item_id,
+          inventory_item_name: snap.inventory_item_name,
+          quantity: snap.quantity,
+        });
+      }
+    } else if (joItem.catalog_item_type === "product") {
+      // Fallback for legacy product-type items without inventory links
+      const { data: invItems } = await supabaseAdmin
+        .from("inventory_items")
+        .select("id, item_name, reorder_threshold")
+        .eq("branch_id", branchId)
+        .eq("status", "active")
+        .ilike("item_name", joItem.catalog_item_name);
+
+      if (invItems && invItems.length > 0) {
+        deductions.push({
+          inventory_item_id: invItems[0]!.id,
+          inventory_item_name: invItems[0]!.item_name,
+          quantity: joItem.quantity,
+        });
+      }
     }
+  }
 
-    const invItem = invItems[0]!;
-    const currentQty = await getOnHandSingle(invItem.id);
+  if (deductions.length === 0) {
+    return { success: true };
+  }
 
-    if (currentQty < item.quantity) {
+  // 3. Aggregate deductions per inventory item (same item may appear in multiple JO items)
+  const aggregated: Record<string, { name: string; quantity: number }> = {};
+  for (const d of deductions) {
+    const existing = aggregated[d.inventory_item_id];
+    if (existing) {
+      existing.quantity += d.quantity;
+    } else {
+      aggregated[d.inventory_item_id] = { name: d.inventory_item_name, quantity: d.quantity };
+    }
+  }
+
+  // 4. Check stock availability and deduct
+  for (const [invItemId, { name, quantity }] of Object.entries(aggregated)) {
+    const currentQty = await getOnHandSingle(invItemId);
+
+    if (currentQty < quantity) {
       return {
         success: false,
-        error: `Insufficient stock for "${item.catalog_item_name}". Available: ${currentQty}, Required: ${item.quantity}`,
+        error: `Insufficient stock for "${name}". Available: ${currentQty}, Required: ${quantity}`,
       };
     }
 
     // Deduct stock
     const { error } = await supabaseAdmin.from("stock_movements").insert({
-      inventory_item_id: invItem.id,
+      inventory_item_id: invItemId,
       movement_type: "stock_out" as "stock_in" | "stock_out" | "adjustment",
-      quantity: item.quantity,
+      quantity,
       reference_type: "job_order" as "purchase_order" | "job_order" | "adjustment",
       reference_id: jobOrderId,
       reason: `Auto-deduction for Job Order`,

@@ -169,6 +169,23 @@ export interface CatalogItem {
   branches?: Branch;
 }
 
+// Catalog Inventory Link types
+export interface CatalogInventoryLink {
+  id: string;
+  catalog_item_id: string;
+  inventory_item_id: string;
+  quantity: number;
+  created_at: string;
+  inventory_items?: {
+    id: string;
+    item_name: string;
+    sku_code: string;
+    cost_price: number;
+    unit_of_measure: string;
+    branch_id: string;
+  };
+}
+
 // Pricing Matrix types
 export type PricingType = "labor" | "packaging";
 export type PricingMatrixStatus = "active" | "inactive";
@@ -221,6 +238,19 @@ export interface JobOrderItem {
   base_price: number;
   labor_price: number | null;
   packaging_price: number | null;
+  inventory_cost: number;
+  line_total: number;
+  created_at: string;
+  job_order_item_inventories?: JobOrderItemInventory[];
+}
+
+export interface JobOrderItemInventory {
+  id: string;
+  job_order_item_id: string;
+  inventory_item_id: string;
+  inventory_item_name: string;
+  quantity: number;
+  unit_cost: number;
   line_total: number;
   created_at: string;
 }
@@ -404,6 +434,7 @@ export interface PurchaseOrderItem {
 export interface PurchaseOrder {
   id: string;
   po_number: string;
+  supplier_id: string | null;
   supplier_name: string | null;
   status: PurchaseOrderStatus;
   order_date: string;
@@ -417,6 +448,10 @@ export interface PurchaseOrder {
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
+  suppliers?: {
+    id: string;
+    supplier_name: string;
+  } | null;
   branches?: Branch;
   purchase_order_items?: PurchaseOrderItem[];
 }

@@ -167,6 +167,45 @@ export type Database = {
           },
         ]
       }
+      catalog_inventory_links: {
+        Row: {
+          id: string
+          catalog_item_id: string
+          inventory_item_id: string
+          quantity: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          catalog_item_id: string
+          inventory_item_id: string
+          quantity?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          catalog_item_id?: string
+          inventory_item_id?: string
+          quantity?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_inventory_links_catalog_item_id_fkey"
+            columns: ["catalog_item_id"]
+            isOneToOne: false
+            referencedRelation: "catalog_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "catalog_inventory_links_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customers: {
         Row: {
           address: string | null
@@ -235,6 +274,7 @@ export type Database = {
           catalog_item_type: string
           created_at: string
           id: string
+          inventory_cost: number
           job_order_id: string
           labor_price: number | null
           line_total: number
@@ -248,6 +288,7 @@ export type Database = {
           catalog_item_type: string
           created_at?: string
           id?: string
+          inventory_cost?: number
           job_order_id: string
           labor_price?: number | null
           line_total: number
@@ -261,6 +302,7 @@ export type Database = {
           catalog_item_type?: string
           created_at?: string
           id?: string
+          inventory_cost?: number
           job_order_id?: string
           labor_price?: number | null
           line_total?: number
@@ -280,6 +322,51 @@ export type Database = {
             columns: ["job_order_id"]
             isOneToOne: false
             referencedRelation: "job_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_order_item_inventories: {
+        Row: {
+          id: string
+          job_order_item_id: string
+          inventory_item_id: string
+          inventory_item_name: string
+          quantity_per_unit: number
+          unit_cost: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          job_order_item_id: string
+          inventory_item_id: string
+          inventory_item_name: string
+          quantity_per_unit: number
+          unit_cost: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          job_order_item_id?: string
+          inventory_item_id?: string
+          inventory_item_name?: string
+          quantity_per_unit?: number
+          unit_cost?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_order_item_inventories_job_order_item_id_fkey"
+            columns: ["job_order_item_id"]
+            isOneToOne: false
+            referencedRelation: "job_order_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_order_item_inventories_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
             referencedColumns: ["id"]
           },
         ]
@@ -364,6 +451,7 @@ export type Database = {
         Row: {
           id: string
           po_number: string
+          supplier_id: string | null
           supplier_name: string | null
           status: string
           order_date: string
@@ -381,6 +469,7 @@ export type Database = {
         Insert: {
           id?: string
           po_number?: string
+          supplier_id?: string | null
           supplier_name?: string | null
           status?: string
           order_date: string
@@ -398,6 +487,7 @@ export type Database = {
         Update: {
           id?: string
           po_number?: string
+          supplier_id?: string | null
           supplier_name?: string | null
           status?: string
           order_date?: string

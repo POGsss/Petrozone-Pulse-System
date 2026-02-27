@@ -18,7 +18,7 @@ import {
   LuSearch,
   LuFilter,
 } from "react-icons/lu";
-import { purchaseOrdersApi, branchesApi, inventoryApi } from "../../lib/api";
+import { purchaseOrdersApi, branchesApi, suppliersApi, supplierProductsApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
 import { useAuth } from "../../auth";
 import {
@@ -29,7 +29,7 @@ import {
   ModalButtons,
   ModalError,
 } from "../../components";
-import type { PurchaseOrder, Branch, InventoryItem } from "../../types";
+import type { PurchaseOrder, Branch, Supplier, SupplierProduct } from "../../types";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -102,7 +102,8 @@ export function PurchaseOrderManagement() {
   // Data state
   const [allOrders, setAllOrders] = useState<PurchaseOrder[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [supplierProducts, setSupplierProducts] = useState<SupplierProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -118,7 +119,7 @@ export function PurchaseOrderManagement() {
   const [addLoading, setAddLoading] = useState(false);
   const [addForm, setAddForm] = useState({
     po_number: "",
-    supplier_name: "",
+    supplier_id: "",
     order_date: new Date().toISOString().split("T")[0],
     expected_delivery_date: "",
     branch_id: "",
@@ -141,7 +142,7 @@ export function PurchaseOrderManagement() {
   const [editLoading, setEditLoading] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
   const [editForm, setEditForm] = useState({
-    supplier_name: "",
+    supplier_id: "",
     order_date: "",
     expected_delivery_date: "",
     notes: "",
@@ -238,14 +239,16 @@ export function PurchaseOrderManagement() {
     try {
       setLoading(true);
       setError(null);
-      const [poRes, branchesData, invRes] = await Promise.all([
+      const [poRes, branchesData, suppliersRes, spRes] = await Promise.all([
         purchaseOrdersApi.getAll({ limit: 1000 }),
         branchesApi.getAll(),
-        inventoryApi.getAll({ limit: 1000, status: "active" }),
+        suppliersApi.getAll({ limit: 1000, status: "active" }),
+        supplierProductsApi.getAll({ limit: 1000, status: "active" }),
       ]);
       setAllOrders(poRes.data);
       setBranches(branchesData);
-      setInventoryItems(invRes.data);
+      setSuppliers(suppliersRes.data);
+      setSupplierProducts(spRes.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch data");
     } finally {
@@ -273,17 +276,37 @@ export function PurchaseOrderManagement() {
     return branches.map((b) => ({ value: b.id, label: b.name }));
   }, [branches, user, isHM]);
 
-  // Inventory items filtered by selected branch
-  function getInventoryForBranch(branchId: string) {
-    if (!branchId) return inventoryItems;
-    return inventoryItems.filter((i) => i.branch_id === branchId);
+  // Suppliers filtered by selected branch
+  function getSuppliersForBranch(branchId: string) {
+    if (!branchId) return suppliers;
+    return suppliers.filter((s) => s.branch_id === branchId);
   }
 
-  // Inventory options for selects
-  function getInventoryOptions(branchId: string) {
-    return getInventoryForBranch(branchId).map((inv) => ({
-      value: inv.id,
-      label: `${inv.item_name} (${inv.sku_code})`,
+  // Supplier options for selects
+  function getSupplierOptions(branchId: string) {
+    return getSuppliersForBranch(branchId).map((s) => ({
+      value: s.id,
+      label: s.supplier_name,
+    }));
+  }
+
+  // Supplier products filtered by supplier (and optionally branch)
+  function getProductsForSupplier(supplierId: string, branchId?: string) {
+    if (!supplierId) return [];
+    let products = supplierProducts.filter((sp) => sp.supplier_id === supplierId && sp.inventory_item_id);
+    if (branchId) {
+      products = products.filter((sp) => sp.branch_id === branchId);
+    }
+    return products;
+  }
+
+  // Inventory item options from supplier products
+  function getSupplierItemOptions(supplierId: string, branchId?: string) {
+    return getProductsForSupplier(supplierId, branchId).map((sp) => ({
+      value: sp.inventory_item_id!,
+      label: sp.inventory_items
+        ? `${sp.inventory_items.item_name} (${sp.inventory_items.sku_code})`
+        : sp.product_name,
     }));
   }
 
@@ -291,7 +314,7 @@ export function PurchaseOrderManagement() {
   function openAddModal() {
     setAddForm({
       po_number: "",
-      supplier_name: "",
+      supplier_id: "",
       order_date: new Date().toISOString().split("T")[0],
       expected_delivery_date: "",
       branch_id: defaultBranchId,
@@ -309,8 +332,14 @@ export function PurchaseOrderManagement() {
     if (!selectedInventoryId) return;
     const qty = parseInt(selectedQty) || 1;
     const cost = parseFloat(selectedUnitCost) || 0;
-    const inv = inventoryItems.find((i) => i.id === selectedInventoryId);
-    if (!inv) return;
+
+    // Find the supplier product that links to this inventory item
+    const sp = getProductsForSupplier(addForm.supplier_id, addForm.branch_id)
+      .find((p) => p.inventory_item_id === selectedInventoryId);
+    if (!sp) return;
+
+    const itemName = sp.inventory_items?.item_name || sp.product_name;
+    const skuCode = sp.inventory_items?.sku_code || "";
 
     // Check for duplicate
     if (draftItems.some((d) => d.inventory_item_id === selectedInventoryId)) {
@@ -321,9 +350,9 @@ export function PurchaseOrderManagement() {
     setDraftItems([
       ...draftItems,
       {
-        inventory_item_id: inv.id,
-        item_name: inv.item_name,
-        sku_code: inv.sku_code,
+        inventory_item_id: selectedInventoryId,
+        item_name: itemName,
+        sku_code: skuCode,
         quantity_ordered: qty,
         unit_cost: cost,
         line_total: qty * cost,
@@ -344,13 +373,14 @@ export function PurchaseOrderManagement() {
     [draftItems]
   );
 
-  // Auto-fill unit cost when inventory item selected
+  // Auto-fill unit cost from supplier product when item selected
   function handleInventorySelect(itemId: string) {
     setSelectedInventoryId(itemId);
     if (itemId) {
-      const inv = inventoryItems.find((i) => i.id === itemId);
-      if (inv) {
-        setSelectedUnitCost(inv.cost_price.toString());
+      const sp = getProductsForSupplier(addForm.supplier_id, addForm.branch_id)
+        .find((p) => p.inventory_item_id === itemId);
+      if (sp) {
+        setSelectedUnitCost(sp.unit_cost.toString());
       }
     }
   }
@@ -358,9 +388,10 @@ export function PurchaseOrderManagement() {
   function handleEditInventorySelect(itemId: string) {
     setEditSelectedInventoryId(itemId);
     if (itemId) {
-      const inv = inventoryItems.find((i) => i.id === itemId);
-      if (inv) {
-        setEditSelectedUnitCost(inv.cost_price.toString());
+      const sp = getProductsForSupplier(editForm.supplier_id, selectedOrder?.branch_id)
+        .find((p) => p.inventory_item_id === itemId);
+      if (sp) {
+        setEditSelectedUnitCost(sp.unit_cost.toString());
       }
     }
   }
@@ -383,7 +414,7 @@ export function PurchaseOrderManagement() {
       setAddLoading(true);
       await purchaseOrdersApi.create({
         po_number: addForm.po_number.trim() || undefined,
-        supplier_name: addForm.supplier_name.trim() || undefined,
+        supplier_id: addForm.supplier_id || undefined,
         order_date: addForm.order_date,
         expected_delivery_date: addForm.expected_delivery_date || undefined,
         branch_id: addForm.branch_id,
@@ -415,7 +446,7 @@ export function PurchaseOrderManagement() {
   function openEditModal(order: PurchaseOrder) {
     setSelectedOrder(order);
     setEditForm({
-      supplier_name: order.supplier_name || "",
+      supplier_id: order.supplier_id || "",
       order_date: order.order_date,
       expected_delivery_date: order.expected_delivery_date || "",
       notes: order.notes || "",
@@ -441,8 +472,13 @@ export function PurchaseOrderManagement() {
     if (!editSelectedInventoryId) return;
     const qty = parseInt(editSelectedQty) || 1;
     const cost = parseFloat(editSelectedUnitCost) || 0;
-    const inv = inventoryItems.find((i) => i.id === editSelectedInventoryId);
-    if (!inv) return;
+
+    const sp = getProductsForSupplier(editForm.supplier_id, selectedOrder?.branch_id)
+      .find((p) => p.inventory_item_id === editSelectedInventoryId);
+    if (!sp) return;
+
+    const itemName = sp.inventory_items?.item_name || sp.product_name;
+    const skuCode = sp.inventory_items?.sku_code || "";
 
     if (editDraftItems.some((d) => d.inventory_item_id === editSelectedInventoryId)) {
       setEditError("This item is already added.");
@@ -452,9 +488,9 @@ export function PurchaseOrderManagement() {
     setEditDraftItems([
       ...editDraftItems,
       {
-        inventory_item_id: inv.id,
-        item_name: inv.item_name,
-        sku_code: inv.sku_code,
+        inventory_item_id: editSelectedInventoryId,
+        item_name: itemName,
+        sku_code: skuCode,
         quantity_ordered: qty,
         unit_cost: cost,
         line_total: qty * cost,
@@ -492,7 +528,7 @@ export function PurchaseOrderManagement() {
     try {
       setEditLoading(true);
       await purchaseOrdersApi.update(selectedOrder.id, {
-        supplier_name: editForm.supplier_name.trim() || undefined,
+        supplier_id: editForm.supplier_id || undefined,
         order_date: editForm.order_date,
         expected_delivery_date: editForm.expected_delivery_date || undefined,
         notes: editForm.notes.trim() || undefined,
@@ -1004,8 +1040,25 @@ export function PurchaseOrderManagement() {
           <ModalSection title="Purchase Information">
             <ModalInput value={addForm.po_number} onChange={(v) => setAddForm({ ...addForm, po_number: v })} placeholder="PO Number (auto if blank)" />
             <div className="grid grid-cols-2 gap-4">
-              <ModalInput value={addForm.supplier_name} onChange={(v) => setAddForm({ ...addForm, supplier_name: v })} placeholder="Supplier / Vendor Name" />
-              <ModalSelect value={addForm.branch_id} onChange={(v) => setAddForm({ ...addForm, branch_id: v })} options={branchOptions} placeholder="Select Branch *" />
+              <ModalSelect
+                value={addForm.branch_id}
+                onChange={(v) => setAddForm({ ...addForm, branch_id: v, supplier_id: "" })}
+                options={branchOptions}
+                placeholder="Select Branch *"
+              />
+              <ModalSelect
+                value={addForm.supplier_id}
+                onChange={(v) => {
+                  setAddForm({ ...addForm, supplier_id: v });
+                  // Clear item selections when supplier changes
+                  setDraftItems([]);
+                  setSelectedInventoryId("");
+                  setSelectedUnitCost("");
+                }}
+                options={getSupplierOptions(addForm.branch_id)}
+                placeholder="Select Supplier *"
+                disabled={!addForm.branch_id}
+              />
             </div>
             <textarea
               value={addForm.notes}
@@ -1029,9 +1082,9 @@ export function PurchaseOrderManagement() {
                 <ModalSelect
                   value={selectedInventoryId}
                   onChange={handleInventorySelect}
-                  placeholder="Select Inventory"
-                  options={getInventoryOptions(addForm.branch_id)}
-                  disabled={!addForm.branch_id}
+                  placeholder="Select Item"
+                  options={getSupplierItemOptions(addForm.supplier_id, addForm.branch_id)}
+                  disabled={!addForm.supplier_id}
                 />
               </div>
               <div className="w-20">
@@ -1102,7 +1155,9 @@ export function PurchaseOrderManagement() {
 
             {draftItems.length === 0 && (
               <p className="text-sm text-neutral-900 text-center py-4">
-                No items added yet. Select an inventory item and click +.
+                {!addForm.supplier_id
+                  ? "Select a branch and supplier first to see available items."
+                  : "No items added yet. Select an item and click +."}
               </p>
             )}
           </ModalSection>
@@ -1129,7 +1184,7 @@ export function PurchaseOrderManagement() {
             </ModalSection>
 
             <ModalSection title="Supplier & Branch">
-              <ModalInput type="text" value={viewOrder.supplier_name || "—"} onChange={() => { }} placeholder="Supplier" disabled />
+              <ModalInput type="text" value={viewOrder.suppliers?.supplier_name || viewOrder.supplier_name || "—"} onChange={() => { }} placeholder="Supplier" disabled />
               <ModalInput type="text" value={viewOrder.branches ? `${viewOrder.branches.name} (${viewOrder.branches.code})` : "—"} onChange={() => { }} placeholder="Branch" disabled />
             </ModalSection>
 
@@ -1198,7 +1253,18 @@ export function PurchaseOrderManagement() {
             <ModalSection title="Purchase Order Details">
               <ModalInput type="text" value={selectedOrder.po_number} onChange={() => { }} placeholder="PO Number" disabled />
               <div className="grid grid-cols-2 gap-4">
-                <ModalInput value={editForm.supplier_name} onChange={(v) => setEditForm({ ...editForm, supplier_name: v })} placeholder="Supplier / Vendor Name" />
+                <ModalSelect
+                  value={editForm.supplier_id}
+                  onChange={(v) => {
+                    setEditForm({ ...editForm, supplier_id: v });
+                    // Clear item selections when supplier changes
+                    setEditDraftItems([]);
+                    setEditSelectedInventoryId("");
+                    setEditSelectedUnitCost("");
+                  }}
+                  options={getSupplierOptions(selectedOrder.branch_id)}
+                  placeholder="Select Supplier"
+                />
                 <ModalInput type="text" value={selectedOrder.branches?.name || "—"} onChange={() => { }} placeholder="Branch" disabled />
               </div>
               <textarea
@@ -1224,8 +1290,9 @@ export function PurchaseOrderManagement() {
                   <ModalSelect
                     value={editSelectedInventoryId}
                     onChange={handleEditInventorySelect}
-                    placeholder="Select Inventory"
-                    options={getInventoryOptions(selectedOrder.branch_id)}
+                    placeholder="Select Item"
+                    options={getSupplierItemOptions(editForm.supplier_id, selectedOrder.branch_id)}
+                    disabled={!editForm.supplier_id}
                   />
                 </div>
                 <div className="w-20">
@@ -1295,7 +1362,9 @@ export function PurchaseOrderManagement() {
 
               {editDraftItems.length === 0 && (
                 <p className="text-sm text-neutral-900 text-center py-4">
-                  No items. Select an inventory item and click + to add.
+                  {!editForm.supplier_id
+                    ? "Select a supplier first to see available items."
+                    : "No items. Select an item and click + to add."}
                 </p>
               )}
             </ModalSection>

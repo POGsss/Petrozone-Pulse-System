@@ -1,4 +1,4 @@
-import { Router } from "express";
+﻿import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
@@ -9,7 +9,7 @@ const router = Router();
 // All purchase-order routes require authentication
 router.use(requireAuth);
 
-// ─── helpers ───────────────────────────────────────────────────────────
+// â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Compute on-hand quantity from the stock_movements ledger.
@@ -51,8 +51,8 @@ async function recalcTotal(poId: string): Promise<number> {
   return total;
 }
 
-// ─── GET /api/purchase-orders ──────────────────────────────────────────
-// List purchase orders — UC50
+// â”€â”€â”€ GET /api/purchase-orders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// List purchase orders â€” UC50
 // Roles: HM, POC, JS, R
 router.get(
   "/",
@@ -69,7 +69,7 @@ router.get(
 
       let query = supabaseAdmin
         .from("purchase_orders")
-        .select("*, branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))", { count: "exact" })
+        .select("*, suppliers(id, supplier_name), branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))", { count: "exact" })
         .eq("is_deleted", false)
         .order("created_at", { ascending: false });
 
@@ -112,8 +112,8 @@ router.get(
   }
 );
 
-// ─── GET /api/purchase-orders/:id ──────────────────────────────────────
-// Get single PO with items — UC50
+// â”€â”€â”€ GET /api/purchase-orders/:id â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Get single PO with items â€” UC50
 router.get(
   "/:id",
   requireRoles("HM", "POC", "JS", "R"),
@@ -122,7 +122,7 @@ router.get(
       const poId = req.params.id as string;
       const { data: po, error } = await supabaseAdmin
         .from("purchase_orders")
-        .select("*, branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure, cost_price))")
+        .select("*, suppliers(id, supplier_name), branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure, cost_price))")
         .eq("id", poId)
         .eq("is_deleted", false)
         .single();
@@ -153,8 +153,8 @@ router.get(
   }
 );
 
-// ─── POST /api/purchase-orders ─────────────────────────────────────────
-// Create PO — UC49
+// â”€â”€â”€ POST /api/purchase-orders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Create PO â€” UC49
 // Roles: HM, POC, JS, R
 router.post(
   "/",
@@ -163,6 +163,7 @@ router.post(
     try {
       const {
         po_number,
+        supplier_id,
         supplier_name,
         order_date,
         expected_delivery_date,
@@ -194,6 +195,19 @@ router.post(
         return;
       }
 
+      // Resolve supplier_name from supplier_id if provided
+      let resolvedSupplierName = supplier_name?.trim() || null;
+      if (supplier_id) {
+        const { data: supplier } = await supabaseAdmin
+          .from("suppliers")
+          .select("supplier_name")
+          .eq("id", supplier_id)
+          .single();
+        if (supplier) {
+          resolvedSupplierName = supplier.supplier_name;
+        }
+      }
+
       // Validate each item
       for (const item of items) {
         if (!item.inventory_item_id) {
@@ -222,7 +236,8 @@ router.post(
         .from("purchase_orders")
         .insert({
           po_number: po_number?.trim() || "", // trigger will auto-generate if empty
-          supplier_name: supplier_name?.trim() || null,
+          supplier_id: supplier_id || null,
+          supplier_name: resolvedSupplierName,
           status: "draft",
           order_date,
           expected_delivery_date: expected_delivery_date || null,
@@ -270,7 +285,7 @@ router.post(
       // Fetch full PO with items
       const { data: fullPO } = await supabaseAdmin
         .from("purchase_orders")
-        .select("*, branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))")
+        .select("*, suppliers(id, supplier_name), branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))")
         .eq("id", po.id)
         .single();
 
@@ -289,8 +304,8 @@ router.post(
   }
 );
 
-// ─── PUT /api/purchase-orders/:id ──────────────────────────────────────
-// Update PO — UC51 (only draft/submitted can be edited)
+// â”€â”€â”€ PUT /api/purchase-orders/:id â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Update PO â€” UC51 (only draft/submitted can be edited)
 // Roles: HM, POC, JS, R
 router.put(
   "/:id",
@@ -299,6 +314,7 @@ router.put(
     try {
       const poId = req.params.id as string;
       const {
+        supplier_id,
         supplier_name,
         order_date,
         expected_delivery_date,
@@ -342,7 +358,26 @@ router.put(
 
       // Build update payload
       const updateData: Record<string, unknown> = {};
-      if (supplier_name !== undefined) updateData.supplier_name = supplier_name?.trim() || null;
+
+      // If supplier_id is provided, resolve supplier_name from it
+      if (supplier_id !== undefined) {
+        updateData.supplier_id = supplier_id || null;
+        if (supplier_id) {
+          const { data: supplier } = await supabaseAdmin
+            .from("suppliers")
+            .select("supplier_name")
+            .eq("id", supplier_id)
+            .single();
+          if (supplier) {
+            updateData.supplier_name = supplier.supplier_name;
+          }
+        } else {
+          updateData.supplier_name = null;
+        }
+      } else if (supplier_name !== undefined) {
+        updateData.supplier_name = supplier_name?.trim() || null;
+      }
+
       if (order_date !== undefined) updateData.order_date = order_date;
       if (expected_delivery_date !== undefined)
         updateData.expected_delivery_date = expected_delivery_date || null;
@@ -410,10 +445,10 @@ router.put(
       const headerChanges = filterUnchangedFields(updateData, existing);
 
       if (Object.keys(headerChanges).length === 0 && !itemsChanged) {
-        // No real changes — return existing data without triggering an update
+        // No real changes â€” return existing data without triggering an update
         const { data: currentPO } = await supabaseAdmin
           .from("purchase_orders")
-          .select("*, branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))")
+          .select("*, suppliers(id, supplier_name), branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))")
           .eq("id", poId)
           .single();
         res.json(currentPO);
@@ -449,7 +484,7 @@ router.put(
       // Fetch updated PO
       const { data: updatedPO } = await supabaseAdmin
         .from("purchase_orders")
-        .select("*, branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))")
+        .select("*, suppliers(id, supplier_name), branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))")
         .eq("id", poId)
         .single();
 
@@ -468,8 +503,8 @@ router.put(
   }
 );
 
-// ─── PATCH /api/purchase-orders/:id/submit ─────────────────────────────
-// Transition PO from draft → submitted
+// â”€â”€â”€ PATCH /api/purchase-orders/:id/submit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Transition PO from draft â†’ submitted
 router.patch(
   "/:id/submit",
   requireRoles("HM", "POC", "JS", "R"),
@@ -532,7 +567,7 @@ router.patch(
 
       const { data: updated } = await supabaseAdmin
         .from("purchase_orders")
-        .select("*, branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))")
+        .select("*, suppliers(id, supplier_name), branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))")
         .eq("id", poId)
         .single();
 
@@ -544,8 +579,8 @@ router.patch(
   }
 );
 
-// ─── PATCH /api/purchase-orders/:id/approve ────────────────────────────
-// Approve PO — submitted → approved (locks from editing)
+// â”€â”€â”€ PATCH /api/purchase-orders/:id/approve â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Approve PO â€” submitted â†’ approved (locks from editing)
 // Roles: HM, POC
 router.patch(
   "/:id/approve",
@@ -609,7 +644,7 @@ router.patch(
 
       const { data: updated } = await supabaseAdmin
         .from("purchase_orders")
-        .select("*, branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))")
+        .select("*, suppliers(id, supplier_name), branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))")
         .eq("id", poId)
         .single();
 
@@ -621,8 +656,8 @@ router.patch(
   }
 );
 
-// ─── PATCH /api/purchase-orders/:id/receive ────────────────────────────
-// Receive PO — stock-in logic (FR-6 stock-in rules)
+// â”€â”€â”€ PATCH /api/purchase-orders/:id/receive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Receive PO â€” stock-in logic (FR-6 stock-in rules)
 // Atomically increases on-hand quantity for each item
 router.patch(
   "/:id/receive",
@@ -670,12 +705,12 @@ router.patch(
         return;
       }
 
-      // ── Stock-in for each PO item (atomic per item) ──
+      // â”€â”€ Stock-in for each PO item (atomic per item) â”€â”€
       for (const item of poItems) {
         const qtyToReceive = item.quantity_ordered - item.quantity_received;
         if (qtyToReceive <= 0) continue; // already fully received
 
-        // Create stock_movement record — reference_type = "purchase_order"
+        // Create stock_movement record â€” reference_type = "purchase_order"
         const { error: moveError } = await supabaseAdmin
           .from("stock_movements")
           .insert({
@@ -744,7 +779,7 @@ router.patch(
       // Fetch updated PO
       const { data: updatedPO } = await supabaseAdmin
         .from("purchase_orders")
-        .select("*, branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))")
+        .select("*, suppliers(id, supplier_name), branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))")
         .eq("id", poId)
         .single();
 
@@ -763,7 +798,7 @@ router.patch(
   }
 );
 
-// ─── PATCH /api/purchase-orders/:id/cancel ─────────────────────────────
+// â”€â”€â”€ PATCH /api/purchase-orders/:id/cancel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Cancel a PO (draft or submitted only)
 router.patch(
   "/:id/cancel",
@@ -835,8 +870,8 @@ router.patch(
   }
 );
 
-// ─── DELETE /api/purchase-orders/:id ───────────────────────────────────
-// Soft-delete PO — UC52
+// â”€â”€â”€ DELETE /api/purchase-orders/:id â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Soft-delete PO â€” UC52
 // Roles: HM, POC, JS, R
 router.delete(
   "/:id",
@@ -870,7 +905,7 @@ router.delete(
         return;
       }
 
-      // Cannot delete received POs — they have stock movements
+      // Cannot delete received POs â€” they have stock movements
       if (po.status === "received") {
         res.status(400).json({
           error: "Cannot delete a received purchase order. Cancel it instead if needed.",

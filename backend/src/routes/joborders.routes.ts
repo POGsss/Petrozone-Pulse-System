@@ -1,4 +1,4 @@
-import { Router } from "express";
+﻿import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
@@ -122,7 +122,7 @@ router.get(
           customers(id, full_name, contact_number, email),
           vehicles(id, plate_number, model, vehicle_type),
           branches(id, name, code),
-          job_order_items(*)
+          job_order_items(*, job_order_item_inventories(*))
         `
         )
         .eq("id", orderId)
@@ -230,7 +230,14 @@ router.post(
         base_price: number;
         labor_price: number | null;
         packaging_price: number | null;
+        inventory_cost: number;
         line_total: number;
+        _inventory_links: Array<{
+          inventory_item_id: string;
+          inventory_item_name: string;
+          link_quantity: number;
+          unit_cost: number;
+        }>;
       }> = [];
 
       for (const item of items) {
@@ -270,7 +277,43 @@ router.post(
         const basePrice = catalogItem.base_price;
         const laborPrice = laborRule ? laborRule.price : null;
         const packagingPrice = packagingRule ? packagingRule.price : null;
-        const lineTotal = (basePrice + (laborPrice || 0) + (packagingPrice || 0)) * qty;
+
+        // Fetch linked inventory items for this catalog item
+        const { data: inventoryLinks } = await supabaseAdmin
+          .from("catalog_inventory_links")
+          .select("*, inventory_items(id, item_name, cost_price, branch_id, status)")
+          .eq("catalog_item_id", item.catalog_item_id);
+
+        // Only include active inventory items that belong to the JO branch
+        const applicableLinks = (inventoryLinks ?? []).filter(
+          (link: any) =>
+            link.inventory_items &&
+            link.inventory_items.status === "active" &&
+            link.inventory_items.branch_id === branch_id
+        );
+
+        // Compute inventory cost per unit of catalog item
+        let inventoryCost = 0;
+        const invLinkDetails: Array<{
+          inventory_item_id: string;
+          inventory_item_name: string;
+          link_quantity: number;
+          unit_cost: number;
+        }> = [];
+
+        for (const link of applicableLinks) {
+          const invItem = link.inventory_items as any;
+          const linkCost = link.quantity * invItem.cost_price;
+          inventoryCost += linkCost;
+          invLinkDetails.push({
+            inventory_item_id: invItem.id,
+            inventory_item_name: invItem.item_name,
+            link_quantity: link.quantity,
+            unit_cost: invItem.cost_price,
+          });
+        }
+
+        const lineTotal = (basePrice + inventoryCost + (laborPrice || 0) + (packagingPrice || 0)) * qty;
 
         orderItems.push({
           catalog_item_id: catalogItem.id,
@@ -280,7 +323,9 @@ router.post(
           base_price: basePrice,
           labor_price: laborPrice,
           packaging_price: packagingPrice,
+          inventory_cost: inventoryCost,
           line_total: lineTotal,
+          _inventory_links: invLinkDetails,
         });
 
         totalAmount += lineTotal;
@@ -313,8 +358,8 @@ router.post(
         return;
       }
 
-      // Insert order items
-      const itemsToInsert = orderItems.map((item) => ({
+      // Insert order items (strip _inventory_links before DB insert)
+      const itemsToInsert = orderItems.map(({ _inventory_links, ...item }) => ({
         ...item,
         job_order_id: order.id,
       }));
@@ -331,13 +376,58 @@ router.post(
         return;
       }
 
+      // Insert inventory snapshots for each JO item with linked inventory
+      const inventorySnapshots: Array<{
+        job_order_item_id: string;
+        inventory_item_id: string;
+        inventory_item_name: string;
+        quantity_per_unit: number;
+        unit_cost: number;
+      }> = [];
+
+      for (let i = 0; i < orderItems.length; i++) {
+        const joItem = insertedItems![i];
+        if (!joItem) continue;
+        const orderItem = orderItems[i]!;
+        const links = orderItem._inventory_links;
+        if (!links) continue;
+        for (const link of links) {
+          const effectiveQty = link.link_quantity * orderItem.quantity;
+          inventorySnapshots.push({
+            job_order_item_id: joItem.id,
+            inventory_item_id: link.inventory_item_id,
+            inventory_item_name: link.inventory_item_name,
+            quantity_per_unit: effectiveQty,
+            unit_cost: link.unit_cost,
+          });
+        }
+      }
+
+      if (inventorySnapshots.length > 0) {
+        await supabaseAdmin
+          .from("job_order_item_inventories")
+          .insert(inventorySnapshots);
+      }
+
       // Fix audit log user_id (trigger may set it from created_by)
       await fixAuditLogUser("JOB_ORDER", order.id, "CREATE", req.user!.id, req.user!.branchIds[0] || null);
 
-      res.status(201).json({
-        ...order,
-        job_order_items: insertedItems,
-      });
+      // Fetch complete order with inventory details
+      const { data: completeOrder } = await supabaseAdmin
+        .from("job_orders")
+        .select(
+          `
+          *,
+          customers(id, full_name, contact_number, email),
+          vehicles(id, plate_number, model, vehicle_type),
+          branches(id, name, code),
+          job_order_items(*, job_order_item_inventories(*))
+        `
+        )
+        .eq("id", order.id)
+        .single();
+
+      res.status(201).json(completeOrder || { ...order, job_order_items: insertedItems });
     } catch (error) {
       console.error("Create job order error:", error);
       await logFailedAction(req, "CREATE", "JOB_ORDER", null, error instanceof Error ? error.message : "Failed to create job order");
@@ -389,10 +479,10 @@ router.put(
       // Check if notes actually changed
       const newNotes = notes?.trim() || null;
       if (newNotes === (existing as any).notes) {
-        // No real changes — return existing data without triggering an update
+        // No real changes â€” return existing data without triggering an update
         const { data: current } = await supabaseAdmin
           .from("job_orders")
-          .select(`*, customers(id, full_name, contact_number, email), vehicles(id, plate_number, model, vehicle_type), branches(id, name, code), job_order_items(*)`)
+          .select(`*, customers(id, full_name, contact_number, email), vehicles(id, plate_number, model, vehicle_type), branches(id, name, code), job_order_items(*, job_order_item_inventories(*))`)
           .eq("id", orderId)
           .eq("is_deleted", false)
           .single();
@@ -419,7 +509,7 @@ router.put(
           customers(id, full_name, contact_number, email),
           vehicles(id, plate_number, model, vehicle_type),
           branches(id, name, code),
-          job_order_items(*)
+          job_order_items(*, job_order_item_inventories(*))
         `
         )
         .eq("id", orderId)
@@ -509,7 +599,7 @@ router.delete(
           .eq("job_order_id", orderId);
 
         if (!tprCount || tprCount === 0) {
-          // Safe to hard delete — empty draft with no items or repairs
+          // Safe to hard delete â€” empty draft with no items or repairs
           const { error: deleteError } = await supabaseAdmin
             .from("job_orders")
             .delete()
@@ -612,7 +702,7 @@ router.patch(
         return;
       }
 
-      // Validate status transition: "created" or "rejected" → "pending"
+      // Validate status transition: "created" or "rejected" â†’ "pending"
       if (existing.status !== "created" && existing.status !== "rejected") {
         res.status(400).json({
           error: `Cannot request approval for a job order with status "${existing.status}". Only "created" or "rejected" orders can be sent for approval.`,
@@ -640,7 +730,7 @@ router.patch(
           customers(id, full_name, contact_number, email),
           vehicles(id, plate_number, model, vehicle_type),
           branches(id, name, code),
-          job_order_items(*)
+          job_order_items(*, job_order_item_inventories(*))
         `
         )
         .eq("id", orderId)
@@ -721,7 +811,7 @@ router.patch(
         return;
       }
 
-      // Validate status transition: only "pending" → "approved" / "rejected"
+      // Validate status transition: only "pending" â†’ "approved" / "rejected"
       if (existing.status !== "pending") {
         res.status(400).json({
           error: `Cannot record approval for a job order with status "${existing.status}". Only "pending" orders can be approved or rejected.`,
@@ -780,7 +870,7 @@ router.patch(
           customers(id, full_name, contact_number, email),
           vehicles(id, plate_number, model, vehicle_type),
           branches(id, name, code),
-          job_order_items(*)
+          job_order_items(*, job_order_item_inventories(*))
         `
         )
         .eq("id", orderId)
@@ -822,7 +912,7 @@ router.patch(
 
 /**
  * PATCH /api/job-orders/:id/cancel
- * Cancel a job order (status → "cancelled")
+ * Cancel a job order (status â†’ "cancelled")
  * Only "created", "pending", or "rejected" orders can be cancelled
  * Roles: POC, JS, R
  */
@@ -897,7 +987,7 @@ router.patch(
           customers(id, full_name, contact_number, email),
           vehicles(id, plate_number, model, vehicle_type),
           branches(id, name, code),
-          job_order_items(*)
+          job_order_items(*, job_order_item_inventories(*))
         `
         )
         .eq("id", orderId)
@@ -1016,7 +1106,41 @@ router.post(
       const basePrice = catalogItem.base_price;
       const laborPrice = laborRule ? laborRule.price : null;
       const packagingPrice = packagingRule ? packagingRule.price : null;
-      const lineTotal = (basePrice + (laborPrice || 0) + (packagingPrice || 0)) * qty;
+
+      // Fetch linked inventory items for this catalog item
+      const { data: inventoryLinks } = await supabaseAdmin
+        .from("catalog_inventory_links")
+        .select("*, inventory_items(id, item_name, cost_price, branch_id, status)")
+        .eq("catalog_item_id", catalog_item_id);
+
+      const applicableLinks = (inventoryLinks ?? []).filter(
+        (link: any) =>
+          link.inventory_items &&
+          link.inventory_items.status === "active" &&
+          link.inventory_items.branch_id === existing.branch_id
+      );
+
+      let inventoryCost = 0;
+      const invLinkDetails: Array<{
+        inventory_item_id: string;
+        inventory_item_name: string;
+        link_quantity: number;
+        unit_cost: number;
+      }> = [];
+
+      for (const link of applicableLinks) {
+        const invItem = link.inventory_items as any;
+        const linkCost = link.quantity * invItem.cost_price;
+        inventoryCost += linkCost;
+        invLinkDetails.push({
+          inventory_item_id: invItem.id,
+          inventory_item_name: invItem.item_name,
+          link_quantity: link.quantity,
+          unit_cost: invItem.cost_price,
+        });
+      }
+
+      const lineTotal = (basePrice + inventoryCost + (laborPrice || 0) + (packagingPrice || 0)) * qty;
 
       // Insert the item
       const { data: newItem, error: insertError } = await supabaseAdmin
@@ -1030,6 +1154,7 @@ router.post(
           base_price: basePrice,
           labor_price: laborPrice,
           packaging_price: packagingPrice,
+          inventory_cost: inventoryCost,
           line_total: lineTotal,
         })
         .select("*")
@@ -1038,6 +1163,18 @@ router.post(
       if (insertError) {
         res.status(500).json({ error: insertError.message });
         return;
+      }
+
+      // Insert inventory snapshots for this JO item
+      if (invLinkDetails.length > 0) {
+        const snapshots = invLinkDetails.map((link) => ({
+          job_order_item_id: newItem.id,
+          inventory_item_id: link.inventory_item_id,
+          inventory_item_name: link.inventory_item_name,
+          quantity_per_unit: link.link_quantity * qty,
+          unit_cost: link.unit_cost,
+        }));
+        await supabaseAdmin.from("job_order_item_inventories").insert(snapshots);
       }
 
       // Recalculate total
@@ -1062,7 +1199,7 @@ router.post(
           customers(id, full_name, contact_number, email),
           vehicles(id, plate_number, model, vehicle_type),
           branches(id, name, code),
-          job_order_items(*)
+          job_order_items(*, job_order_item_inventories(*))
         `
         )
         .eq("id", orderId)
@@ -1150,9 +1287,34 @@ router.put(
         return;
       }
 
-      // Recalculate line total with new quantity
-      const unitPrice = item.base_price + (item.labor_price || 0) + (item.packaging_price || 0);
+      // Recalculate line total with new quantity (include inventory_cost)
+      const unitPrice = item.base_price + (item.inventory_cost || 0) + (item.labor_price || 0) + (item.packaging_price || 0);
       const newLineTotal = unitPrice * quantity;
+
+      await supabaseAdmin
+        .from("job_order_items")
+        .update({ quantity, line_total: newLineTotal })
+        .eq("id", itemId);
+
+      // Update inventory snapshots quantities for the new JO item quantity
+      const { data: existingSnapshots } = await supabaseAdmin
+        .from("job_order_item_inventories")
+        .select("*")
+        .eq("job_order_item_id", itemId);
+
+      if (existingSnapshots && existingSnapshots.length > 0 && item.quantity !== quantity) {
+        // Recalculate each snapshot's quantity proportionally
+        for (const snap of existingSnapshots) {
+          const perUnit = snap.quantity_per_unit / item.quantity; // original per-catalog-unit quantity
+          const newSnapQty = perUnit * quantity;
+          await supabaseAdmin
+            .from("job_order_item_inventories")
+            .update({
+              quantity_per_unit: newSnapQty,
+            })
+            .eq("id", snap.id);
+        }
+      }
 
       await supabaseAdmin
         .from("job_order_items")
@@ -1181,7 +1343,7 @@ router.put(
           customers(id, full_name, contact_number, email),
           vehicles(id, plate_number, model, vehicle_type),
           branches(id, name, code),
-          job_order_items(*)
+          job_order_items(*, job_order_item_inventories(*))
         `
         )
         .eq("id", orderId)
@@ -1251,7 +1413,7 @@ router.delete(
         return;
       }
 
-      // Check item count — must have at least 1 remaining
+      // Check item count â€” must have at least 1 remaining
       const { count } = await supabaseAdmin
         .from("job_order_items")
         .select("id", { count: "exact", head: true })
@@ -1296,7 +1458,7 @@ router.delete(
           customers(id, full_name, contact_number, email),
           vehicles(id, plate_number, model, vehicle_type),
           branches(id, name, code),
-          job_order_items(*)
+          job_order_items(*, job_order_item_inventories(*))
         `
         )
         .eq("id", orderId)

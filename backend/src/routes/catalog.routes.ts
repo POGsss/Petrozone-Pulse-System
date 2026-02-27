@@ -591,4 +591,317 @@ router.delete(
   }
 );
 
+// ─── CATALOG INVENTORY LINKS ─────────────────────────────────────────
+
+/**
+ * GET /api/catalog/:itemId/inventory-links
+ * Get all inventory items linked to a catalog item
+ * Roles: HM, POC, JS, R
+ */
+router.get(
+  "/:itemId/inventory-links",
+  requireRoles("HM", "POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const itemId = req.params.itemId as string;
+
+      // Verify catalog item exists
+      const { data: catalogItem, error: catError } = await supabaseAdmin
+        .from("catalog_items")
+        .select("id, branch_id, is_global")
+        .eq("id", itemId)
+        .single();
+
+      if (catError) {
+        if (catError.code === "PGRST116") {
+          res.status(404).json({ error: "Catalog item not found" });
+          return;
+        }
+        res.status(500).json({ error: catError.message });
+        return;
+      }
+
+      const { data: links, error } = await supabaseAdmin
+        .from("catalog_inventory_links")
+        .select(
+          `
+          *,
+          inventory_items(id, item_name, sku_code, cost_price, unit_of_measure, branch_id)
+        `
+        )
+        .eq("catalog_item_id", itemId)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        res.status(500).json({ error: error.message });
+        return;
+      }
+
+      res.json(links || []);
+    } catch (error) {
+      console.error("Get catalog inventory links error:", error);
+      res.status(500).json({ error: "Failed to fetch inventory links" });
+    }
+  }
+);
+
+/**
+ * POST /api/catalog/:itemId/inventory-links
+ * Add an inventory item link to a catalog item
+ * Roles: HM, POC, JS
+ */
+router.post(
+  "/:itemId/inventory-links",
+  requireRoles("HM", "POC", "JS"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const itemId = req.params.itemId as string;
+      const { inventory_item_id, quantity } = req.body;
+
+      if (!inventory_item_id) {
+        res.status(400).json({ error: "Inventory item ID is required" });
+        return;
+      }
+      const qty = parseInt(quantity) || 1;
+      if (qty < 1) {
+        res.status(400).json({ error: "Quantity must be at least 1" });
+        return;
+      }
+
+      // Verify catalog item exists
+      const { data: catalogItem, error: catError } = await supabaseAdmin
+        .from("catalog_items")
+        .select("id, branch_id, is_global")
+        .eq("id", itemId)
+        .single();
+
+      if (catError) {
+        if (catError.code === "PGRST116") {
+          res.status(404).json({ error: "Catalog item not found" });
+          return;
+        }
+        res.status(500).json({ error: catError.message });
+        return;
+      }
+
+      // Branch access check for non-HM
+      if (
+        !req.user!.roles.includes("HM") &&
+        !catalogItem.is_global &&
+        catalogItem.branch_id &&
+        !req.user!.branchIds.includes(catalogItem.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this catalog item's branch" });
+        return;
+      }
+
+      // Only HM can modify global items
+      if (catalogItem.is_global && !req.user!.roles.includes("HM")) {
+        res.status(403).json({ error: "Only Higher Management can modify global catalog items" });
+        return;
+      }
+
+      // Verify inventory item exists and is active
+      const { data: invItem, error: invError } = await supabaseAdmin
+        .from("inventory_items")
+        .select("id, item_name, status")
+        .eq("id", inventory_item_id)
+        .single();
+
+      if (invError || !invItem) {
+        res.status(400).json({ error: "Inventory item not found" });
+        return;
+      }
+      if (invItem.status !== "active") {
+        res.status(400).json({ error: "Inventory item is not active" });
+        return;
+      }
+
+      // Check for duplicate link
+      const { data: existing } = await supabaseAdmin
+        .from("catalog_inventory_links")
+        .select("id")
+        .eq("catalog_item_id", itemId)
+        .eq("inventory_item_id", inventory_item_id)
+        .maybeSingle();
+
+      if (existing) {
+        res.status(409).json({ error: "This inventory item is already linked to this catalog item" });
+        return;
+      }
+
+      const { data: link, error: insertError } = await supabaseAdmin
+        .from("catalog_inventory_links")
+        .insert({
+          catalog_item_id: itemId,
+          inventory_item_id,
+          quantity: qty,
+        })
+        .select(
+          `
+          *,
+          inventory_items(id, item_name, sku_code, cost_price, unit_of_measure, branch_id)
+        `
+        )
+        .single();
+
+      if (insertError) {
+        res.status(500).json({ error: insertError.message });
+        return;
+      }
+
+      res.status(201).json(link);
+    } catch (error) {
+      console.error("Add catalog inventory link error:", error);
+      res.status(500).json({ error: "Failed to add inventory link" });
+    }
+  }
+);
+
+/**
+ * PUT /api/catalog/:itemId/inventory-links/:linkId
+ * Update quantity on a catalog inventory link
+ * Roles: HM, POC, JS
+ */
+router.put(
+  "/:itemId/inventory-links/:linkId",
+  requireRoles("HM", "POC", "JS"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const itemId = req.params.itemId as string;
+      const linkId = req.params.linkId as string;
+      const { quantity } = req.body;
+
+      const qty = parseInt(quantity);
+      if (!qty || qty < 1) {
+        res.status(400).json({ error: "Quantity must be at least 1" });
+        return;
+      }
+
+      // Verify catalog item exists
+      const { data: catalogItem, error: catError } = await supabaseAdmin
+        .from("catalog_items")
+        .select("id, branch_id, is_global")
+        .eq("id", itemId)
+        .single();
+
+      if (catError) {
+        if (catError.code === "PGRST116") {
+          res.status(404).json({ error: "Catalog item not found" });
+          return;
+        }
+        res.status(500).json({ error: catError.message });
+        return;
+      }
+
+      // Branch access check
+      if (
+        !req.user!.roles.includes("HM") &&
+        !catalogItem.is_global &&
+        catalogItem.branch_id &&
+        !req.user!.branchIds.includes(catalogItem.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this catalog item's branch" });
+        return;
+      }
+
+      if (catalogItem.is_global && !req.user!.roles.includes("HM")) {
+        res.status(403).json({ error: "Only Higher Management can modify global catalog items" });
+        return;
+      }
+
+      const { data: link, error: updateError } = await supabaseAdmin
+        .from("catalog_inventory_links")
+        .update({ quantity: qty })
+        .eq("id", linkId)
+        .eq("catalog_item_id", itemId)
+        .select(
+          `
+          *,
+          inventory_items(id, item_name, sku_code, cost_price, unit_of_measure, branch_id)
+        `
+        )
+        .single();
+
+      if (updateError) {
+        if (updateError.code === "PGRST116") {
+          res.status(404).json({ error: "Inventory link not found" });
+          return;
+        }
+        res.status(500).json({ error: updateError.message });
+        return;
+      }
+
+      res.json(link);
+    } catch (error) {
+      console.error("Update catalog inventory link error:", error);
+      res.status(500).json({ error: "Failed to update inventory link" });
+    }
+  }
+);
+
+/**
+ * DELETE /api/catalog/:itemId/inventory-links/:linkId
+ * Remove an inventory item link from a catalog item
+ * Roles: HM, POC, JS
+ */
+router.delete(
+  "/:itemId/inventory-links/:linkId",
+  requireRoles("HM", "POC", "JS"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const itemId = req.params.itemId as string;
+      const linkId = req.params.linkId as string;
+
+      // Verify catalog item exists
+      const { data: catalogItem, error: catError } = await supabaseAdmin
+        .from("catalog_items")
+        .select("id, branch_id, is_global")
+        .eq("id", itemId)
+        .single();
+
+      if (catError) {
+        if (catError.code === "PGRST116") {
+          res.status(404).json({ error: "Catalog item not found" });
+          return;
+        }
+        res.status(500).json({ error: catError.message });
+        return;
+      }
+
+      // Branch access check
+      if (
+        !req.user!.roles.includes("HM") &&
+        !catalogItem.is_global &&
+        catalogItem.branch_id &&
+        !req.user!.branchIds.includes(catalogItem.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this catalog item's branch" });
+        return;
+      }
+
+      if (catalogItem.is_global && !req.user!.roles.includes("HM")) {
+        res.status(403).json({ error: "Only Higher Management can modify global catalog items" });
+        return;
+      }
+
+      const { error: deleteError } = await supabaseAdmin
+        .from("catalog_inventory_links")
+        .delete()
+        .eq("id", linkId)
+        .eq("catalog_item_id", itemId);
+
+      if (deleteError) {
+        res.status(500).json({ error: deleteError.message });
+        return;
+      }
+
+      res.json({ message: "Inventory link removed successfully" });
+    } catch (error) {
+      console.error("Delete catalog inventory link error:", error);
+      res.status(500).json({ error: "Failed to remove inventory link" });
+    }
+  }
+);
+
 export default router;

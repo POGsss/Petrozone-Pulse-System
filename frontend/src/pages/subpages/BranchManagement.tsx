@@ -260,13 +260,13 @@ export function BranchManagement() {
 
     try {
       setDeletingBranch(true);
-      await branchesApi.delete(branchToDelete.id);
+      const result = await branchesApi.delete(branchToDelete.id);
 
       setShowDeleteConfirm(false);
       setBranchToDelete(null);
 
-      // Refresh branches list
-      showToast.success("Branch deleted successfully");
+      // Refresh branches list — show backend message (deactivated vs deleted)
+      showToast.success(result.message || "Branch deleted successfully");
       fetchBranches();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete branch");

@@ -538,6 +538,42 @@ export const catalogApi = {
       method: "DELETE",
     });
   },
+
+  // Inventory Links
+  getInventoryLinks: async (itemId: string) => {
+    return fetchWithAuth<import("../types").CatalogInventoryLink[]>(
+      `/api/catalog/${itemId}/inventory-links`
+    );
+  },
+
+  addInventoryLink: async (itemId: string, data: { inventory_item_id: string; quantity: number }) => {
+    return fetchWithAuth<import("../types").CatalogInventoryLink>(
+      `/api/catalog/${itemId}/inventory-links`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    );
+  },
+
+  updateInventoryLink: async (itemId: string, linkId: string, data: { quantity: number }) => {
+    return fetchWithAuth<import("../types").CatalogInventoryLink>(
+      `/api/catalog/${itemId}/inventory-links/${linkId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }
+    );
+  },
+
+  removeInventoryLink: async (itemId: string, linkId: string) => {
+    return fetchWithAuth<{ message: string }>(
+      `/api/catalog/${itemId}/inventory-links/${linkId}`,
+      {
+        method: "DELETE",
+      }
+    );
+  },
 };
 
 // Pricing API
@@ -978,6 +1014,7 @@ export const purchaseOrdersApi = {
 
   create: async (data: {
     po_number?: string;
+    supplier_id?: string;
     supplier_name?: string;
     order_date: string;
     expected_delivery_date?: string;
@@ -998,6 +1035,7 @@ export const purchaseOrdersApi = {
   update: async (
     id: string,
     data: {
+      supplier_id?: string;
       supplier_name?: string;
       order_date?: string;
       expected_delivery_date?: string;

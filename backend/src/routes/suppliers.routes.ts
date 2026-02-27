@@ -11,7 +11,9 @@ const router = Router();
 router.use(requireAuth);
 
 // RBAC: HM, POC, JS for all supplier operations (UC53–UC56)
+// R needs read access for PO supplier selection
 const requireSupplierAccess = requireRoles("HM", "POC", "JS");
+const requireSupplierRead = requireRoles("HM", "POC", "JS", "R");
 
 /**
  * GET /api/suppliers
@@ -20,7 +22,7 @@ const requireSupplierAccess = requireRoles("HM", "POC", "JS");
  */
 router.get(
   "/",
-  requireSupplierAccess,
+  requireSupplierRead,
   async (req: Request, res: Response): Promise<void> => {
     try {
       const {
@@ -95,7 +97,7 @@ router.get(
  */
 router.get(
   "/:supplierId",
-  requireSupplierAccess,
+  requireSupplierRead,
   async (req: Request, res: Response): Promise<void> => {
     try {
       const supplierId = req.params.supplierId as string;

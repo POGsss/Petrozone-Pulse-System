@@ -29,7 +29,7 @@ import {
   SearchFilter,
 } from "../../components";
 import type { FilterGroup } from "../../components";
-import type { JobOrder, JobOrderItem, JobOrderHistory, Branch, Customer, Vehicle, CatalogItem, ResolvedPricing, ThirdPartyRepair } from "../../types";
+import type { JobOrder, JobOrderItem, JobOrderHistory, Branch, Customer, Vehicle, CatalogItem, CatalogInventoryLink, ResolvedPricing, ThirdPartyRepair } from "../../types";
 
 const ITEMS_PER_PAGE = 12;
 
@@ -88,6 +88,7 @@ interface DraftItem {
   catalog_item_type: string;
   quantity: number;
   base_price: number;
+  inventory_cost: number;
   labor_price: number | null;
   packaging_price: number | null;
   line_total: number;
@@ -478,8 +479,22 @@ export function JobOrderManagement() {
         );
       }
 
+      // Fetch inventory links to compute inventory cost preview
+      let inventoryCost = 0;
+      try {
+        const linksRes = await catalogApi.getInventoryLinks(catalog_item.id);
+        if (linksRes && linksRes.length > 0) {
+          inventoryCost = linksRes.reduce(
+            (sum: number, l: CatalogInventoryLink) => sum + (l.inventory_items?.cost_price || 0) * l.quantity,
+            0
+          );
+        }
+      } catch {
+        // ignore — backend will resolve on submission
+      }
+
       const lineTotal =
-        (resolved_prices.base_price + (resolved_prices.labor || 0) + (resolved_prices.packaging || 0)) * qty;
+        (resolved_prices.base_price + inventoryCost + (resolved_prices.labor || 0) + (resolved_prices.packaging || 0)) * qty;
 
       setDraftItems((prev) => [
         ...prev,
@@ -489,6 +504,7 @@ export function JobOrderManagement() {
           catalog_item_type: catalog_item.type,
           quantity: qty,
           base_price: resolved_prices.base_price,
+          inventory_cost: inventoryCost,
           labor_price: resolved_prices.labor,
           packaging_price: resolved_prices.packaging,
           line_total: lineTotal,
@@ -659,7 +675,7 @@ export function JobOrderManagement() {
       prev.map((item) => {
         if (item.id !== itemId) return item;
         const unitPrice =
-          item.base_price + (item.labor_price || 0) + (item.packaging_price || 0);
+          item.base_price + (item.inventory_cost || 0) + (item.labor_price || 0) + (item.packaging_price || 0);
         return { ...item, quantity: newQty, line_total: unitPrice * newQty };
       })
     );
@@ -715,8 +731,22 @@ export function JobOrderManagement() {
         );
       }
 
+      // Fetch inventory links to compute inventory cost preview
+      let editInvCost = 0;
+      try {
+        const linksRes = await catalogApi.getInventoryLinks(catalog_item.id);
+        if (linksRes && linksRes.length > 0) {
+          editInvCost = linksRes.reduce(
+            (sum: number, l: CatalogInventoryLink) => sum + (l.inventory_items?.cost_price || 0) * l.quantity,
+            0
+          );
+        }
+      } catch {
+        // ignore — backend will resolve on submission
+      }
+
       const lineTotal =
-        (resolved_prices.base_price + (resolved_prices.labor || 0) + (resolved_prices.packaging || 0)) * qty;
+        (resolved_prices.base_price + editInvCost + (resolved_prices.labor || 0) + (resolved_prices.packaging || 0)) * qty;
 
       setEditDraftItems((prev) => [
         ...prev,
@@ -726,6 +756,7 @@ export function JobOrderManagement() {
           catalog_item_type: catalog_item.type,
           quantity: qty,
           base_price: resolved_prices.base_price,
+          inventory_cost: editInvCost,
           labor_price: resolved_prices.labor,
           packaging_price: resolved_prices.packaging,
           line_total: lineTotal,
@@ -1319,6 +1350,7 @@ export function JobOrderManagement() {
                       </p>
                       <p className="text-xs text-neutral-900">
                         Base: {formatPrice(item.base_price)}
+                        {item.inventory_cost > 0 && ` + Inventory: ${formatPrice(item.inventory_cost)}`}
                         {item.labor_price != null && ` + Labor: ${formatPrice(item.labor_price)}`}
                         {item.packaging_price != null && ` + Pkg: ${formatPrice(item.packaging_price)}`}
                         {" × "}{item.quantity}
@@ -1534,25 +1566,39 @@ export function JobOrderManagement() {
               ) : viewOrder.job_order_items && viewOrder.job_order_items.length > 0 ? (
                 <div className="space-y-4">
                   {viewOrder.job_order_items.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-neutral-950 text-sm truncate">
-                          {item.catalog_item_name}
-                          <span className="text-neutral-900 font-normal ml-1">({item.catalog_item_type})</span>
-                        </p>
-                        <p className="text-xs text-neutral-900">
-                          Base: {formatPrice(item.base_price)}
-                          {item.labor_price != null && ` + Labor: ${formatPrice(item.labor_price)}`}
-                          {item.packaging_price != null && ` + Pkg: ${formatPrice(item.packaging_price)}`}
-                          {" × "}{item.quantity}
-                        </p>
+                    <div key={item.id} className="bg-neutral-100 rounded-xl px-4 py-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-neutral-950 text-sm truncate">
+                            {item.catalog_item_name}
+                            <span className="text-neutral-900 font-normal ml-1">({item.catalog_item_type})</span>
+                          </p>
+                          <p className="text-xs text-neutral-900">
+                            Base: {formatPrice(item.base_price)}
+                            {(item.inventory_cost ?? 0) > 0 && ` + Inventory: ${formatPrice(item.inventory_cost!)}`}
+                            {item.labor_price != null && ` + Labor: ${formatPrice(item.labor_price)}`}
+                            {item.packaging_price != null && ` + Pkg: ${formatPrice(item.packaging_price)}`}
+                            {" × "}{item.quantity}
+                          </p>
+                        </div>
+                        <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap ml-3">
+                          {formatPrice(item.line_total)}
+                        </span>
                       </div>
-                      <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap ml-3">
-                        {formatPrice(item.line_total)}
-                      </span>
+                      {/* Inventory breakdown */}
+                      {item.job_order_item_inventories && item.job_order_item_inventories.length > 0 && (
+                        <div className="mt-2 pl-3 border-l-2 border-neutral-200 space-y-1">
+                          <p className="text-[11px] font-semibold text-neutral-900 uppercase tracking-wide">Inventory Used</p>
+                          {item.job_order_item_inventories.map((inv) => (
+                            <div key={inv.id} className="flex items-center justify-between text-xs text-neutral-900">
+                              <span className="truncate">{inv.inventory_item_name}</span>
+                              <span className="whitespace-nowrap ml-2">
+                                {inv.quantity_per_unit} × {item.quantity} = {inv.quantity_per_unit * item.quantity} · {formatPrice(inv.unit_cost * inv.quantity_per_unit * item.quantity)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                   <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
@@ -1922,6 +1968,7 @@ export function JobOrderManagement() {
                         </p>
                         <p className="text-xs text-neutral-900">
                           Base: {formatPrice(item.base_price)}
+                          {(item.inventory_cost ?? 0) > 0 && ` + Inventory: ${formatPrice(item.inventory_cost!)}`}
                           {item.labor_price != null && ` + Labor: ${formatPrice(item.labor_price)}`}
                           {item.packaging_price != null && ` + Pkg: ${formatPrice(item.packaging_price)}`}
                         </p>
@@ -1963,6 +2010,7 @@ export function JobOrderManagement() {
                         </p>
                         <p className="text-xs text-neutral-900">
                           Base: {formatPrice(item.base_price)}
+                          {item.inventory_cost > 0 && ` + Inventory: ${formatPrice(item.inventory_cost)}`}
                           {item.labor_price != null && ` + Labor: ${formatPrice(item.labor_price)}`}
                           {item.packaging_price != null && ` + Pkg: ${formatPrice(item.packaging_price)}`}
                           {" \u00d7 "}{item.quantity}
