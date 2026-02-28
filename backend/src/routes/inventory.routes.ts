@@ -922,27 +922,14 @@ export async function deductStockForJobOrder(
     if (snapshots.length > 0) {
       // Use direct FK links from snapshots
       for (const snap of snapshots) {
-        deductions.push({
-          inventory_item_id: snap.inventory_item_id,
-          inventory_item_name: snap.inventory_item_name,
-          quantity: snap.quantity,
-        });
-      }
-    } else if (joItem.catalog_item_type === "product") {
-      // Fallback for legacy product-type items without inventory links
-      const { data: invItems } = await supabaseAdmin
-        .from("inventory_items")
-        .select("id, item_name, reorder_threshold")
-        .eq("branch_id", branchId)
-        .eq("status", "active")
-        .ilike("item_name", joItem.catalog_item_name);
-
-      if (invItems && invItems.length > 0) {
-        deductions.push({
-          inventory_item_id: invItems[0]!.id,
-          inventory_item_name: invItems[0]!.item_name,
-          quantity: joItem.quantity,
-        });
+        const snapQty = snap.quantity || 0;
+        if (snapQty > 0) {
+          deductions.push({
+            inventory_item_id: snap.inventory_item_id,
+            inventory_item_name: snap.inventory_item_name,
+            quantity: snapQty,
+          });
+        }
       }
     }
   }

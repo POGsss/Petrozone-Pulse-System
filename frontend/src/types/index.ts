@@ -151,22 +151,16 @@ export interface Vehicle {
 }
 
 // Catalog types
-export type CatalogItemType = "service" | "product" | "package";
 export type CatalogItemStatus = "active" | "inactive";
 
 export interface CatalogItem {
   id: string;
   name: string;
-  type: CatalogItemType;
   description: string | null;
-  base_price: number;
   status: CatalogItemStatus;
-  branch_id: string | null;
-  is_global: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;
-  branches?: Branch;
 }
 
 // Catalog Inventory Link types
@@ -174,7 +168,6 @@ export interface CatalogInventoryLink {
   id: string;
   catalog_item_id: string;
   inventory_item_id: string;
-  quantity: number;
   created_at: string;
   inventory_items?: {
     id: string;
@@ -186,43 +179,39 @@ export interface CatalogInventoryLink {
   };
 }
 
+// Vehicle class type for job orders
+export type VehicleClass = "light" | "heavy" | "extra_heavy";
+
 // Pricing Matrix types
-export type PricingType = "labor" | "packaging";
 export type PricingMatrixStatus = "active" | "inactive";
 
 export interface PricingMatrix {
   id: string;
   catalog_item_id: string;
-  pricing_type: PricingType;
-  price: number;
+  light_price: number;
+  heavy_price: number;
+  extra_heavy_price: number;
   status: PricingMatrixStatus;
-  branch_id: string;
-  description: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
   catalog_items?: {
     id: string;
     name: string;
-    type: CatalogItemType;
-    base_price: number;
   };
-  branches?: Branch;
 }
 
 export interface ResolvedPricing {
   catalog_item: {
     id: string;
     name: string;
-    type: CatalogItemType;
-    base_price: number;
   };
-  pricing_rules: PricingMatrix[];
-  resolved_prices: {
-    base_price: number;
-    labor: number | null;
-    packaging: number | null;
-  };
+  pricing: {
+    id: string;
+    light_price: number;
+    heavy_price: number;
+    extra_heavy_price: number;
+  } | null;
 }
 
 // Job Order types
@@ -235,9 +224,7 @@ export interface JobOrderItem {
   catalog_item_name: string;
   catalog_item_type: string;
   quantity: number;
-  base_price: number;
   labor_price: number | null;
-  packaging_price: number | null;
   inventory_cost: number;
   line_total: number;
   created_at: string;
@@ -273,6 +260,7 @@ export interface JobOrder {
   customer_id: string;
   vehicle_id: string;
   branch_id: string;
+  vehicle_class: VehicleClass;
   status: JobOrderStatus;
   total_amount: number;
   notes: string | null;

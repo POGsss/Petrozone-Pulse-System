@@ -6,148 +6,90 @@
 
 ### Overview
 
-The Job Order (JO) module is the central workflow in the system. It manages service requests tied to a customer vehicle, tracking items (products/services/packages), third-party repairs (TPR), and a multi-step approval workflow. When a JO is approved, product-type items automatically deduct stock from inventory. The module supports full CRUD for both JO items and third-party repairs, with conditional hard/soft delete logic depending on the JO's lifecycle stage.
-
-### Status Lifecycle
-
-```
-  created ──────► pending ──────► approved
-     │                │               │
-     │                │               │
-     ▼                ▼               ▼
-  rejected ◄──── (rejected)      cancelled
-     │                               (stock restored)
-     │
-     ▼
-  pending (re-submit)
-```
-
-- **Created** — newly created JO, items can be added/edited/removed
-- **Pending** — submitted for customer approval, awaiting decision
-- **Approved** — customer approved, stock deducted from inventory
-- **Rejected** — customer rejected, items can be modified and re-submitted
-- **Cancelled** — JO cancelled, if previously approved then stock is restored
+The Job Order (JO) module is the central workflow in the system. It manages service requests tied to a customer vehicle, tracking catalog items with vehicle-class-based pricing, inventory consumption, third-party repairs (TPR), and a multi-step approval workflow. When a JO is approved, the system automatically deducts stock from inventory based on the inventory template snapshots captured during JO creation. The module supports full CRUD for both JO items and third-party repairs, with conditional hard/soft delete logic depending on the JO's lifecycle stage.
 
 ### Key Business Rules
 
-1. **Customer vehicle required** — a JO must be linked to a specific customer vehicle (selecting a customer filters their vehicles).
-2. **At least 1 item** — a JO must have at least 1 item before it can be submitted for approval.
-3. **Item editing restricted by status** — items can only be added/updated/removed when JO status is `created` or `rejected`.
-4. **Pricing resolution** — when an item is added, the system resolves the price via the `/api/pricing/resolve` endpoint (base price + labor + packaging from active pricing rules).
-5. **Stock deduction on approval** — product-type catalog items automatically deduct from inventory (matched by item name in same branch).
-6. **Insufficient stock blocks approval** — if inventory stock is insufficient for any product item, the approval is blocked with an error.
-7. **Stock restoration on cancellation** — cancelling an approved JO restores all deducted stock.
-8. **Conditional JO delete** — hard delete if status is `created` AND no items AND no third-party repairs; otherwise soft delete (sets `is_deleted = true`).
-9. **Third-party repairs (TPR)** — managed separately within a JO. Each TPR has its own CRUD and conditional delete logic (hard delete if parent JO is `created` or `rejected`, soft delete otherwise).
-10. **Card grid display** — JOs are displayed as cards (not a table), 12 per page.
+1. **Vehicle class pricing** — each JO has a `vehicle_class` (light / heavy / extra\_heavy). When a catalog item is added, the system resolves its pricing matrix and selects the price column matching the vehicle class (e.g., `light_price`, `heavy_price`, or `extra_heavy_price`).
+2. **Pricing formula** — `line_total = (labor_price + inventory_cost) × quantity`, where:
+   - `labor_price` = the vehicle-class-specific price from the pricing matrix (0 if no active pricing exists)
+   - `inventory_cost` = `Σ(unit_cost × quantity_per_unit)` for all linked inventory items on that catalog item
+3. **Inventory snapshots** — when a catalog item is added to a JO, the system fetches its inventory template (from `catalog_inventory_links`) and creates `job_order_item_inventories` snapshots. Each snapshot records `inventory_item_id`, `inventory_item_name`, `quantity_per_unit`, and `unit_cost` at the time of creation.
+4. **Editable inventory quantities** — during JO item creation and editing, users can modify `quantity_per_unit` for each inventory snapshot, which recalculates the `inventory_cost` and `line_total`.
+5. **Stock deduction on approval** — when a JO is approved, the system aggregates inventory quantities across all JO items and creates `stock_out` movements. If any item has insufficient stock, approval fails with an error.
+6. **Stock restoration on cancel** — cancelling an approved JO creates `stock_in` movements to reverse the earlier deductions.
+7. **Branch-scoped** — HM sees all JOs; other roles see only JOs from their assigned branches.
+8. **Cascading lookups** — Branch → Customer (filtered by branch) → Vehicle (filtered by customer).
+9. **Conditional delete** — `created` status → hard delete (cascades items, inventories, repairs); other statuses → soft delete (`is_deleted: true`).
+
+### Status Flow
+
+```
+created → pending (request-approval)
+pending → approved (record-approval)
+pending → rejected (record-approval)
+created/rejected → pending (re-request-approval)
+created/pending/rejected/approved → cancelled
+```
 
 ### RBAC (Roles & Permissions)
 
-| Action                             | HM  | POC | JS  |  R  |  T  |
-| ---------------------------------- | :-: | :-: | :-: | :-: | :-: |
-| View Job Orders                    | ✅  | ✅  | ✅  | ✅  | ✅  |
-| Create JO                          |  —  | ✅  | ✅  | ✅  |  —  |
-| Update JO                          |  —  | ✅  | ✅  | ✅  | ✅  |
-| Add/Edit/Remove Items              |  —  | ✅  | ✅  | ✅  |  —  |
-| Delete JO                          |  —  | ✅  | ✅  | ✅  |  —  |
-| Customer Approval (Request/Record) |  —  |  —  |  —  | ✅  | ✅  |
-| Cancel JO                          |  —  |  —  |  —  | ✅  | ✅  |
-| Manage Third-Party Repairs         | ✅  | ✅  | ✅  | ✅  | ✅  |
-| View History                       | ✅  | ✅  | ✅  | ✅  | ✅  |
+| Action                     | HM  | POC | JS  |  R  |  T  |
+| -------------------------- | :-: | :-: | :-: | :-: | :-: |
+| View Job Orders            | ✅  | ✅  | ✅  | ✅  | ✅  |
+| Create Job Order           |  —  | ✅  | ✅  | ✅  |  —  |
+| Update (Notes only)        |  —  | ✅  | ✅  | ✅  | ✅  |
+| Edit Items                 |  —  | ✅  | ✅  | ✅  |  —  |
+| Delete Job Order           |  —  | ✅  | ✅  | ✅  |  —  |
+| Request Approval           |  —  | ✅  | ✅  | ✅  | ✅  |
+| Record Approval            |  —  |  —  |  —  | ✅  | ✅  |
+| Cancel Job Order           |  —  | ✅  | ✅  | ✅  |  —  |
+| Manage Third-Party Repairs | ✅  | ✅  | ✅  | ✅  | ✅  |
 
-> **Note:** HM has view-only access to JOs. POC, JS, R handle creation and item management. R and T handle the approval workflow.
+> **Note:** HM can view all JOs but cannot create, edit items, delete, or cancel. T can update notes, request/record approvals, and manage TPR, but cannot create, edit items, or delete.
 
 ### API Endpoints
 
-| Method   | Endpoint                              | Description                      |
-| -------- | ------------------------------------- | -------------------------------- |
-| `GET`    | `/api/joborders`                      | List JOs with items and TPRs     |
-| `GET`    | `/api/joborders/:id`                  | Get single JO with all relations |
-| `POST`   | `/api/joborders`                      | Create JO                        |
-| `PUT`    | `/api/joborders/:id`                  | Update JO header                 |
-| `DELETE` | `/api/joborders/:id`                  | Conditional hard/soft delete     |
-| `POST`   | `/api/joborders/:id/items`            | Add item to JO                   |
-| `PUT`    | `/api/joborders/:id/items/:itemId`    | Update JO item                   |
-| `DELETE` | `/api/joborders/:id/items/:itemId`    | Remove item (must keep ≥ 1)      |
-| `PUT`    | `/api/joborders/:id/request-approval` | Submit for approval (→ pending)  |
-| `PUT`    | `/api/joborders/:id/record-approval`  | Record approval/rejection        |
-| `PUT`    | `/api/joborders/:id/cancel`           | Cancel JO                        |
-| `GET`    | `/api/joborders/:id/history`          | Get JO change history            |
-| `POST`   | `/api/thirdpartyrepairs`              | Create TPR                       |
-| `PUT`    | `/api/thirdpartyrepairs/:id`          | Update TPR                       |
-| `DELETE` | `/api/thirdpartyrepairs/:id`          | Conditional hard/soft delete TPR |
-| `GET`    | `/api/pricing/resolve`                | Resolve pricing for an item      |
+| Method   | Endpoint                                    | Description                                  |
+| -------- | ------------------------------------------- | -------------------------------------------- |
+| `GET`    | `/api/job-orders`                           | List JOs (filtered, paginated, branch-scoped)|
+| `GET`    | `/api/job-orders/:id`                       | Get single JO with items, customer, vehicle  |
+| `POST`   | `/api/job-orders`                           | Create JO with items + inventory snapshots   |
+| `PUT`    | `/api/job-orders/:id`                       | Update JO (notes only)                       |
+| `DELETE` | `/api/job-orders/:id`                       | Hard/soft delete based on status             |
+| `PATCH`  | `/api/job-orders/:id/request-approval`      | Move to pending                              |
+| `PATCH`  | `/api/job-orders/:id/record-approval`       | Approve or reject (triggers stock deduction) |
+| `PATCH`  | `/api/job-orders/:id/cancel`                | Cancel (restores stock if was approved)       |
+| `POST`   | `/api/job-orders/:id/items`                 | Add item to editable JO                      |
+| `PUT`    | `/api/job-orders/:id/items/:itemId`         | Update item quantity                         |
+| `DELETE` | `/api/job-orders/:id/items/:itemId`         | Remove item (min 1 must remain)              |
+| `GET`    | `/api/job-orders/:id/history`               | Get JO history/audit trail                   |
+| `GET`    | `/api/third-party-repairs?job_order_id=...` | List repairs for a JO                        |
+| `POST`   | `/api/third-party-repairs`                  | Create repair                                |
+| `PUT`    | `/api/third-party-repairs/:id`              | Update repair                                |
+| `DELETE` | `/api/third-party-repairs/:id`              | Delete repair                                |
 
 ---
 
 ## Sample Data to Populate
 
-> **Pre-requisites:** Customers with vehicles, catalog items with active pricing rules, and inventory items must already exist.
+### Pre-requisites Before Creating JOs
 
-### Job Order #1 — Standard Service (MAIN)
+Ensure the following exist:
+- **Branches** (see `BRANCH_TESTING.md`)
+- **Customers** linked to branches (see `CUSTOMER_TESTING.md`)
+- **Vehicles** linked to customers (see `VEHICLE_TESTING.md`)
+- **Catalog items** with inventory links (see `CATALOG_TESTING.md`)
+- **Pricing matrices** for catalog items (see `PRICING_TESTING.md`)
+- **Inventory items** with sufficient stock (see `INVENTORY_TESTING.md`)
 
-| Field    | Value                                      |
-| -------- | ------------------------------------------ |
-| Branch   | MAIN                                       |
-| Customer | _(select an active MAIN customer)_         |
-| Vehicle  | _(select one of that customer's vehicles)_ |
-| Notes    | Standard oil change and filter replacement |
+### Sample Job Orders
 
-**Items to add after creation:**
-
-| #   | Catalog Item                 | Type    | Qty | Expected Price Resolution |
-| --- | ---------------------------- | ------- | --- | ------------------------- |
-| 1   | Shell Helix Ultra 5W-40 (1L) | Product | 4   | Base + labor + packaging  |
-| 2   | Denso Oil Filter (Universal) | Product | 1   | Base + labor              |
-| 3   | Oil Change Service           | Service | 1   | Service rate              |
-
-### Job Order #2 — With Third-Party Repair (NORTH)
-
-| Field    | Value                                      |
-| -------- | ------------------------------------------ |
-| Branch   | NORTH                                      |
-| Customer | _(select an active NORTH customer)_        |
-| Vehicle  | _(select one of that customer's vehicles)_ |
-| Notes    | Tire replacement + external alignment      |
-
-**Items:**
-
-| #   | Catalog Item                 | Type    | Qty |
-| --- | ---------------------------- | ------- | --- |
-| 1   | Bridgestone Ecopia 195/65R15 | Product | 4   |
-
-**Third-Party Repair:**
-
-| Field            | Value                                        |
-| ---------------- | -------------------------------------------- |
-| Service Provider | QuickAlign Pro Shop                          |
-| Description      | 4-Wheel Computer Alignment                   |
-| Cost             | 1,500                                        |
-| Notes            | External service — customer vehicle sent out |
-
-### Job Order #3 — For Rejection & Re-submission Testing
-
-| Field    | Value                                      |
-| -------- | ------------------------------------------ |
-| Branch   | MAIN                                       |
-| Customer | _(select an active MAIN customer)_         |
-| Vehicle  | _(select one of that customer's vehicles)_ |
-| Notes    | Quote for brake pad replacement            |
-
-**Items:**
-
-| #   | Catalog Item                 | Type    | Qty |
-| --- | ---------------------------- | ------- | --- |
-| 1   | Brembo Brake Pad Set (Front) | Product | 1   |
-
-### Job Order #4 — For Delete Testing
-
-| Field    | Value                                      |
-| -------- | ------------------------------------------ |
-| Branch   | MAIN                                       |
-| Customer | _(select an active MAIN customer)_         |
-| Vehicle  | _(select one of that customer's vehicles)_ |
-| Notes    | This JO will be used for delete testing    |
+| #   | Branch          | Customer       | Vehicle         | Vehicle Class | Catalog Items                                   | Notes                         |
+| --- | --------------- | -------------- | --------------- | ------------- | ----------------------------------------------- | ----------------------------- |
+| 1   | Main Branch     | Juan Dela Cruz | ABC-1234 Sedan  | Light         | Oil Change Service (×1), Air Filter Repl. (×1)  | Routine maintenance request   |
+| 2   | Main Branch     | Maria Santos   | XYZ-5678 SUV    | Heavy         | Brake Pad Replacement (×2)                      | Squeaking brakes complaint    |
+| 3   | Secondary Branch| Pedro Reyes    | DEF-9012 Truck  | Extra Heavy   | Engine Tune-Up Package (×1)                     | Engine performance issue      |
 
 ---
 
@@ -156,478 +98,376 @@ The Job Order (JO) module is the central workflow in the system. It manages serv
 ### Pre-requisites
 
 - Backend and frontend servers are running
-- You are logged in as **POC**, **JS**, **R**, or **T** (depending on the test)
-- Customers with active vehicles exist in the target branches
-- Catalog items with active pricing rules exist
-- Inventory items with sufficient stock exist
+- Logged in as **POC**, **JS**, or **R** (for create/edit)
+- All dependency data populated (branches, customers, vehicles, catalog, pricing, inventory)
 
 ---
 
 ### Test 1 — View Job Orders
 
-**Goal:** Verify the JO card grid loads correctly.
+**Goal:** Verify the JO list loads correctly.
 
 1. Navigate to **Job Orders** from the sidebar
-2. Verify the page displays JOs as **cards** (not a table)
-3. Each card shows:
-   - ✅ JO number / identifier
+2. Verify the header shows **"Job Orders"** with a count subtitle (e.g., `"{n} orders"`)
+3. Verify items display as cards showing:
+   - ✅ Order number (e.g., `JO-20250101-001`)
+   - ✅ Status badge (Created / Pending / Approved / Rejected / Cancelled)
    - ✅ Customer name
    - ✅ Vehicle info (plate number)
-   - ✅ Status badge (Created / Pending / Approved / Rejected / Cancelled)
-   - ✅ Branch badge
-   - ✅ Item count
-   - ✅ Total amount
-   - ✅ Action buttons
-4. Verify pagination: **12 cards per page**
+   - ✅ Branch name
+   - ✅ Vehicle class badge
+   - ✅ Total amount (₱ formatted)
+   - ✅ Action buttons appropriate to status and role
+4. Verify pagination: **12 items per page**
 
 ---
 
-### Test 2 — Create Job Order
+### Test 2 — Create Job Order (Full Flow with Pricing Resolution)
 
-**Goal:** Verify JO creation with customer-vehicle linking.
+**Goal:** Verify the complete JO creation flow including cascading lookups, pricing resolution, and inventory template.
 
-1. Log in as **POC** or **JS** or **R**
+1. Log in as **POC**, **JS**, or **R**
 2. Click **"Create Job Order"** → the **"Create Job Order"** modal opens
-3. Fill in the form:
-   - **Branch**: `MAIN` (select first — filters customers)
-   - **Customer**: _(select an active MAIN customer)_ — filtered by branch
-   - **Vehicle**: _(select one of that customer's vehicles)_
-   - **Notes**: `Standard oil change and filter replacement`
-4. Click **"Create Job Order"**
-5. Verify:
-   - ✅ Button shows **"Creating..."** while processing
-   - ✅ Toast: `"Job order created successfully"`
-   - ✅ New JO card appears with Status = **"Created"**
-   - ✅ Items count shows 0 (items are added after creation)
-6. Repeat for JOs #2, #3, and #4
+3. **Step 1 — Order Details:**
+   - Select a **Branch** from dropdown (HM sees all, others see assigned branches)
+   - Select a **Customer** from dropdown (filtered by selected branch)
+   - Select a **Vehicle** from dropdown (filtered by selected customer)
+   - Select **Vehicle Class**: `Light` / `Heavy` / `Extra Heavy`
+   - Enter **Notes** (optional)
+4. **Step 2 — Add Catalog Items:**
+   - Select a catalog item from the dropdown (shows active items)
+   - Pricing is resolved automatically via API (`pricingApi.resolve`)
+   - Verify:
+     - ✅ **Labor price** populated from the pricing matrix column matching vehicle class
+     - ✅ If no active pricing exists: labor price = 0, warning toast shown
+     - ✅ **Inventory items** loaded from catalog template (from `catalog_inventory_links`)
+     - ✅ Each inventory item shows: name, unit cost, quantity (editable, default = 1)
+     - ✅ **Inventory cost** = sum of (unit\_cost × quantity) across all linked inventory items
+     - ✅ **Line total** = (labor\_price + inventory\_cost) × quantity
+   - Add the item to the draft list
+   - Repeat for additional items
+5. **Step 3 — Third-Party Repairs (optional):**
+   - Click "Add Repair" to add a third-party repair:
+     - Provider Name, Description, Cost (₱), Repair Date
+   - Repairs appear in a list below
+6. **Review the draft:**
+   - ✅ Each item row shows: catalog item name, quantity, labor price, inventory cost, line total
+   - ✅ Expanding an item row shows inventory detail sub-rows
+   - ✅ Grand total is calculated correctly
+7. Click **"Create Job Order"**
+8. Verify:
+   - ✅ Toast: success message
+   - ✅ New JO card appears in the list with status `Created`
+   - ✅ Order number is auto-generated
 
-**Edge cases to test:**
-
-- No customer selected → error: `"Customer is required"`
-- No vehicle selected → error: `"Vehicle is required"`
-- HM tries to create → create button should not be visible
-- T tries to create → create button should not be visible
-
----
-
-### Test 3 — Add Items to Job Order
-
-**Goal:** Verify item addition with pricing resolution.
-
-1. Click on JO #1 card → open the JO detail/edit view
-2. Click **"Add Item"** (or the add item action)
-3. Select a catalog item: `Shell Helix Ultra 5W-40 (1L)`
-4. Enter Quantity: `4`
-5. Verify:
-   - ✅ Price is auto-resolved via the pricing system (base + labor + packaging)
-   - ✅ Subtotal is computed (resolved price × quantity)
-6. Save the item
-7. Verify:
-   - ✅ Toast: `"Item added successfully"`
-   - ✅ Item appears in the JO's item list
-8. Add remaining items for JO #1 (Denso Oil Filter × 1, Oil Change Service × 1)
-9. Verify the **Total** updates with each item addition
-
-**Edge cases:**
-
-- Add item with Quantity = 0 → should show error
-- Items can only be added when status is `created` or `rejected`
+**Pricing calculation example (Oil Change Service, Light vehicle, qty=1):**
+- Light price from pricing matrix: ₱500
+- Inventory: Shell Helix 5W-40 (₱650 × 1) + Denso Oil Filter (₱280 × 1) = ₱930
+- Line total: (500 + 930) × 1 = **₱1,430**
 
 ---
 
-### Test 4 — Update Job Order Item
+### Test 3 — View Job Order Details
 
-**Goal:** Verify item quantity/details can be modified.
+**Goal:** Verify the detail view shows complete JO information.
 
-1. On JO #1, find an existing item (e.g., Shell Helix Ultra)
-2. Click the Edit action on that item
-3. Change quantity from 4 to 6
-4. Save changes
-5. Verify:
-   - ✅ Toast: `"Item updated successfully"`
-   - ✅ Updated quantity and subtotal reflected
-   - ✅ JO total recalculated
+1. Click on a JO card to open the **View modal**
+2. Verify the modal shows:
+   - ✅ **Order #** and status badge
+   - ✅ **Customer** name
+   - ✅ **Vehicle** (plate number, type)
+   - ✅ **Branch** name
+   - ✅ **Vehicle Class** badge
+   - ✅ **Notes**
+   - ✅ **Items list**:
+     - For each item: catalog item name, quantity, labor price (₱), inventory cost (₱), line total (₱)
+     - Expandable inventory sub-rows: inventory item name, qty per unit, unit cost
+   - ✅ **Third-Party Repairs** section (if any)
+   - ✅ **History timeline** (status changes, user actions)
+   - ✅ **Timestamps** (created, updated)
+   - ✅ **Total amount** (sum of all line totals)
 
 ---
 
-### Test 5 — Remove Item from Job Order
+### Test 4 — Edit Job Order (Notes + Items)
 
-**Goal:** Verify item removal with minimum-1-item constraint.
+**Goal:** Verify JO editing for editable statuses.
 
-**5a — Remove when multiple items exist:**
+**Part A — Notes editing (any editable status):**
 
-1. On JO #1 (has 3 items), remove the Oil Change Service item
-2. Verify:
-   - ✅ Toast: `"Item removed successfully"`
-   - ✅ Item disappears, total recalculated
-   - ✅ JO still has 2 items
+1. Click Edit on a JO with status `Created` or `Rejected`
+2. Verify the **Edit modal** opens
+3. Modify the **Notes** field
+4. Click **"Save Changes"**
+5. Verify toast: update success
 
-**5b — Cannot remove last item:**
+**Part B — Item editing (created/rejected only, by POC/JS/R):**
 
-1. Remove items until only 1 remains
-2. Try to remove the last item
+1. Open Edit on a `Created` JO
+2. **Modify item quantity:**
+   - Change quantity of an existing item
+   - Verify line total recalculates: `(labor_price + inventory_cost) × new_quantity`
+3. **Remove an item:**
+   - Click remove on an item
+   - Verify the item is deleted (API call)
+   - ✅ Cannot remove the last item — at least 1 must remain
+4. **Add a new item:**
+   - Select a new catalog item from dropdown
+   - Pricing resolves, inventory loads
+   - Add to the JO
+   - Verify it appears in the items list
+5. **Modify inventory quantities on a draft item:**
+   - Change `quantity_per_unit` for an inventory sub-item
+   - Verify `inventory_cost` and `line_total` update accordingly
+
+---
+
+### Test 5 — Request Approval
+
+**Goal:** Verify a JO can transition from created/rejected to pending.
+
+1. Find a JO with status `Created`
+2. Click the **"Request Approval"** action
 3. Verify:
-   - ✅ Error: `"Cannot remove the last item. A job order must have at least one item."`
+   - ✅ Status changes to `Pending`
+   - ✅ Toast: approval request success
+   - ✅ History entry is added
 
 ---
 
-### Test 6 — Manage Third-Party Repairs
+### Test 6 — Record Approval (Approve)
 
-**Goal:** Verify TPR CRUD within a JO.
+**Goal:** Verify approval triggers stock deduction.
 
-1. Open JO #2
-2. Click the **Manage Repairs** action (wrench icon or "Manage Repairs" in the More dropdown)
-3. Verify the **"Manage Repairs"** modal opens
+**Pre-requisite:** Ensure sufficient inventory stock for all items in the JO.
 
-**6a — Create TPR:**
-
-1. Click **"Add Repair"**
-2. Fill in:
-   - Service Provider: `QuickAlign Pro Shop`
-   - Description: `4-Wheel Computer Alignment`
-   - Cost: `1500`
-   - Notes: `External service — customer vehicle sent out`
-3. Save
+1. Log in as **R** or **T** (roles with `canApproval`)
+2. Find a `Pending` JO
+3. Click the **"Approve"** action
 4. Verify:
-   - ✅ Toast: `"Third-party repair created successfully"`
-   - ✅ Repair appears in the repairs list
-
-**6b — Update TPR:**
-
-1. Click Edit on the repair
-2. Change Cost to `1800`
-3. Save
-4. Verify:
-   - ✅ Toast: `"Third-party repair updated successfully"`
-   - ✅ Updated cost reflected
-
-**6c — Delete TPR (Hard Delete — JO is created/rejected):**
-
-1. Click Delete on the repair (while JO status is `created`)
-2. Confirm deletion
-3. Verify:
-   - ✅ Toast: `"Third-party repair deleted successfully"`
-   - ✅ Repair is permanently removed
-
-**6d — Add the TPR back** for later testing:
-
-1. Re-add the repair with the same data as step 6a
-
----
-
-### Test 7 — Request Customer Approval
-
-**Goal:** Verify the approval request workflow (created → pending).
-
-> **This can only be done by R or T roles.**
-
-1. Log in as **R**
-2. Open JO #1 (status: `created`, has items)
-3. Click the **More** dropdown → select **"Customer Approval"**
-4. Verify the **Customer Approval** modal opens showing:
-   - ✅ Current status: **Created**
-   - ✅ Action available: **"Request Approval"** (sends JO to pending)
-5. Click **"Request Approval"**
-6. Verify:
-   - ✅ Toast: `"Approval requested successfully"` (or similar)
-   - ✅ JO status changes to **"Pending"**
-   - ✅ Items can no longer be added/edited/removed
-7. Repeat for JO #2 and JO #3
-
----
-
-### Test 8 — Record Customer Approval (Approve)
-
-**Goal:** Verify approval with automatic stock deduction.
-
-1. Log in as **R** or **T**
-2. Note current inventory stock for JO #1 items (e.g., Shell Helix, Denso Filter)
-3. Open JO #1 (status: `pending`)
-4. Click the **More** dropdown → select **"Customer Approval"**
-5. Verify the modal shows:
-   - ✅ Current status: **Pending**
-   - ✅ Actions available: **"Approve"** and **"Reject"**
-6. Click **"Approve"**
-7. Verify:
-   - ✅ Toast: `"Job order approved successfully"` (or similar)
-   - ✅ JO status changes to **"Approved"**
-   - ✅ Items are locked (cannot add/edit/remove)
-8. Navigate to **Inventory** and verify stock deducted:
-   - ✅ Product-type items have reduced quantities
-   - ✅ Movement History shows `Stock Out` entries with reference: Job Order
+   - ✅ Status changes to `Approved`
+   - ✅ Toast: approval success
+   - ✅ `approved_at` timestamp is set
+5. Navigate to **Inventory** → check the relevant items:
+   - ✅ Stock quantities decreased by the amounts from the JO item inventories
+   - ✅ New `stock_out` movement entries with `reference_type: "job_order"` and `reference_id` = JO ID
 
 **Insufficient stock test:**
 
-1. Create a new JO with a product item whose inventory is very low (e.g., quantity 1)
-2. Set the JO item quantity higher than available stock (e.g., 5)
-3. Submit for approval → try to approve
-4. Verify:
-   - ✅ Error: `"Insufficient stock for \"{item_name}\". Available: {qty}, Required: {needed}"`
-
----
-
-### Test 9 — Record Customer Rejection
-
-**Goal:** Verify rejection allows item modification.
-
-1. Open JO #3 (status: `pending`)
-2. Click **More** → **"Customer Approval"**
-3. Click **"Reject"**
-4. Verify:
-   - ✅ Toast: `"Job order rejected"` (or similar)
-   - ✅ JO status changes to **"Rejected"**
-5. Verify that items CAN be added/edited/removed again:
-   - ✅ Add a new item to the JO
-   - ✅ Edit an existing item
-   - ✅ Remove an item (if more than 1)
-6. Re-submit for approval:
-   - Click **More** → **"Customer Approval"** → **"Request Approval"**
-   - ✅ Status changes back to **"Pending"**
-
----
-
-### Test 10 — Cancel Job Order
-
-**Goal:** Verify cancellation with stock restoration for approved JOs.
-
-**10a — Cancel an approved JO (stock restoration):**
-
-1. Note current inventory stock for JO #1 items
-2. Open JO #1 (status: `approved`)
-3. Click **More** → select **"Cancel"**
-4. Verify the confirmation modal appears
-5. Confirm cancellation
-6. Verify:
-   - ✅ Toast: `"Job order cancelled successfully"` (or similar)
-   - ✅ JO status changes to **"Cancelled"**
-7. Navigate to **Inventory**:
-   - ✅ Stock restored to pre-approval levels
-   - ✅ Movement History shows `Stock In` entries with reason: stock restored
-
-**10b — Cancel a pending JO (no stock impact):**
-
-1. Open JO #3 (status: `pending`)
-2. Cancel it
+1. Create a JO with inventory items that exceed available stock
+2. Request and try to approve
 3. Verify:
-   - ✅ Status changes to **"Cancelled"**
-   - ✅ No stock changes in Inventory (stock is only deducted on approval)
-
-**10c — Cancel a created JO:**
-
-1. Create a new JO, do NOT submit it
-2. Cancel it directly
-3. Verify status changes to **"Cancelled"**
+   - ✅ Error toast: `"Insufficient stock for {item_name}: need {X} but only {Y} available"`
+   - ✅ JO remains `Pending` — approval is blocked
 
 ---
 
-### Test 11 — Delete Job Order
+### Test 7 — Record Approval (Reject)
 
-**Goal:** Verify conditional delete logic.
+**Goal:** Verify rejection workflow.
 
-**11a — Hard Delete (created + no items + no TPRs):**
-
-1. Create JO #4 with NO items and NO third-party repairs
-2. Click Delete on the JO
-3. Confirm deletion
+1. Log in as **R** or **T**
+2. Find a `Pending` JO
+3. Click the **"Reject"** action
 4. Verify:
-   - ✅ Toast: `"Job order deleted successfully"`
-   - ✅ JO is completely removed from the list (hard delete)
+   - ✅ Status changes to `Rejected`
+   - ✅ Toast: rejection message
+   - ✅ Items become editable again (for POC/JS/R)
+   - ✅ JO can be re-submitted for approval
 
-**11b — Soft Delete (has items or TPRs):**
+---
 
-1. Create a new JO, add at least 1 item
-2. Delete it
+### Test 8 — Cancel Job Order
+
+**Goal:** Verify cancellation and stock restoration for approved JOs.
+
+**Part A — Cancel a non-approved JO:**
+
+1. Find a JO with status `Created`, `Pending`, or `Rejected`
+2. Click **"Cancel"**
+3. Confirm
+4. Verify:
+   - ✅ Status changes to `Cancelled`
+   - ✅ No stock changes (no stock was deducted)
+
+**Part B — Cancel an approved JO (stock restoration):**
+
+1. Find a JO with status `Approved`
+2. Click **"Cancel"**
+3. Confirm
+4. Verify:
+   - ✅ Status changes to `Cancelled`
+   - ✅ Navigate to Inventory → stock quantities are restored
+   - ✅ New `stock_in` movement entries with reason: `"Stock restored — Job Order cancelled"`
+
+---
+
+### Test 9 — Delete Job Order
+
+**Goal:** Verify conditional delete behavior.
+
+**Part A — Hard delete (status = created):**
+
+1. Find a JO with status `Created`
+2. Click **Delete**
+3. Confirm
+4. Verify:
+   - ✅ JO is permanently removed (not found in list even with filters)
+   - ✅ Related items, inventory snapshots, and repairs are also deleted (cascade)
+
+**Part B — Soft delete (other statuses):**
+
+1. Find a JO with status `Pending`, `Approved`, `Rejected`, or `Cancelled`
+2. Click **Delete**
+3. Confirm
+4. Verify:
+   - ✅ JO disappears from the list (is_deleted = true)
+   - ✅ Record still exists in database (soft deleted)
+
+---
+
+### Test 10 — Third-Party Repairs
+
+**Goal:** Verify TPR CRUD within a job order.
+
+1. Open the **Third-Party Repair** action (wrench icon) on a JO
+2. **Add a repair:**
+   - Provider Name: `AutoGlass Shop`
+   - Description: `Windshield replacement`
+   - Cost: `5000`
+   - Repair Date: _(today)_
+   - Click "Add" / "Save"
+   - ✅ Toast: success
+   - ✅ Repair appears in the list
+   - ✅ Repairs total displayed at the bottom
+3. **Edit a repair:**
+   - Click edit on an existing repair
+   - Modify the cost
+   - Save → toast: update success
+4. **Delete a repair:**
+   - Click delete on a repair
+   - Confirm → repair is removed
+
+---
+
+### Test 11 — Cascading Lookups (Branch → Customer → Vehicle)
+
+**Goal:** Verify dropdown filtering in the create modal.
+
+1. Open the Create JO modal
+2. Select a **Branch** → Customer dropdown populates with only that branch's customers
+3. Select a **Customer** → Vehicle dropdown populates with only that customer's vehicles
+4. Change the **Branch** → Customer and Vehicle selections reset
+5. Change the **Customer** → Vehicle selection resets
+
+---
+
+### Test 12 — Vehicle Class Selection & Price Update
+
+**Goal:** Verify changing vehicle class updates pricing.
+
+1. In the Create JO modal:
+   - Add a catalog item (pricing resolves for current vehicle class)
+   - Note the labor price
+2. Change the **Vehicle Class** (e.g., from Light to Heavy)
 3. Verify:
-   - ✅ Toast: `"Job order deleted successfully"`
-   - ✅ JO is hidden but record preserved (soft delete: `is_deleted = true`)
-
-**11c — RBAC check:**
-
-- HM cannot delete (button not visible)
-- T cannot delete (button not visible)
-- POC, JS, R can delete
+   - ✅ The labor price updates to the new vehicle class column
+   - ✅ Line total recalculates accordingly
+   - ✅ If switching to a class where no pricing exists for an item → labor = 0, warning shown
 
 ---
 
-### Test 12 — Third-Party Repair Delete Logic
+### Test 13 — Search and Filter
 
-**Goal:** Verify TPR conditional delete depends on parent JO status.
+**Goal:** Verify filter controls.
 
-**12a — Hard delete when JO is created or rejected:**
-
-1. Open a JO with status `created` → manage repairs → add a TPR → delete it
-2. Verify TPR is permanently removed (hard delete)
-
-**12b — Soft delete when JO is in other status:**
-
-1. Open a JO with status `pending` or `approved` → manage repairs
-2. If a TPR exists, delete it
-3. Verify TPR is soft-deleted (marked as deleted but record preserved)
+1. **Search** by order number, customer name, or vehicle plate → matching results shown
+2. **Filter by status**: Created / Pending / Approved / Rejected / Cancelled
+3. **Filter by branch** (if HM or multi-branch user)
+4. Combine search + filters → verify correct results
+5. Clear all → full list restored
 
 ---
 
-### Test 13 — View Job Order History
+### Test 14 — RBAC Enforcement
 
-**Goal:** Verify change history tracking.
+**Goal:** Verify role-based access controls.
 
-1. Open any JO that has gone through multiple status changes
-2. Click **More** → **"History"**
-3. Verify the **History** modal shows entries for:
-   - ✅ JO creation
-   - ✅ Item additions/updates/removals
-   - ✅ Status transitions (created → pending → approved/rejected → cancelled)
-   - ✅ TPR additions/updates/deletions
-4. Each entry shows:
-   - ✅ Action performed
-   - ✅ User who performed it
-   - ✅ Timestamp
-
----
-
-### Test 14 — Update Job Order Header
-
-**Goal:** Verify JO details can be edited.
-
-1. Open JO #2 (status: `created`)
-2. Click **Edit** on the JO card
-3. Verify the **"Edit Job Order"** modal opens
-4. Change Notes to `"Updated notes — tire replacement + alignment"`
-5. Save changes
-6. Verify:
-   - ✅ Toast: `"Job order updated successfully"`
-   - ✅ Updated notes visible
+1. **Log in as HM:**
+   - ✅ Can view all JOs across all branches
+   - ✅ **No** Create button
+   - ✅ **No** Delete button
+   - ✅ Can manage third-party repairs
+2. **Log in as T (Technician):**
+   - ✅ Can view JOs from assigned branches
+   - ✅ **No** Create button
+   - ✅ **No** Delete button
+   - ✅ Can request approval, record approval
+   - ✅ Can update notes
+   - ✅ Can manage third-party repairs
+   - ✅ Cannot edit items
+3. **Log in as POC / JS:**
+   - ✅ Full access: create, edit, delete, request approval, cancel
+   - ✅ Cannot record approval (approve/reject)
+4. **Log in as R:**
+   - ✅ Can create, edit items, delete, request approval, cancel
+   - ✅ Can record approval (approve/reject)
 
 ---
 
-### Test 15 — Search & Filter Job Orders
+### Test 15 — History Timeline
 
-**Goal:** Verify search and filter functionality.
+**Goal:** Verify order history tracking.
 
-1. **Search** by customer name → matching JO cards appear
-2. **Search** by vehicle plate number → matching JO cards appear
-3. **Filter by Status**: select `"Approved"` → only approved JOs shown
-4. **Filter by Status**: select `"Created"` → only created JOs shown
-5. **Filter by Branch**: select a specific branch → only that branch's JOs
-6. Reset filters → all JOs appear
-
----
-
-### Test 16 — Branch Scoping
-
-**Goal:** Verify users only see JOs for their assigned branches.
-
-1. Log in as **POC** assigned to MAIN → see only MAIN JOs
-2. Log in as **R** assigned to NORTH → see only NORTH JOs
-3. Log in as **HM** → see JOs across all branches (view-only)
-4. Log in as **T** → see JOs for assigned branch (can manage TPRs and approve/reject)
+1. Create a JO → request approval → approve → view
+2. Open the View modal → scroll to **History** section
+3. Verify history entries:
+   - ✅ Creation event
+   - ✅ Status change to Pending
+   - ✅ Status change to Approved
+   - ✅ Each entry shows user, action, timestamp
 
 ---
 
-### Test 17 — Audit Logging
+### Test 16 — Audit Logging
 
-**Goal:** Verify all JO mutations are audit-logged.
+**Goal:** Verify JO operations are logged.
 
 1. Navigate to **Audit Logs**
 2. Verify entries exist for:
-   - ✅ JO creation (action: CREATE)
-   - ✅ JO update (action: UPDATE)
-   - ✅ JO deletion (action: DELETE)
-   - ✅ Item addition (action: CREATE, entity: job order item)
-   - ✅ Item update (action: UPDATE, entity: job order item)
-   - ✅ Item removal (action: DELETE, entity: job order item)
-   - ✅ Status transitions (action: UPDATE)
-   - ✅ TPR creation (action: CREATE, entity: third-party repair)
-   - ✅ TPR update/deletion
-
----
-
-## Process Flow Summary
-
-```
-1. CREATE Job Order
-   ├── Select branch → customer (filtered) → vehicle (filtered)
-   ├── Enter notes (optional)
-   ├── JO created with status = "created", 0 items
-   └── Audit log: CREATE
-
-2. ADD ITEMS (status: created or rejected)
-   ├── Select catalog item → quantity
-   ├── Price auto-resolved via /api/pricing/resolve
-   ├── Item added to JO
-   └── Can add/edit/remove items freely
-
-3. MANAGE THIRD-PARTY REPAIRS
-   ├── Add/Edit/Delete TPRs via "Manage Repairs" modal
-   ├── Available in any JO status
-   └── Delete type depends on JO status (hard vs soft)
-
-4. REQUEST APPROVAL (created/rejected → pending)
-   ├── Must have ≥ 1 item
-   ├── R or T triggers the request
-   ├── Status changes to "pending"
-   └── Items locked (cannot modify)
-
-5. RECORD APPROVAL (pending → approved)
-   ├── R or T records customer decision
-   ├── On APPROVE:
-   │   ├── Status → "approved"
-   │   ├── For each product-type item:
-   │   │   ├── Find matching inventory item (name + branch)
-   │   │   ├── Validate sufficient stock
-   │   │   └── Create stock_out movement
-   │   └── Block if insufficient stock
-   └── On REJECT:
-       ├── Status → "rejected"
-       └── Items unlocked for modification
-
-6. CANCEL JO (any status except cancelled)
-   ├── R or T cancels the JO
-   ├── Status → "cancelled"
-   ├── If was approved:
-   │   ├── Find all stock_out movements for this JO
-   │   ├── Create matching stock_in movements
-   │   └── Stock fully restored
-   └── If was not approved: no stock impact
-
-7. DELETE JO
-   ├── POC, JS, or R can delete
-   ├── If status = created + no items + no TPRs:
-   │   └── Hard delete (permanent removal)
-   └── Otherwise:
-       └── Soft delete (is_deleted = true)
-```
+   - ✅ Job order creation
+   - ✅ Status transitions
+   - ✅ Item additions/removals
+   - ✅ Deletions
 
 ---
 
 ## Summary Checklist
 
-| Requirement                                    | Status |
-| ---------------------------------------------- | ------ |
-| View JO Card Grid                              | ⬜     |
-| Create JO (Customer + Vehicle)                 | ⬜     |
-| Add Items with Pricing Resolution              | ⬜     |
-| Update JO Item                                 | ⬜     |
-| Remove Item (≥ 1 Constraint)                   | ⬜     |
-| Create Third-Party Repair                      | ⬜     |
-| Update Third-Party Repair                      | ⬜     |
-| Delete TPR (Hard — Created/Rejected JO)        | ⬜     |
-| Delete TPR (Soft — Other Status)               | ⬜     |
-| Request Customer Approval (→ Pending)          | ⬜     |
-| Record Approval (→ Approved + Stock Deduction) | ⬜     |
-| Record Rejection (→ Rejected + Items Unlocked) | ⬜     |
-| Insufficient Stock Blocks Approval             | ⬜     |
-| Cancel Approved JO (Stock Restored)            | ⬜     |
-| Cancel Pending/Created JO (No Stock Impact)    | ⬜     |
-| Hard Delete (Created + No Items + No TPRs)     | ⬜     |
-| Soft Delete (Has Items/TPRs)                   | ⬜     |
-| Re-submit Rejected JO                          | ⬜     |
-| View JO History                                | ⬜     |
-| Search (Customer, Vehicle)                     | ⬜     |
-| Filter by Status / Branch                      | ⬜     |
-| Branch Scoping                                 | ⬜     |
-| Pagination (12 per page)                       | ⬜     |
-| Items Locked When Not Created/Rejected         | ⬜     |
-| HM View-Only                                   | ⬜     |
-| T Cannot Create/Delete JO                      | ⬜     |
-| Audit Logging                                  | ⬜     |
-| RBAC Enforcement                               | ⬜     |
+| Requirement                                           | Status |
+| ----------------------------------------------------- | ------ |
+| View Job Orders (Cards)                               | ⬜     |
+| Create JO with Cascading Lookups                      | ⬜     |
+| Vehicle Class Selection (light/heavy/extra_heavy)     | ⬜     |
+| Pricing Resolution (labor from pricing matrix)        | ⬜     |
+| Inventory Template Loading (from catalog links)       | ⬜     |
+| Editable Inventory Quantities per Item                | ⬜     |
+| Pricing Formula: (labor + inv_cost) × qty             | ⬜     |
+| Inventory Snapshots (job_order_item_inventories)      | ⬜     |
+| View JO Details (Items, Inventory, TPR, History)      | ⬜     |
+| Edit Notes                                            | ⬜     |
+| Edit Items (Add/Remove/Quantity — created/rejected)   | ⬜     |
+| Request Approval (created/rejected → pending)         | ⬜     |
+| Record Approval — Approve (stock deduction)           | ⬜     |
+| Record Approval — Reject                              | ⬜     |
+| Cancel (stock restoration for approved)               | ⬜     |
+| Hard Delete (created status)                          | ⬜     |
+| Soft Delete (other statuses)                          | ⬜     |
+| Third-Party Repairs CRUD                              | ⬜     |
+| Cascading Lookups (Branch → Customer → Vehicle)       | ⬜     |
+| Search and Filter                                     | ⬜     |
+| Pagination (12 per page)                              | ⬜     |
+| RBAC per Role                                         | ⬜     |
+| History Timeline                                      | ⬜     |
+| Audit Logging                                         | ⬜     |
+| Insufficient Stock Blocks Approval                    | ⬜     |

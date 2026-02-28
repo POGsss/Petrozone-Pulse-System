@@ -9,14 +9,12 @@ const router = Router();
 // All pricing routes require authentication
 router.use(requireAuth);
 
-const VALID_PRICING_TYPES = ["labor", "packaging"];
 const VALID_STATUSES = ["active", "inactive"];
 
 /**
  * GET /api/pricing
  * Get pricing matrices with filtering and pagination
- * HM sees all; others see their branch-scoped items
- * Roles: HM, POC, JS, R, T (view)
+ * All pricing matrices are global - no branch scoping
  */
 router.get(
   "/",
@@ -24,9 +22,7 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const {
-        branch_id,
         status,
-        pricing_type,
         catalog_item_id,
         search,
         limit = "50",
@@ -38,27 +34,15 @@ router.get(
         .select(
           `
           *,
-          catalog_items(id, name, type, base_price),
-          branches(id, name, code)
+          catalog_items(id, name)
         `,
           { count: "exact" }
         )
         .order("created_at", { ascending: false });
 
-      // Branch scoping: HM sees all, others see only their branches
-      if (!req.user!.roles.includes("HM")) {
-        query = query.in("branch_id", req.user!.branchIds);
-      }
-
       // Apply filters
-      if (branch_id) {
-        query = query.eq("branch_id", branch_id as string);
-      }
       if (status) {
         query = query.eq("status", status as "active" | "inactive");
-      }
-      if (pricing_type) {
-        query = query.eq("pricing_type", pricing_type as "labor" | "packaging");
       }
       if (catalog_item_id) {
         query = query.eq("catalog_item_id", catalog_item_id as string);
@@ -66,7 +50,7 @@ router.get(
       if (search) {
         const searchTerm = `%${search}%`;
         query = query.or(
-          `description.ilike.${searchTerm}`
+          `catalog_item_id.eq.${search}`
         );
       }
 
@@ -114,8 +98,7 @@ router.get(
         .select(
           `
           *,
-          catalog_items(id, name, type, base_price),
-          branches(id, name, code)
+          catalog_items(id, name)
         `
         )
         .eq("id", id)
@@ -130,15 +113,6 @@ router.get(
         return;
       }
 
-      // Branch access check for non-HM users
-      if (
-        !req.user!.roles.includes("HM") &&
-        !req.user!.branchIds.includes(item.branch_id)
-      ) {
-        res.status(403).json({ error: "No access to this pricing matrix's branch" });
-        return;
-      }
-
       res.json(item);
     } catch (error) {
       console.error("Get pricing matrix error:", error);
@@ -149,8 +123,8 @@ router.get(
 
 /**
  * GET /api/pricing/resolve/:catalogItemId
- * Resolve the active pricing for a catalog item at a given branch
- * Used during job order creation
+ * Resolve the active pricing for a catalog item
+ * Returns light_price, heavy_price, extra_heavy_price
  */
 router.get(
   "/resolve/:catalogItemId",
@@ -158,35 +132,11 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const catalogItemId = req.params.catalogItemId as string;
-      const { branch_id } = req.query;
 
-      if (!branch_id) {
-        res.status(400).json({ error: "branch_id query parameter is required" });
-        return;
-      }
-
-      // Get all active pricing rules for this catalog item at this branch
-      const { data: pricingRules, error } = await supabaseAdmin
-        .from("pricing_matrices")
-        .select(
-          `
-          *,
-          catalog_items(id, name, type, base_price)
-        `
-        )
-        .eq("catalog_item_id", catalogItemId)
-        .eq("branch_id", branch_id as string)
-        .eq("status", "active");
-
-      if (error) {
-        res.status(500).json({ error: error.message });
-        return;
-      }
-
-      // Also get the catalog item's base price
+      // Get the catalog item
       const { data: catalogItem, error: catalogError } = await supabaseAdmin
         .from("catalog_items")
-        .select("id, name, type, base_price")
+        .select("id, name")
         .eq("id", catalogItemId)
         .single();
 
@@ -199,14 +149,29 @@ router.get(
         return;
       }
 
+      // Get active pricing matrix for this catalog item (one active per catalog_item_id)
+      const { data: pricingMatrix, error } = await supabaseAdmin
+        .from("pricing_matrices")
+        .select("*")
+        .eq("catalog_item_id", catalogItemId)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (error) {
+        res.status(500).json({ error: error.message });
+        return;
+      }
+
       res.json({
         catalog_item: catalogItem,
-        pricing_rules: pricingRules || [],
-        resolved_prices: {
-          base_price: catalogItem.base_price,
-          labor: pricingRules?.find((r: any) => r.pricing_type === "labor")?.price ?? null,
-          packaging: pricingRules?.find((r: any) => r.pricing_type === "packaging")?.price ?? null,
-        },
+        pricing: pricingMatrix
+          ? {
+              id: pricingMatrix.id,
+              light_price: pricingMatrix.light_price,
+              heavy_price: pricingMatrix.heavy_price,
+              extra_heavy_price: pricingMatrix.extra_heavy_price,
+            }
+          : null,
       });
     } catch (error) {
       console.error("Resolve pricing error:", error);
@@ -217,31 +182,26 @@ router.get(
 
 /**
  * POST /api/pricing/resolve-bulk
- * Resolve pricing for multiple catalog items at a given branch in one call
- * Body: { branch_id, catalog_item_ids: string[] }
+ * Resolve pricing for multiple catalog items in one call
+ * Body: { catalog_item_ids: string[] }
  */
 router.post(
   "/resolve-bulk",
   requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { branch_id, catalog_item_ids } = req.body;
+      const { catalog_item_ids } = req.body;
 
-      if (!branch_id) {
-        res.status(400).json({ error: "branch_id is required" });
-        return;
-      }
       if (!Array.isArray(catalog_item_ids) || catalog_item_ids.length === 0) {
         res.status(400).json({ error: "catalog_item_ids must be a non-empty array" });
         return;
       }
 
-      // Get all active pricing rules for these catalog items at this branch
-      const { data: pricingRules, error } = await supabaseAdmin
+      // Get all active pricing matrices for these catalog items
+      const { data: pricingMatrices, error } = await supabaseAdmin
         .from("pricing_matrices")
         .select("*")
         .in("catalog_item_id", catalog_item_ids)
-        .eq("branch_id", branch_id)
         .eq("status", "active");
 
       if (error) {
@@ -252,7 +212,7 @@ router.post(
       // Get catalog items
       const { data: catalogItems, error: catError } = await supabaseAdmin
         .from("catalog_items")
-        .select("id, name, type, base_price")
+        .select("id, name")
         .in("id", catalog_item_ids);
 
       if (catError) {
@@ -262,22 +222,28 @@ router.post(
 
       // Build results map
       const results: Record<string, {
-        catalog_item: { id: string; name: string; type: string; base_price: number } | null;
-        pricing_rules: typeof pricingRules;
-        resolved_prices: { base_price: number | null; labor: number | null; packaging: number | null };
+        catalog_item: { id: string; name: string } | null;
+        pricing: {
+          id: string;
+          light_price: number;
+          heavy_price: number;
+          extra_heavy_price: number;
+        } | null;
       }> = {};
 
       for (const itemId of catalog_item_ids) {
         const catItem = catalogItems?.find((c: any) => c.id === itemId) || null;
-        const rules = pricingRules?.filter((r: any) => r.catalog_item_id === itemId) || [];
+        const matrix = pricingMatrices?.find((m: any) => m.catalog_item_id === itemId) || null;
         results[itemId] = {
           catalog_item: catItem,
-          pricing_rules: rules,
-          resolved_prices: {
-            base_price: catItem?.base_price ?? null,
-            labor: rules.find((r: any) => r.pricing_type === "labor")?.price ?? null,
-            packaging: rules.find((r: any) => r.pricing_type === "packaging")?.price ?? null,
-          },
+          pricing: matrix
+            ? {
+                id: matrix.id,
+                light_price: matrix.light_price,
+                heavy_price: matrix.heavy_price,
+                extra_heavy_price: matrix.extra_heavy_price,
+              }
+            : null,
         };
       }
 
@@ -292,7 +258,8 @@ router.post(
 /**
  * POST /api/pricing
  * Create a new pricing matrix
- * HM, POC, JS, R can create
+ * Fields: catalog_item_id, light_price, heavy_price, extra_heavy_price, status
+ * Constraint: one active pricing matrix per catalog_item_id
  */
 router.post(
   "/",
@@ -301,11 +268,10 @@ router.post(
     try {
       const {
         catalog_item_id,
-        pricing_type,
-        price,
+        light_price,
+        heavy_price,
+        extra_heavy_price,
         status,
-        branch_id,
-        description,
       } = req.body;
 
       // Validation: catalog_item_id required
@@ -314,28 +280,21 @@ router.post(
         return;
       }
 
-      // Validation: pricing_type
-      if (!pricing_type || !VALID_PRICING_TYPES.includes(pricing_type)) {
-        res.status(400).json({
-          error: `Pricing type must be one of: ${VALID_PRICING_TYPES.join(", ")}`,
-        });
-        return;
-      }
+      // Validation: prices required and must be non-negative
+      const parsedLightPrice = parseFloat(light_price);
+      const parsedHeavyPrice = parseFloat(heavy_price);
+      const parsedExtraHeavyPrice = parseFloat(extra_heavy_price);
 
-      // Validation: price required and must be non-negative
-      if (price === undefined || price === null) {
-        res.status(400).json({ error: "Price is required" });
+      if (isNaN(parsedLightPrice) || parsedLightPrice < 0) {
+        res.status(400).json({ error: "Light price must be a non-negative number" });
         return;
       }
-      const parsedPrice = parseFloat(price);
-      if (isNaN(parsedPrice) || parsedPrice < 0) {
-        res.status(400).json({ error: "Price must be a non-negative number" });
+      if (isNaN(parsedHeavyPrice) || parsedHeavyPrice < 0) {
+        res.status(400).json({ error: "Heavy price must be a non-negative number" });
         return;
       }
-
-      // Validation: branch_id required
-      if (!branch_id) {
-        res.status(400).json({ error: "Branch is required" });
+      if (isNaN(parsedExtraHeavyPrice) || parsedExtraHeavyPrice < 0) {
+        res.status(400).json({ error: "Extra heavy price must be a non-negative number" });
         return;
       }
 
@@ -344,27 +303,6 @@ router.post(
         res.status(400).json({
           error: `Status must be one of: ${VALID_STATUSES.join(", ")}`,
         });
-        return;
-      }
-
-      // Branch access check for non-HM users
-      if (
-        !req.user!.roles.includes("HM") &&
-        !req.user!.branchIds.includes(branch_id)
-      ) {
-        res.status(403).json({ error: "No access to this branch" });
-        return;
-      }
-
-      // Verify branch exists
-      const { data: branch, error: branchError } = await supabaseAdmin
-        .from("branches")
-        .select("id")
-        .eq("id", branch_id)
-        .single();
-
-      if (branchError || !branch) {
-        res.status(400).json({ error: "Branch not found" });
         return;
       }
 
@@ -380,15 +318,13 @@ router.post(
         return;
       }
 
-      // Conflict detection: check for existing active rule with same catalog_item + pricing_type + branch
+      // Conflict detection: one active pricing matrix per catalog_item_id
       const effectiveStatus = status || "active";
       if (effectiveStatus === "active") {
         const { data: conflicting, error: conflictError } = await supabaseAdmin
           .from("pricing_matrices")
           .select("id")
           .eq("catalog_item_id", catalog_item_id)
-          .eq("pricing_type", pricing_type)
-          .eq("branch_id", branch_id)
           .eq("status", "active")
           .limit(1);
 
@@ -399,7 +335,7 @@ router.post(
 
         if (conflicting && conflicting.length > 0) {
           res.status(409).json({
-            error: `An active ${pricing_type} pricing rule already exists for this catalog item in this branch. Deactivate it first or create as inactive.`,
+            error: "An active pricing matrix already exists for this catalog item. Deactivate it first or create as inactive.",
           });
           return;
         }
@@ -409,18 +345,16 @@ router.post(
         .from("pricing_matrices")
         .insert({
           catalog_item_id,
-          pricing_type,
-          price: parsedPrice,
+          light_price: parsedLightPrice,
+          heavy_price: parsedHeavyPrice,
+          extra_heavy_price: parsedExtraHeavyPrice,
           status: effectiveStatus,
-          branch_id,
-          description: description?.trim() || null,
           created_by: req.user!.id,
         })
         .select(
           `
           *,
-          catalog_items(id, name, type, base_price),
-          branches(id, name, code)
+          catalog_items(id, name)
         `
         )
         .single();
@@ -429,7 +363,7 @@ router.post(
         // Handle unique constraint violation from the partial index
         if (error.code === "23505") {
           res.status(409).json({
-            error: `An active ${pricing_type} pricing rule already exists for this catalog item in this branch.`,
+            error: "An active pricing matrix already exists for this catalog item.",
           });
           return;
         }
@@ -437,7 +371,7 @@ router.post(
         return;
       }
 
-      // Fix audit log user_id (trigger may set it from created_by)
+      // Fix audit log user_id
       await fixAuditLogUser("PRICING_MATRIX", item.id, "CREATE", req.user!.id, req.user!.branchIds[0] || null);
 
       res.status(201).json(item);
@@ -452,7 +386,7 @@ router.post(
 /**
  * PUT /api/pricing/:id
  * Update a pricing matrix
- * HM, POC, JS, R can update
+ * Fields: catalog_item_id, light_price, heavy_price, extra_heavy_price, status
  */
 router.put(
   "/:id",
@@ -462,11 +396,10 @@ router.put(
       const id = req.params.id as string;
       const {
         catalog_item_id,
-        pricing_type,
-        price,
+        light_price,
+        heavy_price,
+        extra_heavy_price,
         status,
-        branch_id,
-        description,
       } = req.body;
 
       // Get existing item
@@ -482,15 +415,6 @@ router.put(
           return;
         }
         res.status(500).json({ error: fetchError.message });
-        return;
-      }
-
-      // Branch access check for non-HM users
-      if (
-        !req.user!.roles.includes("HM") &&
-        !req.user!.branchIds.includes(existing.branch_id)
-      ) {
-        res.status(403).json({ error: "No access to this pricing matrix's branch" });
         return;
       }
 
@@ -512,23 +436,31 @@ router.put(
         updateData.catalog_item_id = catalog_item_id;
       }
 
-      if (pricing_type !== undefined) {
-        if (!VALID_PRICING_TYPES.includes(pricing_type)) {
-          res.status(400).json({
-            error: `Pricing type must be one of: ${VALID_PRICING_TYPES.join(", ")}`,
-          });
+      if (light_price !== undefined) {
+        const parsed = parseFloat(light_price);
+        if (isNaN(parsed) || parsed < 0) {
+          res.status(400).json({ error: "Light price must be a non-negative number" });
           return;
         }
-        updateData.pricing_type = pricing_type;
+        updateData.light_price = parsed;
       }
 
-      if (price !== undefined) {
-        const parsedPrice = parseFloat(price);
-        if (isNaN(parsedPrice) || parsedPrice < 0) {
-          res.status(400).json({ error: "Price must be a non-negative number" });
+      if (heavy_price !== undefined) {
+        const parsed = parseFloat(heavy_price);
+        if (isNaN(parsed) || parsed < 0) {
+          res.status(400).json({ error: "Heavy price must be a non-negative number" });
           return;
         }
-        updateData.price = parsedPrice;
+        updateData.heavy_price = parsed;
+      }
+
+      if (extra_heavy_price !== undefined) {
+        const parsed = parseFloat(extra_heavy_price);
+        if (isNaN(parsed) || parsed < 0) {
+          res.status(400).json({ error: "Extra heavy price must be a non-negative number" });
+          return;
+        }
+        updateData.extra_heavy_price = parsed;
       }
 
       if (status !== undefined) {
@@ -541,34 +473,6 @@ router.put(
         updateData.status = status;
       }
 
-      if (branch_id !== undefined) {
-        // Verify branch exists
-        const { data: branch, error: branchErr } = await supabaseAdmin
-          .from("branches")
-          .select("id")
-          .eq("id", branch_id)
-          .single();
-
-        if (branchErr || !branch) {
-          res.status(400).json({ error: "Branch not found" });
-          return;
-        }
-
-        // Branch access check for non-HM
-        if (
-          !req.user!.roles.includes("HM") &&
-          !req.user!.branchIds.includes(branch_id)
-        ) {
-          res.status(403).json({ error: "No access to this branch" });
-          return;
-        }
-        updateData.branch_id = branch_id;
-      }
-
-      if (description !== undefined) {
-        updateData.description = description?.trim() || null;
-      }
-
       if (Object.keys(updateData).length === 0) {
         res.status(400).json({ error: "No fields to update" });
         return;
@@ -577,29 +481,24 @@ router.put(
       // Filter out fields that haven't actually changed
       const actualChanges = filterUnchangedFields(updateData, existing);
       if (Object.keys(actualChanges).length === 0) {
-        // No real changes — return existing data without triggering an update
         const { data: current } = await supabaseAdmin
           .from("pricing_matrices")
-          .select(`*, catalog_items(id, name, type, base_price), branches(id, name, code)`)
+          .select(`*, catalog_items(id, name)`)
           .eq("id", id)
           .single();
         res.json(current);
         return;
       }
 
-      // Conflict detection when activating or changing key fields
+      // Conflict detection when activating or changing catalog_item_id
       const newStatus = (actualChanges.status as string) || existing.status;
       const newCatalogItemId = (actualChanges.catalog_item_id as string) || existing.catalog_item_id;
-      const newPricingType = (actualChanges.pricing_type as string) || existing.pricing_type;
-      const newBranchId = (actualChanges.branch_id as string) || existing.branch_id;
 
       if (newStatus === "active") {
         const { data: conflicting, error: conflictError } = await supabaseAdmin
           .from("pricing_matrices")
           .select("id")
           .eq("catalog_item_id", newCatalogItemId)
-          .eq("pricing_type", newPricingType as "labor" | "packaging")
-          .eq("branch_id", newBranchId)
           .eq("status", "active")
           .neq("id", id)
           .limit(1);
@@ -611,7 +510,7 @@ router.put(
 
         if (conflicting && conflicting.length > 0) {
           res.status(409).json({
-            error: `An active ${newPricingType} pricing rule already exists for this catalog item in this branch. Deactivate it first.`,
+            error: "An active pricing matrix already exists for this catalog item. Deactivate it first.",
           });
           return;
         }
@@ -624,8 +523,7 @@ router.put(
         .select(
           `
           *,
-          catalog_items(id, name, type, base_price),
-          branches(id, name, code)
+          catalog_items(id, name)
         `
         )
         .single();
@@ -633,7 +531,7 @@ router.put(
       if (error) {
         if (error.code === "23505") {
           res.status(409).json({
-            error: `An active ${newPricingType} pricing rule already exists for this catalog item in this branch.`,
+            error: "An active pricing matrix already exists for this catalog item.",
           });
           return;
         }
@@ -641,7 +539,7 @@ router.put(
         return;
       }
 
-      // Fix audit log user_id (trigger may set it from created_by)
+      // Fix audit log user_id
       await fixAuditLogUser("PRICING_MATRIX", id, "UPDATE", req.user!.id, req.user!.branchIds[0] || null);
 
       res.json(item);
@@ -655,8 +553,7 @@ router.put(
 
 /**
  * DELETE /api/pricing/:id
- * Delete a pricing matrix
- * HM, POC, JS, R can delete
+ * Delete a pricing matrix permanently, or deactivate if referenced
  */
 router.delete(
   "/:id",
@@ -681,15 +578,6 @@ router.delete(
         return;
       }
 
-      // Branch access check for non-HM users
-      if (
-        !req.user!.roles.includes("HM") &&
-        !req.user!.branchIds.includes(existing.branch_id)
-      ) {
-        res.status(403).json({ error: "No access to this pricing matrix's branch" });
-        return;
-      }
-
       const { error: deleteError } = await supabaseAdmin
         .from("pricing_matrices")
         .delete()
@@ -708,7 +596,6 @@ router.delete(
             return;
           }
 
-          // Log soft delete with correct user
           try {
             await supabaseAdmin.rpc("log_admin_action", {
               p_action: "UPDATE",
@@ -733,7 +620,7 @@ router.delete(
         return;
       }
 
-      // Log hard delete with correct user
+      // Log hard delete
       try {
         await supabaseAdmin.rpc("log_admin_action", {
           p_action: "DELETE",
@@ -741,7 +628,7 @@ router.delete(
           p_entity_id: id,
           p_performed_by_user_id: req.user!.id,
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
-          p_new_values: { pricing_type: existing.pricing_type, deleted: true },
+          p_new_values: { catalog_item_id: existing.catalog_item_id, deleted: true },
         });
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);

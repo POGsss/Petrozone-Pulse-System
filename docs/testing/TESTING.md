@@ -77,264 +77,278 @@ Validate that vehicle deletion follows system rules (deactivate/soft delete) and
 
 # Test Case 05
 **Description:**  
-Create Services/Products/Packages  
-Validate that an authorized user can create a Service, Product, or Package and configure basic details.
+Create Catalog Item  
+Validate that an authorized user can create a global catalog item with optional inventory links.
 
 **Test Steps:**
 1. Log in as authorized role (HM/POC/JS).
-2. Navigate to Services & Products (and Packages if separated).
-3. Click Create/Add.
-4. Enter required fields (name, category/type, pricing fields if applicable).
-5. Save the record.
+2. Navigate to Catalog.
+3. Click "Add New Catalog".
+4. Enter required fields (Name) and optional fields (Description).
+5. Optionally add inventory items from the dropdown (draft list).
+6. Click "Create Catalog".
 
 **Expected Result:**
-- New Service/Product/Package is created successfully
-- Record appears in the list
-- Details are saved correctly
+- Catalog item is created successfully (global, no branch scoping)
+- Card appears in the grid with name, status badge, and inventory count
+- Linked inventory items (if any) are saved correctly
 
 ---
 
 # Test Case 06
 **Description:**  
-View Services/Products/Packages  
-Validate that authorized roles can view the list and details of service/product/package items.
+View Catalog Item  
+Validate that authorized roles can view catalog item details including linked inventory.
 
 **Test Steps:**
-1. Log in as authorized role (HM/POC/JS/R where applicable).
-2. Navigate to Services/Products/Packages listing.
-3. Select an item and open View/Details.
+1. Log in as authorized role (HM/POC/JS/R).
+2. Navigate to Catalog.
+3. Click on a catalog item card to open the View modal.
 
 **Expected Result:**
-- List loads correctly
-- Item details are displayed accurately
-- No unauthorized edit controls are shown to restricted roles
+- View modal shows item name, status, description (all read-only)
+- Linked inventory section displays associated items (name, SKU, cost/unit)
+- Timestamps (created/updated) are displayed
+- R role: no Edit/Delete buttons visible. T role: no access to Catalog page
 
 ---
 
 # Test Case 07
 **Description:**  
-Update Services/Products/Packages  
-Validate that authorized users can update service/product/package details and mappings as applicable.
+Update Catalog Item  
+Validate that authorized users can update catalog item details and manage inventory links.
 
 **Test Steps:**
 1. Log in as authorized role (HM/POC/JS).
-2. Open an existing item.
-3. Click Edit/Update.
-4. Modify fields (e.g., name, category, mapping).
-5. Save changes.
+2. Click the Edit (pencil) button on a catalog card.
+3. Modify fields (Name, Status, Description).
+4. Add or remove inventory links (live API calls per action).
+5. Click "Save Changes".
 
 **Expected Result:**
 - Update is saved successfully
-- Changes reflect in list and details view
-- Existing references remain valid (no broken mappings)
+- Card reflects updated name, status, and inventory count
+- Inventory link additions/removals are persisted immediately (live, not batched)
 
 ---
 
 # Test Case 08
 **Description:**  
-Delete/Deactivate Services/Products/Packages  
-Validate that deleting/deactivating an item follows system rules and prevents use in new Job Orders.
+Delete/Deactivate Catalog Item  
+Validate that deleting a catalog item uses hard delete with FK fallback to deactivation.
 
 **Test Steps:**
 1. Log in as authorized role (HM/POC/JS).
-2. Open an existing item.
-3. Click Delete/Deactivate.
-4. Confirm action.
-5. Attempt to add the same item in Job Order creation.
+2. Click the Delete (trash) button on a catalog card.
+3. Confirm the action in the modal.
+4. Attempt to add the deactivated item in Job Order creation.
 
 **Expected Result:**
-- Item is deleted or marked inactive based on design
-- Item is no longer selectable for new Job Orders
-- System does not break existing historical records
+- If no FK references: item is permanently deleted (hard delete)
+- If referenced by job orders: item is deactivated (status set to inactive) with info toast
+- Inactive items are not selectable for new Job Orders
+- Historical JO records remain intact
 
 ---
 
 # Test Case 09
 **Description:**  
 Create Pricing Matrix  
-Validate that authorized users can create labor/packaging pricing matrix entries used for quotations.
+Validate that authorized users can create a vehicle-class-based pricing matrix for a catalog item.
 
 **Test Steps:**
 1. Log in as authorized role (HM/POC/JS/R).
 2. Navigate to Pricing Matrix.
-3. Click Create/Add.
-4. Input required pricing data (labor type/rate, package pricing rules as applicable).
-5. Save.
+3. Click "Add Pricing Rule".
+4. Select a catalog item, enter Light Vehicle Price, Heavy Vehicle Price, Extra Heavy Vehicle Price.
+5. Set status (Active/Inactive) and save.
 
 **Expected Result:**
-- Pricing entry is created successfully
-- Entry appears in matrix list
-- Data is stored accurately and usable in Job Order pricing
+- Pricing matrix is created successfully
+- Entry appears in the table with 3 price columns
+- If an active matrix already exists for the same catalog item, a 409 conflict error is shown
+- Data is stored accurately and usable in Job Order pricing resolution
 
 ---
 
 # Test Case 10
 **Description:**  
 View Pricing Matrix  
-Validate that roles can view pricing matrix entries and retrieve correct values.
+Validate that roles can view pricing matrix entries with 3-tier vehicle class prices.
 
 **Test Steps:**
 1. Log in as authorized role (HM/POC/JS/R/T where applicable).
 2. Navigate to Pricing Matrix list.
-3. Open an entry details view.
+3. View the table: Catalog Item, Light Price, Heavy Price, Extra Heavy Price, Status.
+4. Click on an entry to view details.
 
 **Expected Result:**
-- Pricing matrix entries are visible based on access
-- Values displayed match saved configuration
-- No incorrect formatting or missing data
+- Pricing entries are visible based on access (T is view-only)
+- Three price columns display correctly with ₱ formatting
+- Stats cards show All Rules / Active / Inactive counts
 
 ---
 
 # Test Case 11
 **Description:**  
 Update Pricing Matrix  
-Validate that authorized users can update pricing values and that updated values apply in new quotations.
+Validate that authorized users can update pricing values (light/heavy/extra heavy) and changes apply to new JOs.
 
 **Test Steps:**
 1. Log in as authorized role.
-2. Open an existing pricing entry.
-3. Click Edit/Update.
-4. Modify rate/value.
-5. Save.
-6. Create a new Job Order estimate using affected item.
+2. Open an existing pricing entry and click Edit.
+3. Modify one or more price values (light/heavy/extra heavy) or status.
+4. Save.
+5. Create a new Job Order using the affected catalog item.
 
 **Expected Result:**
 - Pricing entry updates successfully
-- New Job Orders use updated pricing
-- Existing historical Job Orders remain unchanged (unless system recalculates by design)
+- New Job Orders resolve the updated pricing for the matching vehicle class
+- Existing historical Job Orders retain their original pricing snapshots
 
 ---
 
 # Test Case 12
 **Description:**  
-Delete/Deactivate Pricing Matrix Entry  
-Validate that removing a pricing entry follows system rules and prevents selection in new pricing calculations.
+Delete Pricing Matrix Entry  
+Validate that removing a pricing entry prevents pricing resolution for new JOs.
 
 **Test Steps:**
 1. Log in as authorized role.
 2. Open an existing pricing entry.
-3. Click Delete/Deactivate.
-4. Confirm action.
-5. Attempt to use the removed entry in Job Order pricing.
+3. Click Delete and confirm.
+4. Attempt to add the affected catalog item to a new Job Order.
 
 **Expected Result:**
-- Entry is removed/inactivated successfully
-- Removed entry is not selectable for new quotations
-- System handles missing pricing gracefully (error message or fallback rule)
+- Entry is permanently deleted
+- When the catalog item is added to a JO, the resolve endpoint returns `pricing: null`
+- Labor price defaults to 0 in the JO, with a warning toast shown to the user
+- Existing JO records with this pricing are not affected
 
 ---
 
 # Test Case 13
 **Description:**  
-Create Job Order Card  
-Validate end-to-end creation of a Job Order card including customer, vehicle, and selected services/products/packages.
+Create Job Order  
+Validate end-to-end creation of a Job Order including cascading lookups, vehicle class pricing, and inventory template loading.
 
 **Test Steps:**
 1. Log in as authorized role (POC/JS/R).
 2. Navigate to Job Orders.
-3. Click Create Job Order.
-4. Select Customer and Vehicle.
-5. Add services/products/packages.
-6. Confirm pricing/quotation details.
-7. Save Job Order.
+3. Click "Create Job Order".
+4. Select Branch → Customer (filtered by branch) → Vehicle (filtered by customer).
+5. Select Vehicle Class (Light / Heavy / Extra Heavy).
+6. Add catalog items — pricing resolves automatically (labor price from vehicle class column).
+7. Verify inventory items load from catalog template, with editable quantities.
+8. Review line totals: (labor_price + inventory_cost) × quantity.
+9. Optionally add third-party repairs.
+10. Click "Create Job Order".
 
 **Expected Result:**
-- Job Order is created successfully
-- Job Order has a unique reference/ID
+- Job Order is created with auto-generated order number
 - Customer and vehicle are linked correctly
-- Selected items and totals are saved accurately
+- Pricing resolves per vehicle class (0 if no active pricing, with warning)
+- Inventory snapshots are saved in job_order_item_inventories
+- Line totals and grand total are calculated correctly
 
 ---
 
 # Test Case 14
 **Description:**  
-View Job Order Card  
-Validate that users can view Job Order details including items, pricing breakdown, and status history.
+View Job Order Details  
+Validate that users can view Job Order details including items, inventory breakdown, pricing, TPR, and history.
 
 **Test Steps:**
 1. Log in as authorized role.
 2. Navigate to Job Orders list.
-3. Open an existing Job Order card.
+3. Click on a Job Order card to open the View modal.
 
 **Expected Result:**
-- Job Order details load correctly
-- Items, totals, and pricing breakdown are accurate
-- Status and timestamps (if available) are displayed correctly
+- JO details load correctly (order #, status, customer, vehicle, branch, vehicle class, notes)
+- Items list shows: catalog item name, quantity, labor price, inventory cost, line total
+- Expandable inventory sub-rows show: inventory item name, qty per unit, unit cost
+- Third-party repairs section displays if any exist
+- History timeline shows status changes and actions
+- Timestamps (created, updated) are displayed
 
 ---
 
 # Test Case 15
 **Description:**  
-Update Job Order Card  
-Validate updating a Job Order card (e.g., add/remove services/products, update quantities) and total recalculation.
+Update Job Order (Edit Items and Notes)  
+Validate updating a Job Order: edit notes, add/remove items, change quantities (only when status is created or rejected).
 
 **Test Steps:**
-1. Log in as authorized role.
-2. Open an existing Job Order.
-3. Click Edit/Update.
-4. Add/remove an item or change quantity.
+1. Log in as authorized role (POC/JS/R for items; POC/JS/R/T for notes).
+2. Open a Job Order with status Created or Rejected.
+3. Click Edit.
+4. Modify notes, add/remove items, or change item quantities.
 5. Save changes.
 
 **Expected Result:**
 - Job Order updates successfully
-- Total recalculates correctly
-- Item list reflects updated data
-- System keeps a consistent state (no duplicates/unexpected resets)
+- Line totals recalculate: (labor_price + inventory_cost) × new_quantity
+- At least one item must remain (cannot remove all)
+- New items go through full pricing resolution + inventory template loading
+- Items cannot be edited when status is Pending, Approved, or Cancelled
 
 ---
 
 # Test Case 16
 **Description:**  
-Delete/Cancel Job Order Card  
-Validate Job Order deletion/cancellation rules and ensure it does not break linked records.
+Delete/Cancel Job Order  
+Validate conditional delete (hard for created, soft for others) and cancel with stock restoration.
 
 **Test Steps:**
-1. Log in as authorized role.
+1. Log in as authorized role (POC/JS/R).
 2. Open a Job Order.
-3. Click Delete/Cancel.
-4. Confirm action.
-5. Check if linked records remain consistent (customer/vehicle history).
+3. Test Delete: confirm action.
+4. Test Cancel on an Approved JO: confirm action.
+5. Check inventory stock levels after cancelling an approved JO.
 
 **Expected Result:**
-- Job Order is deleted or marked cancelled based on design
-- Record status is updated correctly
-- Linked customer/vehicle records remain consistent
-- System prevents actions on cancelled Job Orders
+- Created status: hard delete (JO and all related records permanently removed)
+- Other statuses: soft delete (is_deleted set to true, record hidden from list)
+- Cancel on approved JO: stock_in movements created to restore deducted stock
+- Cancel on non-approved JO: no stock changes
+- Historical records remain consistent
 
 ---
 
 # Test Case 17
 **Description:**  
-Ask for Customer Approval  
-Validate that the system can send/trigger a customer approval request for a Job Order quotation.
+Request Approval  
+Validate that a Job Order can transition from Created/Rejected to Pending status.
 
 **Test Steps:**
-1. Log in as role allowed to request approval.
-2. Open a Job Order with quotation details.
-3. Click Request Approval.
-4. Confirm sending/trigger action.
+1. Log in as role allowed to request approval (POC/JS/R/T).
+2. Open a Job Order with status Created or Rejected.
+3. Click "Request Approval".
+4. Confirm the action.
 
 **Expected Result:**
-- Approval request is generated successfully
-- Job Order status updates to “Pending Approval” (or equivalent)
-- Customer notification mechanism is triggered based on system design
+- Job Order status updates to "Pending"
+- History entry is recorded with user and timestamp
+- JO items become non-editable while Pending
 
 ---
 
 # Test Case 18
 **Description:**  
-Receive Customer Approval  
-Validate that customer approval updates Job Order status and allows next workflow steps.
+Record Approval (Approve/Reject)  
+Validate that R/T roles can approve or reject a Pending Job Order, triggering stock deduction on approval.
 
 **Test Steps:**
-1. Using customer approval mechanism (link/status update), mark the Job Order as approved.
-2. Refresh Job Order view.
-3. Attempt next action allowed after approval.
+1. Log in as R or T role (roles with approval permission).
+2. Open a Pending Job Order.
+3. Click Approve or Reject.
+4. If approving: check inventory stock levels after approval.
 
 **Expected Result:**
-- Job Order status updates to “Approved” (or equivalent)
-- Approval timestamp/indicator is recorded
-- Next workflow steps become available
+- Approve: status updates to "Approved", approved_at timestamp set, stock_out movements created for all inventory items
+- Reject: status updates to "Rejected", items become editable again
+- If insufficient stock on approval: error shown, JO remains Pending
+- History entry is recorded for the action
 
 ---
 
@@ -557,37 +571,42 @@ Validate cancel rules and ensure blocked actions on cancelled Job Orders based o
 
 # Test Case 31
 **Description:**  
-Job Order Pricing – Auto Compute Totals  
-Validate totals are computed correctly based on Pricing Matrix and configured pricing.
+Job Order Pricing — Auto Compute Totals  
+Validate totals are computed correctly using the formula: (labor_price + inventory_cost) × quantity.
 
 **Test Steps:**
-1. Create a Job Order.
-2. Add items with known pricing setup.
-3. Save Job Order.
-4. Review pricing breakdown and totals.
+1. Create a Job Order with a known vehicle class (e.g., Light).
+2. Add a catalog item with a known pricing matrix (e.g., light_price = 500).
+3. Verify inventory items load from the catalog template (e.g., 2 items totaling ₱930).
+4. Save Job Order.
+5. Review pricing breakdown and totals.
 
 **Expected Result:**
-- Line item prices match configuration
-- Subtotals and total compute correctly
-- Breakdown is consistent
+- Labor price = light_price from pricing matrix (e.g., ₱500)
+- Inventory cost = Σ(unit_cost × quantity_per_unit) (e.g., ₱930)
+- Line total = (500 + 930) × 1 = ₱1,430
+- Grand total = sum of all line totals
+- Breakdown is consistent with the formula
 
 ---
 
 # Test Case 32
 **Description:**  
-Job Order Pricing – Quantity and Recalculation  
-Validate changing quantities updates totals correctly.
+Job Order Pricing — Quantity and Recalculation  
+Validate changing item quantity or inventory quantities updates line total correctly.
 
 **Test Steps:**
 1. Open a Job Order with priced items.
-2. Update quantity.
-3. Save.
-4. Reopen and verify totals.
+2. Change the item quantity (e.g., from 1 to 3).
+3. Verify line_total = (labor_price + inventory_cost) × 3.
+4. Change inventory quantity_per_unit for one sub-item.
+5. Verify inventory_cost recalculates, then line_total recalculates.
+6. Save.
 
 **Expected Result:**
-- Totals recalculates correctly
-- Breakdown remains accurate
-- No rounding/format issues
+- Totals recalculate correctly on both item quantity and inventory quantity changes
+- Grand total updates accordingly
+- No rounding or formatting issues
 
 ---
 
@@ -629,17 +648,19 @@ Validate pricing matrix updates apply to new Job Orders and confirm behavior for
 # Test Case 35
 **Description:**  
 Pricing Missing Configuration Handling  
-Validate system behavior when selected item has no configured pricing.
+Validate system behavior when a catalog item has no active pricing matrix.
 
 **Test Steps:**
-1. Select an item with missing pricing (or disable its pricing entry).
-2. Add it to Job Order.
-3. Attempt to save or generate quotation.
+1. Select a catalog item that has no active pricing matrix (or delete/deactivate its pricing).
+2. Add it to a Job Order.
+3. Observe the pricing resolution result.
 
 **Expected Result:**
-- System blocks or applies defined fallback behavior
-- Clear message is shown
-- No silent incorrect totals occur
+- Labor price defaults to 0
+- Warning toast is shown to the user indicating no active pricing
+- Inventory cost still calculates normally (from template links)
+- Line total = (0 + inventory_cost) × quantity
+- JO can still be created (no blocking error)
 
 ---
 

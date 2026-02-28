@@ -1,4 +1,4 @@
-import { Router } from "express";
+﻿import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
@@ -9,13 +9,12 @@ const router = Router();
 // All catalog routes require authentication
 router.use(requireAuth);
 
-const VALID_TYPES = ["service", "product", "package"];
 const VALID_STATUSES = ["active", "inactive"];
 
 /**
  * GET /api/catalog
  * Get catalog items with filtering and pagination
- * HM sees all; others see global items + their branch-scoped items
+ * All catalog items are global - all authenticated users see all items
  */
 router.get(
   "/",
@@ -23,50 +22,20 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const {
-        branch_id,
         status,
-        type,
         search,
-        is_global,
         limit = "50",
         offset = "0",
       } = req.query;
 
       let query = supabaseAdmin
         .from("catalog_items")
-        .select(
-          `
-          *,
-          branches(id, name, code)
-        `,
-          { count: "exact" }
-        )
+        .select("*", { count: "exact" })
         .order("created_at", { ascending: false });
 
-      // Branch scoping: HM sees all, others see global + their branch items
-      if (!req.user!.roles.includes("HM")) {
-        query = query.or(
-          `is_global.eq.true,branch_id.in.(${req.user!.branchIds.join(",")})`
-        );
-      }
-
       // Apply filters
-      if (branch_id) {
-        query = query.eq("branch_id", branch_id as string);
-      }
       if (status) {
         query = query.eq("status", status as "active" | "inactive");
-      }
-      if (type) {
-        query = query.eq(
-          "type",
-          type as "service" | "product" | "package"
-        );
-      }
-      if (is_global === "true") {
-        query = query.eq("is_global", true);
-      } else if (is_global === "false") {
-        query = query.eq("is_global", false);
       }
       if (search) {
         const searchTerm = `%${search}%`;
@@ -116,12 +85,7 @@ router.get(
 
       const { data: item, error } = await supabaseAdmin
         .from("catalog_items")
-        .select(
-          `
-          *,
-          branches(id, name, code)
-        `
-        )
+        .select("*")
         .eq("id", itemId)
         .single();
 
@@ -131,17 +95,6 @@ router.get(
           return;
         }
         res.status(500).json({ error: error.message });
-        return;
-      }
-
-      // Branch access check for non-HM users
-      if (
-        !req.user!.roles.includes("HM") &&
-        !item.is_global &&
-        item.branch_id &&
-        !req.user!.branchIds.includes(item.branch_id)
-      ) {
-        res.status(403).json({ error: "No access to this catalog item's branch" });
         return;
       }
 
@@ -155,7 +108,7 @@ router.get(
 
 /**
  * POST /api/catalog
- * Create a new catalog item
+ * Create a new catalog item (labor package template)
  * HM, POC, JS can create
  */
 router.post(
@@ -163,15 +116,7 @@ router.post(
   requireRoles("HM", "POC", "JS"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const {
-        name,
-        type,
-        description,
-        base_price,
-        status,
-        branch_id,
-        is_global,
-      } = req.body;
+      const { name, description, status } = req.body;
 
       // Validation: name required
       if (!name || !name.trim()) {
@@ -179,95 +124,23 @@ router.post(
         return;
       }
 
-      // Validation: type
-      if (!type || !VALID_TYPES.includes(type)) {
-        res.status(400).json({
-          error: `Type must be one of: ${VALID_TYPES.join(", ")}`,
-        });
-        return;
-      }
-
-      // Validation: base_price required and must be a positive number
-      if (base_price === undefined || base_price === null) {
-        res.status(400).json({ error: "Base price is required" });
-        return;
-      }
-      const price = parseFloat(base_price);
-      if (isNaN(price) || price < 0) {
-        res.status(400).json({ error: "Base price must be a non-negative number" });
-        return;
-      }
-
       // Validation: status if provided
       if (status && !VALID_STATUSES.includes(status)) {
         res.status(400).json({
-          error: `Status must be one of: ${VALID_STATUSES.join(", ")}`,
+          error: `Status must be one of: ${VALID_STATUSES.join(", ")}`
         });
         return;
-      }
-
-      // Validation: branch_id or is_global
-      const isGlobalFlag = is_global === true || is_global === "true";
-      if (!isGlobalFlag && !branch_id) {
-        res.status(400).json({
-          error: "Either branch_id or is_global flag is required",
-        });
-        return;
-      }
-
-      // If global, branch_id should be null
-      const effectiveBranchId = isGlobalFlag ? null : branch_id;
-
-      // Branch access check for non-HM users
-      if (
-        effectiveBranchId &&
-        !req.user!.roles.includes("HM") &&
-        !req.user!.branchIds.includes(effectiveBranchId)
-      ) {
-        res.status(403).json({ error: "No access to this branch" });
-        return;
-      }
-
-      // Only HM can create global items
-      if (isGlobalFlag && !req.user!.roles.includes("HM")) {
-        res.status(403).json({
-          error: "Only Higher Management can create global catalog items",
-        });
-        return;
-      }
-
-      // Verify branch exists if branch-scoped
-      if (effectiveBranchId) {
-        const { data: branch, error: branchError } = await supabaseAdmin
-          .from("branches")
-          .select("id")
-          .eq("id", effectiveBranchId)
-          .single();
-
-        if (branchError || !branch) {
-          res.status(400).json({ error: "Branch not found" });
-          return;
-        }
       }
 
       const { data: item, error } = await supabaseAdmin
         .from("catalog_items")
         .insert({
           name: name.trim(),
-          type,
           description: description?.trim() || null,
-          base_price: price,
           status: status || "active",
-          branch_id: effectiveBranchId,
-          is_global: isGlobalFlag,
           created_by: req.user!.id,
         })
-        .select(
-          `
-          *,
-          branches(id, name, code)
-        `
-        )
+        .select("*")
         .single();
 
       if (error) {
@@ -275,7 +148,7 @@ router.post(
         return;
       }
 
-      // Fix audit log user_id (trigger may set it from created_by)
+      // Fix audit log user_id
       await fixAuditLogUser("CATALOG_ITEM", item.id, "CREATE", req.user!.id, req.user!.branchIds[0] || null);
 
       res.status(201).json(item);
@@ -298,15 +171,7 @@ router.put(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const itemId = req.params.itemId as string;
-      const {
-        name,
-        type,
-        description,
-        base_price,
-        status,
-        branch_id,
-        is_global,
-      } = req.body;
+      const { name, description, status } = req.body;
 
       // Get existing item
       const { data: existing, error: fetchError } = await supabaseAdmin
@@ -324,25 +189,6 @@ router.put(
         return;
       }
 
-      // Branch access check for non-HM users
-      if (
-        !req.user!.roles.includes("HM") &&
-        !existing.is_global &&
-        existing.branch_id &&
-        !req.user!.branchIds.includes(existing.branch_id)
-      ) {
-        res.status(403).json({ error: "No access to this catalog item's branch" });
-        return;
-      }
-
-      // Only HM can edit global items
-      if (existing.is_global && !req.user!.roles.includes("HM")) {
-        res.status(403).json({
-          error: "Only Higher Management can edit global catalog items",
-        });
-        return;
-      }
-
       // Build update payload
       const updateData: Record<string, unknown> = {};
 
@@ -354,78 +200,18 @@ router.put(
         updateData.name = name.trim();
       }
 
-      if (type !== undefined) {
-        if (!VALID_TYPES.includes(type)) {
-          res.status(400).json({
-            error: `Type must be one of: ${VALID_TYPES.join(", ")}`,
-          });
-          return;
-        }
-        updateData.type = type;
-      }
-
       if (description !== undefined) {
         updateData.description = description?.trim() || null;
-      }
-
-      if (base_price !== undefined) {
-        const price = parseFloat(base_price);
-        if (isNaN(price) || price < 0) {
-          res.status(400).json({ error: "Base price must be a non-negative number" });
-          return;
-        }
-        updateData.base_price = price;
       }
 
       if (status !== undefined) {
         if (!VALID_STATUSES.includes(status)) {
           res.status(400).json({
-            error: `Status must be one of: ${VALID_STATUSES.join(", ")}`,
+            error: `Status must be one of: ${VALID_STATUSES.join(", ")}`
           });
           return;
         }
         updateData.status = status;
-      }
-
-      if (is_global !== undefined) {
-        const isGlobalFlag = is_global === true || is_global === "true";
-        // Only HM can toggle global flag
-        if (!req.user!.roles.includes("HM")) {
-          res.status(403).json({
-            error: "Only Higher Management can change global flag",
-          });
-          return;
-        }
-        updateData.is_global = isGlobalFlag;
-        if (isGlobalFlag) {
-          updateData.branch_id = null;
-        }
-      }
-
-      if (branch_id !== undefined && !updateData.is_global) {
-        if (branch_id) {
-          // Verify branch exists
-          const { data: branch, error: branchError } = await supabaseAdmin
-            .from("branches")
-            .select("id")
-            .eq("id", branch_id)
-            .single();
-
-          if (branchError || !branch) {
-            res.status(400).json({ error: "Branch not found" });
-            return;
-          }
-
-          // Branch access check for non-HM
-          if (
-            !req.user!.roles.includes("HM") &&
-            !req.user!.branchIds.includes(branch_id)
-          ) {
-            res.status(403).json({ error: "No access to this branch" });
-            return;
-          }
-        }
-        updateData.branch_id = branch_id || null;
       }
 
       if (Object.keys(updateData).length === 0) {
@@ -436,10 +222,9 @@ router.put(
       // Filter out fields that haven't actually changed
       const actualChanges = filterUnchangedFields(updateData, existing);
       if (Object.keys(actualChanges).length === 0) {
-        // No real changes — return existing data without triggering an update
         const { data: current } = await supabaseAdmin
           .from("catalog_items")
-          .select(`*, branches(id, name, code)`)
+          .select("*")
           .eq("id", itemId)
           .single();
         res.json(current);
@@ -450,12 +235,7 @@ router.put(
         .from("catalog_items")
         .update(actualChanges)
         .eq("id", itemId)
-        .select(
-          `
-          *,
-          branches(id, name, code)
-        `
-        )
+        .select("*")
         .single();
 
       if (error) {
@@ -463,7 +243,7 @@ router.put(
         return;
       }
 
-      // Fix audit log user_id (trigger may set it from created_by)
+      // Fix audit log user_id
       await fixAuditLogUser("CATALOG_ITEM", itemId, "UPDATE", req.user!.id, req.user!.branchIds[0] || null);
 
       res.json(item);
@@ -477,7 +257,7 @@ router.put(
 
 /**
  * DELETE /api/catalog/:itemId
- * Delete a catalog item permanently, or deactivate if referenced by other records
+ * Delete a catalog item permanently, or deactivate if referenced
  * HM, POC, JS can delete
  */
 router.delete(
@@ -503,25 +283,6 @@ router.delete(
         return;
       }
 
-      // Branch access check for non-HM users
-      if (
-        !req.user!.roles.includes("HM") &&
-        !existing.is_global &&
-        existing.branch_id &&
-        !req.user!.branchIds.includes(existing.branch_id)
-      ) {
-        res.status(403).json({ error: "No access to this catalog item's branch" });
-        return;
-      }
-
-      // Only HM can delete global items
-      if (existing.is_global && !req.user!.roles.includes("HM")) {
-        res.status(403).json({
-          error: "Only Higher Management can delete global catalog items",
-        });
-        return;
-      }
-
       // Try hard delete first
       const { data: deletedRows, error: deleteError } = await supabaseAdmin
         .from("catalog_items")
@@ -531,7 +292,6 @@ router.delete(
 
       if (deleteError) {
         console.error("Delete error:", deleteError.code, deleteError.message);
-        // If FK constraint violation, fall back to soft delete (deactivate)
         if (deleteError.code === "23503") {
           const { error: updateError } = await supabaseAdmin
             .from("catalog_items")
@@ -543,7 +303,6 @@ router.delete(
             return;
           }
 
-          // Log soft delete with correct user
           try {
             await supabaseAdmin.rpc("log_admin_action", {
               p_action: "UPDATE",
@@ -568,7 +327,6 @@ router.delete(
         return;
       }
 
-      // Log hard delete with correct user
       try {
         await supabaseAdmin.rpc("log_admin_action", {
           p_action: "DELETE",
@@ -591,7 +349,7 @@ router.delete(
   }
 );
 
-// ─── CATALOG INVENTORY LINKS ─────────────────────────────────────────
+// --- CATALOG INVENTORY LINKS ---
 
 /**
  * GET /api/catalog/:itemId/inventory-links
@@ -605,10 +363,9 @@ router.get(
     try {
       const itemId = req.params.itemId as string;
 
-      // Verify catalog item exists
       const { data: catalogItem, error: catError } = await supabaseAdmin
         .from("catalog_items")
-        .select("id, branch_id, is_global")
+        .select("id")
         .eq("id", itemId)
         .single();
 
@@ -623,12 +380,10 @@ router.get(
 
       const { data: links, error } = await supabaseAdmin
         .from("catalog_inventory_links")
-        .select(
-          `
+        .select(`
           *,
           inventory_items(id, item_name, sku_code, cost_price, unit_of_measure, branch_id)
-        `
-        )
+        `)
         .eq("catalog_item_id", itemId)
         .order("created_at", { ascending: true });
 
@@ -647,7 +402,7 @@ router.get(
 
 /**
  * POST /api/catalog/:itemId/inventory-links
- * Add an inventory item link to a catalog item
+ * Add an inventory item link to a catalog item (template association only, no quantity)
  * Roles: HM, POC, JS
  */
 router.post(
@@ -656,22 +411,16 @@ router.post(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const itemId = req.params.itemId as string;
-      const { inventory_item_id, quantity } = req.body;
+      const { inventory_item_id } = req.body;
 
       if (!inventory_item_id) {
         res.status(400).json({ error: "Inventory item ID is required" });
         return;
       }
-      const qty = parseInt(quantity) || 1;
-      if (qty < 1) {
-        res.status(400).json({ error: "Quantity must be at least 1" });
-        return;
-      }
 
-      // Verify catalog item exists
       const { data: catalogItem, error: catError } = await supabaseAdmin
         .from("catalog_items")
-        .select("id, branch_id, is_global")
+        .select("id")
         .eq("id", itemId)
         .single();
 
@@ -684,24 +433,6 @@ router.post(
         return;
       }
 
-      // Branch access check for non-HM
-      if (
-        !req.user!.roles.includes("HM") &&
-        !catalogItem.is_global &&
-        catalogItem.branch_id &&
-        !req.user!.branchIds.includes(catalogItem.branch_id)
-      ) {
-        res.status(403).json({ error: "No access to this catalog item's branch" });
-        return;
-      }
-
-      // Only HM can modify global items
-      if (catalogItem.is_global && !req.user!.roles.includes("HM")) {
-        res.status(403).json({ error: "Only Higher Management can modify global catalog items" });
-        return;
-      }
-
-      // Verify inventory item exists and is active
       const { data: invItem, error: invError } = await supabaseAdmin
         .from("inventory_items")
         .select("id, item_name, status")
@@ -717,7 +448,6 @@ router.post(
         return;
       }
 
-      // Check for duplicate link
       const { data: existing } = await supabaseAdmin
         .from("catalog_inventory_links")
         .select("id")
@@ -735,14 +465,11 @@ router.post(
         .insert({
           catalog_item_id: itemId,
           inventory_item_id,
-          quantity: qty,
         })
-        .select(
-          `
+        .select(`
           *,
           inventory_items(id, item_name, sku_code, cost_price, unit_of_measure, branch_id)
-        `
-        )
+        `)
         .single();
 
       if (insertError) {
@@ -754,88 +481,6 @@ router.post(
     } catch (error) {
       console.error("Add catalog inventory link error:", error);
       res.status(500).json({ error: "Failed to add inventory link" });
-    }
-  }
-);
-
-/**
- * PUT /api/catalog/:itemId/inventory-links/:linkId
- * Update quantity on a catalog inventory link
- * Roles: HM, POC, JS
- */
-router.put(
-  "/:itemId/inventory-links/:linkId",
-  requireRoles("HM", "POC", "JS"),
-  async (req: Request, res: Response): Promise<void> => {
-    try {
-      const itemId = req.params.itemId as string;
-      const linkId = req.params.linkId as string;
-      const { quantity } = req.body;
-
-      const qty = parseInt(quantity);
-      if (!qty || qty < 1) {
-        res.status(400).json({ error: "Quantity must be at least 1" });
-        return;
-      }
-
-      // Verify catalog item exists
-      const { data: catalogItem, error: catError } = await supabaseAdmin
-        .from("catalog_items")
-        .select("id, branch_id, is_global")
-        .eq("id", itemId)
-        .single();
-
-      if (catError) {
-        if (catError.code === "PGRST116") {
-          res.status(404).json({ error: "Catalog item not found" });
-          return;
-        }
-        res.status(500).json({ error: catError.message });
-        return;
-      }
-
-      // Branch access check
-      if (
-        !req.user!.roles.includes("HM") &&
-        !catalogItem.is_global &&
-        catalogItem.branch_id &&
-        !req.user!.branchIds.includes(catalogItem.branch_id)
-      ) {
-        res.status(403).json({ error: "No access to this catalog item's branch" });
-        return;
-      }
-
-      if (catalogItem.is_global && !req.user!.roles.includes("HM")) {
-        res.status(403).json({ error: "Only Higher Management can modify global catalog items" });
-        return;
-      }
-
-      const { data: link, error: updateError } = await supabaseAdmin
-        .from("catalog_inventory_links")
-        .update({ quantity: qty })
-        .eq("id", linkId)
-        .eq("catalog_item_id", itemId)
-        .select(
-          `
-          *,
-          inventory_items(id, item_name, sku_code, cost_price, unit_of_measure, branch_id)
-        `
-        )
-        .single();
-
-      if (updateError) {
-        if (updateError.code === "PGRST116") {
-          res.status(404).json({ error: "Inventory link not found" });
-          return;
-        }
-        res.status(500).json({ error: updateError.message });
-        return;
-      }
-
-      res.json(link);
-    } catch (error) {
-      console.error("Update catalog inventory link error:", error);
-      res.status(500).json({ error: "Failed to update inventory link" });
     }
   }
 );
@@ -853,10 +498,9 @@ router.delete(
       const itemId = req.params.itemId as string;
       const linkId = req.params.linkId as string;
 
-      // Verify catalog item exists
       const { data: catalogItem, error: catError } = await supabaseAdmin
         .from("catalog_items")
-        .select("id, branch_id, is_global")
+        .select("id")
         .eq("id", itemId)
         .single();
 
@@ -866,22 +510,6 @@ router.delete(
           return;
         }
         res.status(500).json({ error: catError.message });
-        return;
-      }
-
-      // Branch access check
-      if (
-        !req.user!.roles.includes("HM") &&
-        !catalogItem.is_global &&
-        catalogItem.branch_id &&
-        !req.user!.branchIds.includes(catalogItem.branch_id)
-      ) {
-        res.status(403).json({ error: "No access to this catalog item's branch" });
-        return;
-      }
-
-      if (catalogItem.is_global && !req.user!.roles.includes("HM")) {
-        res.status(403).json({ error: "Only Higher Management can modify global catalog items" });
         return;
       }
 

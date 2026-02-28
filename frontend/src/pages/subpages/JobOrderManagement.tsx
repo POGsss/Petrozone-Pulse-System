@@ -29,7 +29,7 @@ import {
   SearchFilter,
 } from "../../components";
 import type { FilterGroup } from "../../components";
-import type { JobOrder, JobOrderItem, JobOrderHistory, Branch, Customer, Vehicle, CatalogItem, CatalogInventoryLink, ResolvedPricing, ThirdPartyRepair } from "../../types";
+import type { JobOrder, JobOrderItem, JobOrderHistory, Branch, Customer, Vehicle, CatalogItem, CatalogInventoryLink, ResolvedPricing, ThirdPartyRepair, VehicleClass } from "../../types";
 
 const ITEMS_PER_PAGE = 12;
 
@@ -85,13 +85,18 @@ function getStatusColors(status: string): string {
 interface DraftItem {
   catalog_item_id: string;
   catalog_item_name: string;
-  catalog_item_type: string;
   quantity: number;
-  base_price: number;
+  labor_price: number;
   inventory_cost: number;
-  labor_price: number | null;
-  packaging_price: number | null;
   line_total: number;
+  inventory_quantities: Array<{
+    inventory_item_id: string;
+    inventory_item_name: string;
+    unit_cost: number;
+    quantity: number;
+  }>;
+  /** Cached resolved pricing so we can recalculate on vehicle class change */
+  resolved_pricing?: { light_price: number; heavy_price: number; extra_heavy_price: number } | null;
 }
 
 interface DraftRepair {
@@ -140,6 +145,7 @@ export function JobOrderManagement() {
   const [addBranchId, setAddBranchId] = useState("");
   const [addCustomerId, setAddCustomerId] = useState("");
   const [addVehicleId, setAddVehicleId] = useState("");
+  const [addVehicleClass, setAddVehicleClass] = useState<VehicleClass>("light");
   const [addNotes, setAddNotes] = useState("");
   const [draftItems, setDraftItems] = useState<DraftItem[]>([]);
   const [draftRepairs, setDraftRepairs] = useState<DraftRepair[]>([]);
@@ -347,14 +353,14 @@ export function JobOrderManagement() {
   const vehicleOptions = useMemo(() => {
     return vehicles
       .filter((v) => v.status === "active" && (!addCustomerId || v.customer_id === addCustomerId))
-      .map((v) => ({ value: v.id, label: `${v.plate_number} — ${v.model}` }));
+      .map((v) => ({ value: v.id, label: `${v.model} (${v.plate_number})` }));
   }, [vehicles, addCustomerId]);
 
   // Catalog item options (active items visible to user)
   const catalogItemOptions = useMemo(() => {
     return catalogItems
       .filter((i) => i.status === "active")
-      .map((i) => ({ value: i.id, label: `${i.name} (${i.type})` }));
+      .map((i) => ({ value: i.id, label: i.name }));
   }, [catalogItems]);
 
   // Draft total
@@ -372,7 +378,7 @@ export function JobOrderManagement() {
   const editCatalogItemOptions = useMemo(() => {
     return editCatalogItems
       .filter((i) => i.status === "active")
-      .map((i) => ({ value: i.id, label: `${i.name} (${i.type})` }));
+      .map((i) => ({ value: i.id, label: i.name }));
   }, [editCatalogItems]);
 
   // Edit modal: items total
@@ -408,6 +414,7 @@ export function JobOrderManagement() {
     setAddBranchId(branch);
     setAddCustomerId("");
     setAddVehicleId("");
+    setAddVehicleClass("light");
     setAddNotes("");
     setDraftItems([]);
     setDraftRepairs([]);
@@ -452,62 +459,74 @@ export function JobOrderManagement() {
       setResolvingPrice(true);
       setAddError(null);
 
-      // Resolve pricing
+      // Resolve pricing (new shape: { catalog_item, pricing })
       let resolved: ResolvedPricing;
       try {
-        resolved = await pricingApi.resolve(selectedCatalogItemId, addBranchId);
+        resolved = await pricingApi.resolve(selectedCatalogItemId);
       } catch {
-        // Fallback: use catalog item base price only
         const catItem = catalogItems.find((c) => c.id === selectedCatalogItemId);
         if (!catItem) {
           setAddError("Catalog item not found");
           return;
         }
         resolved = {
-          catalog_item: { id: catItem.id, name: catItem.name, type: catItem.type, base_price: catItem.base_price },
-          pricing_rules: [],
-          resolved_prices: { base_price: catItem.base_price, labor: null, packaging: null },
+          catalog_item: { id: catItem.id, name: catItem.name },
+          pricing: null,
         };
       }
 
-      const { resolved_prices, catalog_item } = resolved;
+      const { pricing, catalog_item } = resolved;
 
-      // Fix 6: Warn if no pricing rules found for this item at this branch
-      if (resolved_prices.labor === null && resolved_prices.packaging === null) {
+      // Select labor price based on vehicle_class
+      let laborPrice = 0;
+      if (pricing) {
+        const priceKey = `${addVehicleClass}_price` as "light_price" | "heavy_price" | "extra_heavy_price";
+        laborPrice = pricing[priceKey] || 0;
+      } else {
         showToast.warning(
-          `No labor or packaging pricing found for "${catalog_item.name}" at this branch. Only the base price will be used.`
+          `No active pricing found for "${catalog_item.name}". Labor price will be 0.`
         );
       }
 
-      // Fetch inventory links to compute inventory cost preview
-      let inventoryCost = 0;
+      // Fetch inventory links (template) to determine required inventory items
+      let inventoryQuantities: Array<{
+        inventory_item_id: string;
+        inventory_item_name: string;
+        unit_cost: number;
+        quantity: number;
+      }> = [];
       try {
         const linksRes = await catalogApi.getInventoryLinks(catalog_item.id);
         if (linksRes && linksRes.length > 0) {
-          inventoryCost = linksRes.reduce(
-            (sum: number, l: CatalogInventoryLink) => sum + (l.inventory_items?.cost_price || 0) * l.quantity,
-            0
-          );
+          inventoryQuantities = linksRes.map((l: CatalogInventoryLink) => ({
+            inventory_item_id: l.inventory_items?.id || l.inventory_item_id,
+            inventory_item_name: l.inventory_items?.item_name || "Unknown",
+            unit_cost: l.inventory_items?.cost_price || 0,
+            quantity: 1, // Default to 1
+          }));
         }
       } catch {
-        // ignore — backend will resolve on submission
+        // ignore — backend will validate on submission
       }
 
-      const lineTotal =
-        (resolved_prices.base_price + inventoryCost + (resolved_prices.labor || 0) + (resolved_prices.packaging || 0)) * qty;
+      const inventoryCost = inventoryQuantities.reduce(
+        (sum, iq) => sum + iq.unit_cost * iq.quantity,
+        0
+      );
+
+      const lineTotal = (laborPrice + inventoryCost) * qty;
 
       setDraftItems((prev) => [
         ...prev,
         {
           catalog_item_id: catalog_item.id,
           catalog_item_name: catalog_item.name,
-          catalog_item_type: catalog_item.type,
           quantity: qty,
-          base_price: resolved_prices.base_price,
+          labor_price: laborPrice,
           inventory_cost: inventoryCost,
-          labor_price: resolved_prices.labor,
-          packaging_price: resolved_prices.packaging,
           line_total: lineTotal,
+          inventory_quantities: inventoryQuantities,
+          resolved_pricing: pricing ? { light_price: pricing.light_price, heavy_price: pricing.heavy_price, extra_heavy_price: pricing.extra_heavy_price } : null,
         },
       ]);
       setSelectedCatalogItemId("");
@@ -521,6 +540,26 @@ export function JobOrderManagement() {
 
   function removeDraftItem(catalogItemId: string) {
     setDraftItems((prev) => prev.filter((d) => d.catalog_item_id !== catalogItemId));
+  }
+
+  // Update inventory quantity for a draft item and recompute costs
+  function updateDraftInventoryQty(catalogItemId: string, inventoryItemId: string, newQty: number) {
+    if (newQty < 0) return;
+    setDraftItems((prev) =>
+      prev.map((item) => {
+        if (item.catalog_item_id !== catalogItemId) return item;
+        const updatedInv = item.inventory_quantities.map((iq) =>
+          iq.inventory_item_id === inventoryItemId ? { ...iq, quantity: newQty } : iq
+        );
+        const newInvCost = updatedInv.reduce((sum, iq) => sum + iq.unit_cost * iq.quantity, 0);
+        return {
+          ...item,
+          inventory_quantities: updatedInv,
+          inventory_cost: newInvCost,
+          line_total: (item.labor_price + newInvCost) * item.quantity,
+        };
+      })
+    );
   }
 
   // Draft repair functions for create modal
@@ -568,10 +607,15 @@ export function JobOrderManagement() {
         customer_id: addCustomerId,
         vehicle_id: addVehicleId,
         branch_id: addBranchId,
+        vehicle_class: addVehicleClass,
         notes: addNotes.trim() || undefined,
         items: draftItems.map((d) => ({
           catalog_item_id: d.catalog_item_id,
           quantity: d.quantity,
+          inventory_quantities: d.inventory_quantities.map((iq) => ({
+            inventory_item_id: iq.inventory_item_id,
+            quantity: iq.quantity,
+          })),
         })),
       });
 
@@ -674,9 +718,25 @@ export function JobOrderManagement() {
     setEditItems((prev) =>
       prev.map((item) => {
         if (item.id !== itemId) return item;
-        const unitPrice =
-          item.base_price + (item.inventory_cost || 0) + (item.labor_price || 0) + (item.packaging_price || 0);
+        const unitPrice = (item.labor_price || 0) + (item.inventory_cost || 0);
         return { ...item, quantity: newQty, line_total: unitPrice * newQty };
+      })
+    );
+  }
+
+  function handleEditInvQtyChange(itemId: string, inventoryItemId: string, newQty: number) {
+    if (newQty < 0) return;
+    setEditItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemId) return item;
+        const updatedInv = (item.job_order_item_inventories || []).map((inv) =>
+          inv.inventory_item_id === inventoryItemId
+            ? { ...inv, quantity: newQty, line_total: newQty * inv.unit_cost }
+            : inv
+        );
+        const newInvCost = updatedInv.reduce((sum, inv) => sum + inv.unit_cost * inv.quantity, 0);
+        const newLineTotal = ((item.labor_price || 0) + newInvCost) * item.quantity;
+        return { ...item, job_order_item_inventories: updatedInv, inventory_cost: newInvCost, line_total: newLineTotal };
       })
     );
   }
@@ -709,7 +769,7 @@ export function JobOrderManagement() {
 
       let resolved: ResolvedPricing;
       try {
-        resolved = await pricingApi.resolve(editSelectedCatalogId, editOrder.branch_id);
+        resolved = await pricingApi.resolve(editSelectedCatalogId);
       } catch {
         const catItem = editCatalogItems.find((c) => c.id === editSelectedCatalogId);
         if (!catItem) {
@@ -717,49 +777,63 @@ export function JobOrderManagement() {
           return;
         }
         resolved = {
-          catalog_item: { id: catItem.id, name: catItem.name, type: catItem.type, base_price: catItem.base_price },
-          pricing_rules: [],
-          resolved_prices: { base_price: catItem.base_price, labor: null, packaging: null },
+          catalog_item: { id: catItem.id, name: catItem.name },
+          pricing: null,
         };
       }
 
-      const { resolved_prices, catalog_item } = resolved;
+      const { pricing, catalog_item } = resolved;
 
-      if (resolved_prices.labor === null && resolved_prices.packaging === null) {
+      // Use the existing order's vehicle_class to select the right price
+      const vehicleClass = editOrder.vehicle_class || "light";
+      let laborPrice = 0;
+      if (pricing) {
+        const priceKey = `${vehicleClass}_price` as "light_price" | "heavy_price" | "extra_heavy_price";
+        laborPrice = pricing[priceKey] || 0;
+      } else {
         showToast.warning(
-          `No labor or packaging pricing found for "${catalog_item.name}" at this branch. Only the base price will be used.`
+          `No active pricing found for "${catalog_item.name}". Labor price will be 0.`
         );
       }
 
-      // Fetch inventory links to compute inventory cost preview
-      let editInvCost = 0;
+      // Fetch inventory links (template)
+      let editInvQuantities: Array<{
+        inventory_item_id: string;
+        inventory_item_name: string;
+        unit_cost: number;
+        quantity: number;
+      }> = [];
       try {
         const linksRes = await catalogApi.getInventoryLinks(catalog_item.id);
         if (linksRes && linksRes.length > 0) {
-          editInvCost = linksRes.reduce(
-            (sum: number, l: CatalogInventoryLink) => sum + (l.inventory_items?.cost_price || 0) * l.quantity,
-            0
-          );
+          editInvQuantities = linksRes.map((l: CatalogInventoryLink) => ({
+            inventory_item_id: l.inventory_items?.id || l.inventory_item_id,
+            inventory_item_name: l.inventory_items?.item_name || "Unknown",
+            unit_cost: l.inventory_items?.cost_price || 0,
+            quantity: 1,
+          }));
         }
       } catch {
-        // ignore — backend will resolve on submission
+        // ignore
       }
 
-      const lineTotal =
-        (resolved_prices.base_price + editInvCost + (resolved_prices.labor || 0) + (resolved_prices.packaging || 0)) * qty;
+      const editInvCost = editInvQuantities.reduce(
+        (sum, iq) => sum + iq.unit_cost * iq.quantity,
+        0
+      );
+
+      const lineTotal = (laborPrice + editInvCost) * qty;
 
       setEditDraftItems((prev) => [
         ...prev,
         {
           catalog_item_id: catalog_item.id,
           catalog_item_name: catalog_item.name,
-          catalog_item_type: catalog_item.type,
           quantity: qty,
-          base_price: resolved_prices.base_price,
+          labor_price: laborPrice,
           inventory_cost: editInvCost,
-          labor_price: resolved_prices.labor,
-          packaging_price: resolved_prices.packaging,
           line_total: lineTotal,
+          inventory_quantities: editInvQuantities,
         },
       ]);
       setEditSelectedCatalogId("");
@@ -805,10 +879,18 @@ export function JobOrderManagement() {
         const currentIds = new Set(editItems.map((i) => i.id));
         const removedItems = origEditItems.filter((i) => !currentIds.has(i.id));
 
-        // Find updated items (qty changed)
+        // Find updated items (qty or inventory changed)
         const updatedItems = editItems.filter((item) => {
           const orig = origEditItems.find((o) => o.id === item.id);
-          return orig && orig.quantity !== item.quantity;
+          if (!orig) return false;
+          if (orig.quantity !== item.quantity) return true;
+          // Check if any inventory snapshot quantity changed
+          const origSnaps = orig.job_order_item_inventories || [];
+          const newSnaps = item.job_order_item_inventories || [];
+          return newSnaps.some((snap) => {
+            const origSnap = origSnaps.find((s) => s.inventory_item_id === snap.inventory_item_id);
+            return origSnap && origSnap.quantity !== snap.quantity;
+          });
         });
 
         // Process removals
@@ -818,7 +900,14 @@ export function JobOrderManagement() {
 
         // Process updates
         for (const item of updatedItems) {
-          await jobOrdersApi.updateItem(editOrder.id, item.id, { quantity: item.quantity });
+          const invQuantities = (item.job_order_item_inventories || []).map((inv) => ({
+            inventory_item_id: inv.inventory_item_id,
+            quantity: inv.quantity,
+          }));
+          await jobOrdersApi.updateItem(editOrder.id, item.id, {
+            quantity: item.quantity,
+            inventory_quantities: invQuantities.length > 0 ? invQuantities : undefined,
+          });
         }
 
         // Process new items
@@ -826,6 +915,10 @@ export function JobOrderManagement() {
           await jobOrdersApi.addItem(editOrder.id, {
             catalog_item_id: draft.catalog_item_id,
             quantity: draft.quantity,
+            inventory_quantities: draft.inventory_quantities.map((iq) => ({
+              inventory_item_id: iq.inventory_item_id,
+              quantity: iq.quantity,
+            })),
           });
         }
       }
@@ -1292,6 +1385,30 @@ export function JobOrderManagement() {
               options={vehicleOptions}
               disabled={loadingLookups || !addCustomerId}
             />
+            <ModalSelect
+              value={addVehicleClass}
+              onChange={(v) => {
+                const newClass = v as VehicleClass;
+                setAddVehicleClass(newClass);
+                // Recalculate prices for existing draft items based on new vehicle class
+                if (draftItems.length > 0) {
+                  setDraftItems((prev) =>
+                    prev.map((item) => {
+                      const priceKey = `${newClass}_price` as "light_price" | "heavy_price" | "extra_heavy_price";
+                      const newLaborPrice = item.resolved_pricing ? (item.resolved_pricing[priceKey] || 0) : 0;
+                      const newLineTotal = (newLaborPrice + item.inventory_cost) * item.quantity;
+                      return { ...item, labor_price: newLaborPrice, line_total: newLineTotal };
+                    })
+                  );
+                  showToast.info("Prices updated for the new vehicle class.");
+                }
+              }}
+              options={[
+                { value: "light", label: "Light Vehicle" },
+                { value: "heavy", label: "Heavy Vehicle" },
+                { value: "extra_heavy", label: "Extra Heavy Vehicle" },
+              ]}
+            />
             <textarea
               value={addNotes}
               onChange={(e) => setAddNotes(e.target.value)}
@@ -1341,33 +1458,53 @@ export function JobOrderManagement() {
                 {draftItems.map((item) => (
                   <div
                     key={item.catalog_item_id}
-                    className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3"
+                    className="bg-neutral-100 rounded-xl px-4 py-3"
                   >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-neutral-950 text-sm truncate">
-                        {item.catalog_item_name}
-                        <span className="text-neutral-900 font-normal ml-1">({item.catalog_item_type})</span>
-                      </p>
-                      <p className="text-xs text-neutral-900">
-                        Base: {formatPrice(item.base_price)}
-                        {item.inventory_cost > 0 && ` + Inventory: ${formatPrice(item.inventory_cost)}`}
-                        {item.labor_price != null && ` + Labor: ${formatPrice(item.labor_price)}`}
-                        {item.packaging_price != null && ` + Pkg: ${formatPrice(item.packaging_price)}`}
-                        {" × "}{item.quantity}
-                      </p>
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-neutral-950 text-sm truncate">
+                          {item.catalog_item_name}
+                        </p>
+                        <p className="text-xs text-neutral-900">
+                          Labor: {formatPrice(item.labor_price)}
+                          {item.inventory_cost > 0 && ` + Inventory: ${formatPrice(item.inventory_cost)}`}
+                          {" × "}{item.quantity}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3 ml-3">
+                        <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap">
+                          {formatPrice(item.line_total)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeDraftItem(item.catalog_item_id)}
+                          className="text-negative hover:text-negative-900 p-1"
+                        >
+                          <LuX className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 ml-3">
-                      <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap">
-                        {formatPrice(item.line_total)}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => removeDraftItem(item.catalog_item_id)}
-                        className="text-negative hover:text-negative-900 p-1"
-                      >
-                        <LuX className="w-4 h-4" />
-                      </button>
-                    </div>
+                    {/* Inventory items with editable quantities */}
+                    {item.inventory_quantities.length > 0 && (
+                      <div className="mt-2 pl-3 border-l-2 border-neutral-200 space-y-1">
+                        {item.inventory_quantities.map((iq) => (
+                          <div key={iq.inventory_item_id} className="flex items-center justify-between text-xs text-neutral-900">
+                            <span className="truncate flex-1">{iq.inventory_item_name} ({formatPrice(iq.unit_cost * iq.quantity)})</span>
+                            <div className="flex items-center gap-1 ml-2">
+                              <input
+                                type="number"
+                                min={0}
+                                value={iq.quantity}
+                                onChange={(e) =>
+                                  updateDraftInventoryQty(item.catalog_item_id, iq.inventory_item_id, parseInt(e.target.value) || 0)
+                                }
+                                className="w-14 px-1 py-0.5 bg-white rounded text-center text-xs text-neutral-950 focus:outline-none focus:ring-1 focus:ring-primary"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
 
@@ -1571,13 +1708,10 @@ export function JobOrderManagement() {
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-neutral-950 text-sm truncate">
                             {item.catalog_item_name}
-                            <span className="text-neutral-900 font-normal ml-1">({item.catalog_item_type})</span>
                           </p>
                           <p className="text-xs text-neutral-900">
-                            Base: {formatPrice(item.base_price)}
-                            {(item.inventory_cost ?? 0) > 0 && ` + Inventory: ${formatPrice(item.inventory_cost!)}`}
-                            {item.labor_price != null && ` + Labor: ${formatPrice(item.labor_price)}`}
-                            {item.packaging_price != null && ` + Pkg: ${formatPrice(item.packaging_price)}`}
+                            Labor: {formatPrice(item.labor_price || 0)}
+                            {(item.inventory_cost ?? 0) > 0 && ` + Inventory: ${formatPrice(item.inventory_cost)}`}
                             {" × "}{item.quantity}
                           </p>
                         </div>
@@ -1588,12 +1722,11 @@ export function JobOrderManagement() {
                       {/* Inventory breakdown */}
                       {item.job_order_item_inventories && item.job_order_item_inventories.length > 0 && (
                         <div className="mt-2 pl-3 border-l-2 border-neutral-200 space-y-1">
-                          <p className="text-[11px] font-semibold text-neutral-900 uppercase tracking-wide">Inventory Used</p>
                           {item.job_order_item_inventories.map((inv) => (
                             <div key={inv.id} className="flex items-center justify-between text-xs text-neutral-900">
                               <span className="truncate">{inv.inventory_item_name}</span>
                               <span className="whitespace-nowrap ml-2">
-                                {inv.quantity_per_unit} × {item.quantity} = {inv.quantity_per_unit * item.quantity} · {formatPrice(inv.unit_cost * inv.quantity_per_unit * item.quantity)}
+                                {inv.quantity} · {formatPrice(inv.line_total)}
                               </span>
                             </div>
                           ))}
@@ -1959,40 +2092,61 @@ export function JobOrderManagement() {
                   {editItems.map((item) => (
                     <div
                       key={item.id}
-                      className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3 mb-4"
+                      className="bg-neutral-100 rounded-xl px-4 py-3 mb-4"
                     >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-neutral-950 text-sm truncate">
-                          {item.catalog_item_name}
-                          <span className="text-neutral-900 font-normal ml-1">({item.catalog_item_type})</span>
-                        </p>
-                        <p className="text-xs text-neutral-900">
-                          Base: {formatPrice(item.base_price)}
-                          {(item.inventory_cost ?? 0) > 0 && ` + Inventory: ${formatPrice(item.inventory_cost!)}`}
-                          {item.labor_price != null && ` + Labor: ${formatPrice(item.labor_price)}`}
-                          {item.packaging_price != null && ` + Pkg: ${formatPrice(item.packaging_price)}`}
-                        </p>
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-neutral-950 text-sm truncate">
+                            {item.catalog_item_name}
+                          </p>
+                          <p className="text-xs text-neutral-900">
+                            Labor: {formatPrice(item.labor_price || 0)}
+                            {(item.inventory_cost ?? 0) > 0 && ` + Inventory: ${formatPrice(item.inventory_cost)}`}
+                            {" \u00d7 "}{item.quantity}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 ml-3">
+                          <input
+                            type="number"
+                            min={1}
+                            value={item.quantity}
+                            onChange={(e) => handleEditItemQtyChange(item.id, parseInt(e.target.value) || 1)}
+                            className="w-16 px-2 py-1.5 bg-white rounded-lg text-center text-sm text-neutral-950 focus:outline-none focus:ring-2 focus:ring-primary"
+                          />
+                          <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap">
+                            {formatPrice(item.line_total)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveEditItem(item.id)}
+                            className="text-negative hover:text-negative-900 p-1"
+                            title="Remove item"
+                          >
+                            <LuX className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 ml-3">
-                        <input
-                          type="number"
-                          min={1}
-                          value={item.quantity}
-                          onChange={(e) => handleEditItemQtyChange(item.id, parseInt(e.target.value) || 1)}
-                          className="w-16 px-2 py-1.5 bg-white rounded-lg text-center text-sm text-neutral-950 focus:outline-none focus:ring-2 focus:ring-primary"
-                        />
-                        <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap">
-                          {formatPrice(item.line_total)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveEditItem(item.id)}
-                          className="text-negative hover:text-negative-900 p-1"
-                          title="Remove item"
-                        >
-                          <LuX className="w-4 h-4" />
-                        </button>
-                      </div>
+                      {/* Inventory sub-items with editable quantities */}
+                      {item.job_order_item_inventories && item.job_order_item_inventories.length > 0 && (
+                        <div className="mt-2 pl-3 border-l-2 border-neutral-200 space-y-1">
+                          {item.job_order_item_inventories.map((inv) => (
+                            <div key={inv.id} className="flex items-center justify-between text-xs text-neutral-900">
+                              <span className="truncate flex-1">{inv.inventory_item_name} ({formatPrice(inv.unit_cost * inv.quantity)})</span>
+                              <div className="flex items-center gap-1 ml-2">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={inv.quantity}
+                                  onChange={(e) =>
+                                    handleEditInvQtyChange(item.id, inv.inventory_item_id, parseInt(e.target.value) || 0)
+                                  }
+                                  className="w-14 px-1 py-0.5 bg-white rounded text-center text-xs text-neutral-950 focus:outline-none focus:ring-1 focus:ring-primary"
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
 
@@ -2005,14 +2159,11 @@ export function JobOrderManagement() {
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-neutral-950 text-sm truncate">
                           {item.catalog_item_name}
-                          <span className="text-neutral-900 font-normal ml-1">({item.catalog_item_type})</span>
                           <span className="text-primary text-xs ml-2">(new)</span>
                         </p>
                         <p className="text-xs text-neutral-900">
-                          Base: {formatPrice(item.base_price)}
+                          Labor: {formatPrice(item.labor_price)}
                           {item.inventory_cost > 0 && ` + Inventory: ${formatPrice(item.inventory_cost)}`}
-                          {item.labor_price != null && ` + Labor: ${formatPrice(item.labor_price)}`}
-                          {item.packaging_price != null && ` + Pkg: ${formatPrice(item.packaging_price)}`}
                           {" \u00d7 "}{item.quantity}
                         </p>
                       </div>

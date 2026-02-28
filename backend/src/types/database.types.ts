@@ -112,52 +112,33 @@ export type Database = {
       }
       catalog_items: {
         Row: {
-          base_price: number
-          branch_id: string | null
           created_at: string
           created_by: string | null
           description: string | null
           id: string
-          is_global: boolean
           name: string
           status: string
-          type: string
           updated_at: string
         }
         Insert: {
-          base_price: number
-          branch_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
           id?: string
-          is_global?: boolean
           name: string
           status?: string
-          type: string
           updated_at?: string
         }
         Update: {
-          base_price?: number
-          branch_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
           id?: string
-          is_global?: boolean
           name?: string
           status?: string
-          type?: string
           updated_at?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "catalog_items_branch_id_fkey"
-            columns: ["branch_id"]
-            isOneToOne: false
-            referencedRelation: "branches"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "catalog_items_created_by_fkey"
             columns: ["created_by"]
@@ -172,21 +153,18 @@ export type Database = {
           id: string
           catalog_item_id: string
           inventory_item_id: string
-          quantity: number
           created_at: string
         }
         Insert: {
           id?: string
           catalog_item_id: string
           inventory_item_id: string
-          quantity?: number
           created_at?: string
         }
         Update: {
           id?: string
           catalog_item_id?: string
           inventory_item_id?: string
-          quantity?: number
           created_at?: string
         }
         Relationships: [
@@ -268,7 +246,6 @@ export type Database = {
       }
       job_order_items: {
         Row: {
-          base_price: number
           catalog_item_id: string
           catalog_item_name: string
           catalog_item_type: string
@@ -278,11 +255,9 @@ export type Database = {
           job_order_id: string
           labor_price: number | null
           line_total: number
-          packaging_price: number | null
           quantity: number
         }
         Insert: {
-          base_price: number
           catalog_item_id: string
           catalog_item_name: string
           catalog_item_type: string
@@ -292,11 +267,9 @@ export type Database = {
           job_order_id: string
           labor_price?: number | null
           line_total: number
-          packaging_price?: number | null
           quantity?: number
         }
         Update: {
-          base_price?: number
           catalog_item_id?: string
           catalog_item_name?: string
           catalog_item_type?: string
@@ -306,7 +279,6 @@ export type Database = {
           job_order_id?: string
           labor_price?: number | null
           line_total?: number
-          packaging_price?: number | null
           quantity?: number
         }
         Relationships: [
@@ -332,8 +304,9 @@ export type Database = {
           job_order_item_id: string
           inventory_item_id: string
           inventory_item_name: string
-          quantity_per_unit: number
+          quantity: number
           unit_cost: number
+          line_total: number
           created_at: string
         }
         Insert: {
@@ -341,8 +314,9 @@ export type Database = {
           job_order_item_id: string
           inventory_item_id: string
           inventory_item_name: string
-          quantity_per_unit: number
+          quantity: number
           unit_cost: number
+          line_total: number
           created_at?: string
         }
         Update: {
@@ -350,8 +324,9 @@ export type Database = {
           job_order_item_id?: string
           inventory_item_id?: string
           inventory_item_name?: string
-          quantity_per_unit?: number
+          quantity?: number
           unit_cost?: number
+          line_total?: number
           created_at?: string
         }
         Relationships: [
@@ -387,6 +362,7 @@ export type Database = {
           status: Database["public"]["Enums"]["job_order_status"]
           total_amount: number
           updated_at: string
+          vehicle_class: string
           vehicle_id: string
         }
         Insert: {
@@ -404,6 +380,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["job_order_status"]
           total_amount?: number
           updated_at?: string
+          vehicle_class?: string
           vehicle_id: string
         }
         Update: {
@@ -421,6 +398,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["job_order_status"]
           total_amount?: number
           updated_at?: string
+          vehicle_class?: string
           vehicle_id?: string
         }
         Relationships: [
@@ -576,49 +554,39 @@ export type Database = {
       }
       pricing_matrices: {
         Row: {
-          branch_id: string
           catalog_item_id: string
           created_at: string
           created_by: string | null
-          description: string | null
+          extra_heavy_price: number
+          heavy_price: number
           id: string
-          price: number
-          pricing_type: Database["public"]["Enums"]["pricing_type"]
+          light_price: number
           status: Database["public"]["Enums"]["pricing_matrix_status"]
           updated_at: string
         }
         Insert: {
-          branch_id: string
           catalog_item_id: string
           created_at?: string
           created_by?: string | null
-          description?: string | null
+          extra_heavy_price?: number
+          heavy_price?: number
           id?: string
-          price: number
-          pricing_type: Database["public"]["Enums"]["pricing_type"]
+          light_price?: number
           status?: Database["public"]["Enums"]["pricing_matrix_status"]
           updated_at?: string
         }
         Update: {
-          branch_id?: string
           catalog_item_id?: string
           created_at?: string
           created_by?: string | null
-          description?: string | null
+          extra_heavy_price?: number
+          heavy_price?: number
           id?: string
-          price?: number
-          pricing_type?: Database["public"]["Enums"]["pricing_type"]
+          light_price?: number
           status?: Database["public"]["Enums"]["pricing_matrix_status"]
           updated_at?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "pricing_matrices_branch_id_fkey"
-            columns: ["branch_id"]
-            isOneToOne: false
-            referencedRelation: "branches"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "pricing_matrices_catalog_item_id_fkey"
             columns: ["catalog_item_id"]

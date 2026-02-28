@@ -13,7 +13,7 @@ import {
   LuX,
   LuFilter,
 } from "react-icons/lu";
-import { pricingApi, catalogApi, branchesApi } from "../../lib/api";
+import { pricingApi, catalogApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
 import { useAuth } from "../../auth";
 import {
@@ -24,14 +24,9 @@ import {
   ModalButtons,
   ModalError,
 } from "../../components";
-import type { PricingMatrix, CatalogItem, Branch } from "../../types";
+import type { PricingMatrix, CatalogItem } from "../../types";
 
 const ITEMS_PER_PAGE = 5;
-
-const PRICING_TYPE_OPTIONS = [
-  { value: "labor", label: "Labor" },
-  { value: "packaging", label: "Packaging" },
-];
 
 const STATUS_OPTIONS = [
   { value: "active", label: "Active" },
@@ -53,10 +48,6 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-function pricingTypeLabel(type: string): string {
-  return PRICING_TYPE_OPTIONS.find((o) => o.value === type)?.label || type;
-}
-
 export function PricingManagement() {
   const { user } = useAuth();
   const userRoles = user?.roles || [];
@@ -69,15 +60,12 @@ export function PricingManagement() {
   // Data state
   const [allPricingMatrices, setAllPricingMatrices] = useState<PricingMatrix[]>([]);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
-  const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Search & filters
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
-  const [filterType, setFilterType] = useState<string>("all");
-  const [filterBranch, setFilterBranch] = useState<string>("all");
   const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -90,11 +78,10 @@ export function PricingManagement() {
   const [addingItem, setAddingItem] = useState(false);
   const [addForm, setAddForm] = useState({
     catalog_item_id: "",
-    pricing_type: "labor",
-    price: "",
+    light_price: "",
+    heavy_price: "",
+    extra_heavy_price: "",
     status: "active",
-    branch_id: "",
-    description: "",
   });
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -104,11 +91,10 @@ export function PricingManagement() {
   const [selectedItem, setSelectedItem] = useState<PricingMatrix | null>(null);
   const [editForm, setEditForm] = useState({
     catalog_item_id: "",
-    pricing_type: "labor",
-    price: "",
+    light_price: "",
+    heavy_price: "",
+    extra_heavy_price: "",
     status: "active",
-    branch_id: "",
-    description: "",
   });
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -131,16 +117,11 @@ export function PricingManagement() {
     const filtered = allPricingMatrices.filter((p) => {
       const matchSearch =
         !q ||
-        p.catalog_items?.name?.toLowerCase().includes(q) ||
-        p.description?.toLowerCase().includes(q) ||
-        p.pricing_type.toLowerCase().includes(q) ||
-        p.branches?.name?.toLowerCase().includes(q);
+        p.catalog_items?.name?.toLowerCase().includes(q);
 
       const matchStatus = filterStatus === "all" || p.status === filterStatus;
-      const matchType = filterType === "all" || p.pricing_type === filterType;
-      const matchBranch = filterBranch === "all" || p.branch_id === filterBranch;
 
-      return matchSearch && matchStatus && matchType && matchBranch;
+      return matchSearch && matchStatus;
     });
     const pages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -149,7 +130,7 @@ export function PricingManagement() {
       paginatedItems: filtered.slice(start, start + ITEMS_PER_PAGE),
       totalPages: pages,
     };
-  }, [allPricingMatrices, searchQuery, filterStatus, filterType, filterBranch, currentPage]);
+  }, [allPricingMatrices, searchQuery, filterStatus, currentPage]);
 
   useEffect(() => {
     fetchData();
@@ -157,24 +138,21 @@ export function PricingManagement() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterStatus, filterType, filterBranch]);
+  }, [searchQuery, filterStatus]);
 
   async function fetchData() {
     try {
       setLoading(true);
       setError(null);
 
-      // Only fetch catalog items if user can create/edit (T role can only view pricing)
-      const fetches: [Promise<any>, Promise<any> | null, Promise<any>] = [
+      const fetches: [Promise<any>, Promise<any> | null] = [
         pricingApi.getAll({ limit: 1000 }),
         canCreate ? catalogApi.getAll({ limit: 1000 }) : Promise.resolve(null),
-        branchesApi.getAll(),
       ];
 
-      const [pricingRes, catalogRes, branchesData] = await Promise.all(fetches);
+      const [pricingRes, catalogRes] = await Promise.all(fetches);
       setAllPricingMatrices(pricingRes.data);
       if (catalogRes?.data) setCatalogItems(catalogRes.data);
-      setBranches(branchesData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch data");
     } finally {
@@ -190,17 +168,12 @@ export function PricingManagement() {
 
   // Open add modal
   function openAddModal() {
-    const defaultBranch =
-      user?.branches?.find((b) => b.is_primary)?.branch_id ||
-      user?.branches?.[0]?.branch_id ||
-      "";
     setAddForm({
       catalog_item_id: "",
-      pricing_type: "labor",
-      price: "",
+      light_price: "",
+      heavy_price: "",
+      extra_heavy_price: "",
       status: "active",
-      branch_id: defaultBranch,
-      description: "",
     });
     setAddError(null);
     setShowAddModal(true);
@@ -215,16 +188,11 @@ export function PricingManagement() {
       setAddError("Please select a catalog item");
       return;
     }
-    if (!addForm.pricing_type) {
-      setAddError("Please select a pricing type");
-      return;
-    }
-    if (!addForm.price || parseFloat(addForm.price) < 0 || isNaN(parseFloat(addForm.price))) {
-      setAddError("Please enter a valid price (non-negative number)");
-      return;
-    }
-    if (!addForm.branch_id) {
-      setAddError("Please select a branch");
+    const lp = parseFloat(addForm.light_price);
+    const hp = parseFloat(addForm.heavy_price);
+    const ehp = parseFloat(addForm.extra_heavy_price);
+    if (isNaN(lp) || lp < 0 || isNaN(hp) || hp < 0 || isNaN(ehp) || ehp < 0) {
+      setAddError("All three prices must be valid non-negative numbers");
       return;
     }
 
@@ -232,11 +200,10 @@ export function PricingManagement() {
       setAddingItem(true);
       await pricingApi.create({
         catalog_item_id: addForm.catalog_item_id,
-        pricing_type: addForm.pricing_type,
-        price: parseFloat(addForm.price),
+        light_price: lp,
+        heavy_price: hp,
+        extra_heavy_price: ehp,
         status: addForm.status,
-        branch_id: addForm.branch_id,
-        description: addForm.description || undefined,
       });
       setShowAddModal(false);
       showToast.success("Pricing rule created successfully");
@@ -254,11 +221,10 @@ export function PricingManagement() {
     setSelectedItem(item);
     setEditForm({
       catalog_item_id: item.catalog_item_id,
-      pricing_type: item.pricing_type,
-      price: String(item.price),
+      light_price: String(item.light_price),
+      heavy_price: String(item.heavy_price),
+      extra_heavy_price: String(item.extra_heavy_price),
       status: item.status,
-      branch_id: item.branch_id,
-      description: item.description || "",
     });
     setEditError(null);
     setShowEditModal(true);
@@ -274,16 +240,11 @@ export function PricingManagement() {
       setEditError("Please select a catalog item");
       return;
     }
-    if (!editForm.pricing_type) {
-      setEditError("Please select a pricing type");
-      return;
-    }
-    if (!editForm.price || parseFloat(editForm.price) < 0 || isNaN(parseFloat(editForm.price))) {
-      setEditError("Please enter a valid price (non-negative number)");
-      return;
-    }
-    if (!editForm.branch_id) {
-      setEditError("Please select a branch");
+    const lp = parseFloat(editForm.light_price);
+    const hp = parseFloat(editForm.heavy_price);
+    const ehp = parseFloat(editForm.extra_heavy_price);
+    if (isNaN(lp) || lp < 0 || isNaN(hp) || hp < 0 || isNaN(ehp) || ehp < 0) {
+      setEditError("All three prices must be valid non-negative numbers");
       return;
     }
 
@@ -291,11 +252,10 @@ export function PricingManagement() {
       setEditingItem(true);
       await pricingApi.update(selectedItem.id, {
         catalog_item_id: editForm.catalog_item_id,
-        pricing_type: editForm.pricing_type,
-        price: parseFloat(editForm.price),
+        light_price: lp,
+        heavy_price: hp,
+        extra_heavy_price: ehp,
         status: editForm.status,
-        branch_id: editForm.branch_id,
-        description: editForm.description || null,
       });
       setShowEditModal(false);
       showToast.success("Pricing rule updated successfully");
@@ -333,19 +293,13 @@ export function PricingManagement() {
   // Reset filters
   function handleResetFilters() {
     setFilterStatus("all");
-    setFilterType("all");
-    setFilterBranch("all");
     setSearchQuery("");
     setCurrentPage(1);
   }
 
-  // Get active catalog items for the selected branch in forms
-  function getCatalogItemsForBranch(branchId: string) {
-    return catalogItems.filter(
-      (c) =>
-        c.status === "active" &&
-        (c.is_global || c.branch_id === branchId)
-    );
+  // Get active catalog items for forms
+  function getActiveCatalogItems() {
+    return catalogItems.filter((c) => c.status === "active");
   }
 
   if (loading && allPricingMatrices.length === 0) {
@@ -480,38 +434,6 @@ export function PricingManagement() {
           {/* Advanced Filters */}
           {showFilters && (
             <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1">
-                <label className="block text-xs text-neutral-900 mb-1">Pricing Type</label>
-                <select
-                  value={filterType}
-                  onChange={(e) => {
-                    setFilterType(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                >
-                  <option value="all">All Types</option>
-                  {PRICING_TYPE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex-1">
-                <label className="block text-xs text-neutral-900 mb-1">Branch</label>
-                <select
-                  value={filterBranch}
-                  onChange={(e) => {
-                    setFilterBranch(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                >
-                  <option value="all">All Branches</option>
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
-              </div>
               <div className="flex items-end gap-2">
                 <button
                   onClick={fetchData}
@@ -549,11 +471,6 @@ export function PricingManagement() {
                       <h4 className="font-semibold text-neutral-950">
                         {item.catalog_items?.name || "Unknown Item"}
                       </h4>
-                      {item.branches && (
-                        <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
-                          {item.branches.code}
-                        </span>
-                      )}
                     </div>
                   </div>
                   <span
@@ -569,9 +486,9 @@ export function PricingManagement() {
 
                 {/* Pricing details */}
                 <div className="space-y-1 text-sm text-neutral-900 mb-3">
-                  <p className="text-neutral-900">{pricingTypeLabel(item.pricing_type)}</p>
-                  <p className="text-neutral-900 font-medium">{formatCurrency(item.price)}</p>
-                  {item.description && <p className="text-neutral-900">{item.description}</p>}
+                  <p className="text-neutral-900">Light: {formatCurrency(item.light_price)}</p>
+                  <p className="text-neutral-900">Heavy: {formatCurrency(item.heavy_price)}</p>
+                  <p className="text-neutral-900">Extra Heavy: {formatCurrency(item.extra_heavy_price)}</p>
                 </div>
 
                 {/* Actions */}
@@ -612,9 +529,9 @@ export function PricingManagement() {
             <thead>
               <tr className="border-b border-neutral-200 bg-neutral-100">
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Catalog Item</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Price</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Type</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Branch</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Light</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Heavy</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Extra Heavy</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Status</th>
                 {(canUpdate || canDelete) && (
                   <th className="text-center py-3 px-4 text-sm font-medium text-neutral-950">Actions</th>
@@ -632,24 +549,13 @@ export function PricingManagement() {
                     <span className="font-medium">{item.catalog_items?.name || "Unknown"}</span>
                   </td>
                   <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap font-medium">
-                    {formatCurrency(item.price)}
+                    {formatCurrency(item.light_price)}
                   </td>
-                  <td className="py-3 px-4 whitespace-nowrap">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${item.pricing_type === "labor"
-                        ? "bg-primary-100 text-primary-950"
-                        : "bg-positive-100 text-positive-950"
-                      }`}>
-                      {pricingTypeLabel(item.pricing_type)}
-                    </span>
+                  <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap font-medium">
+                    {formatCurrency(item.heavy_price)}
                   </td>
-                  <td className="py-3 px-4 text-sm text-neutral-900">
-                    {item.branches ? (
-                      <span className="px-2 py-0.5 bg-neutral-100 text-neutral-900 rounded text-xs font-medium">
-                        {item.branches.name}
-                      </span>
-                    ) : (
-                      <span className="text-sm text-neutral-400">-</span>
-                    )}
+                  <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap font-medium">
+                    {formatCurrency(item.extra_heavy_price)}
                   </td>
                   <td className="py-3 px-4 whitespace-nowrap">
                     <span
@@ -746,53 +652,32 @@ export function PricingManagement() {
               />
               <ModalInput
                 type="text"
-                value={viewItem.catalog_items?.type ? viewItem.catalog_items.type.charAt(0).toUpperCase() + viewItem.catalog_items.type.slice(1) : "-"}
+                value={formatCurrency(viewItem.light_price)}
                 onChange={() => { }}
-                placeholder="Item Type"
+                placeholder="Light Vehicle Price"
                 disabled
               />
               <ModalInput
                 type="text"
-                value={pricingTypeLabel(viewItem.pricing_type)}
+                value={formatCurrency(viewItem.heavy_price)}
                 onChange={() => { }}
-                placeholder="Pricing Type"
+                placeholder="Heavy Vehicle Price"
                 disabled
               />
               <ModalInput
                 type="text"
-                value={formatCurrency(viewItem.price)}
+                value={formatCurrency(viewItem.extra_heavy_price)}
                 onChange={() => { }}
-                placeholder="Price"
+                placeholder="Extra Heavy Vehicle Price"
                 disabled
               />
             </ModalSection>
 
-            <ModalSection title="Assignment">
+            <ModalSection title="Status">
               <ModalSelect
                 value={viewItem.status}
                 onChange={() => { }}
                 options={STATUS_OPTIONS}
-                disabled
-              />
-              <ModalInput
-                type="text"
-                value={
-                  viewItem.branches
-                    ? `${viewItem.branches.name} (${viewItem.branches.code})`
-                    : "-"
-                }
-                onChange={() => { }}
-                placeholder="Branch"
-                disabled
-              />
-            </ModalSection>
-
-            <ModalSection title="Additional Information">
-              <ModalInput
-                type="text"
-                value={viewItem.description || "-"}
-                onChange={() => { }}
-                placeholder="Description"
                 disabled
               />
             </ModalSection>
@@ -829,43 +714,38 @@ export function PricingManagement() {
         <form onSubmit={handleAdd}>
           <ModalSection title="Pricing Information">
             <ModalSelect
-              value={addForm.branch_id}
-              onChange={(v) => {
-                setAddForm((prev) => ({ ...prev, branch_id: v, catalog_item_id: "" }));
-              }}
-              options={[
-                { value: "", label: "Select Branch" },
-                ...branches.filter((b) => b.is_active).map((b) => ({
-                  value: b.id,
-                  label: `${b.name} (${b.code})`,
-                })),
-              ]}
-            />
-
-            <ModalSelect
               value={addForm.catalog_item_id}
               onChange={(v) => setAddForm((prev) => ({ ...prev, catalog_item_id: v }))}
               options={[
                 { value: "", label: "Select Catalog Item" },
-                ...getCatalogItemsForBranch(addForm.branch_id).map((c) => ({
+                ...getActiveCatalogItems().map((c) => ({
                   value: c.id,
-                  label: `${c.name} (${c.type}) — Base: ${formatCurrency(c.base_price)}`,
+                  label: c.name,
                 })),
               ]}
-              disabled={!addForm.branch_id}
-            />
-
-            <ModalSelect
-              value={addForm.pricing_type}
-              onChange={(v) => setAddForm((prev) => ({ ...prev, pricing_type: v }))}
-              options={PRICING_TYPE_OPTIONS}
             />
 
             <ModalInput
               type="number"
-              value={addForm.price}
-              onChange={(v) => setAddForm((prev) => ({ ...prev, price: v }))}
-              placeholder="Price"
+              value={addForm.light_price}
+              onChange={(v) => setAddForm((prev) => ({ ...prev, light_price: v }))}
+              placeholder="Light Vehicle Price"
+              required
+            />
+
+            <ModalInput
+              type="number"
+              value={addForm.heavy_price}
+              onChange={(v) => setAddForm((prev) => ({ ...prev, heavy_price: v }))}
+              placeholder="Heavy Vehicle Price"
+              required
+            />
+
+            <ModalInput
+              type="number"
+              value={addForm.extra_heavy_price}
+              onChange={(v) => setAddForm((prev) => ({ ...prev, extra_heavy_price: v }))}
+              placeholder="Extra Heavy Vehicle Price"
               required
             />
 
@@ -873,13 +753,6 @@ export function PricingManagement() {
               value={addForm.status}
               onChange={(v) => setAddForm((prev) => ({ ...prev, status: v }))}
               options={STATUS_OPTIONS}
-            />
-
-            <ModalInput
-              type="text"
-              value={addForm.description}
-              onChange={(v) => setAddForm((prev) => ({ ...prev, description: v }))}
-              placeholder="Description (optional)"
             />
           </ModalSection>
 
@@ -903,43 +776,38 @@ export function PricingManagement() {
         <form onSubmit={handleEdit}>
           <ModalSection title="Pricing Information">
             <ModalSelect
-              value={editForm.branch_id}
-              onChange={(v) =>
-                setEditForm((prev) => ({ ...prev, branch_id: v, catalog_item_id: "" }))
-              }
-              options={[
-                { value: "", label: "Select Branch" },
-                ...branches.filter((b) => b.is_active).map((b) => ({
-                  value: b.id,
-                  label: `${b.name} (${b.code})`,
-                })),
-              ]}
-            />
-
-            <ModalSelect
               value={editForm.catalog_item_id}
               onChange={(v) => setEditForm((prev) => ({ ...prev, catalog_item_id: v }))}
               options={[
                 { value: "", label: "Select Catalog Item" },
-                ...getCatalogItemsForBranch(editForm.branch_id).map((c) => ({
+                ...getActiveCatalogItems().map((c) => ({
                   value: c.id,
-                  label: `${c.name} (${c.type}) — Base: ${formatCurrency(c.base_price)}`,
+                  label: c.name,
                 })),
               ]}
-              disabled={!editForm.branch_id}
-            />
-
-            <ModalSelect
-              value={editForm.pricing_type}
-              onChange={(v) => setEditForm((prev) => ({ ...prev, pricing_type: v }))}
-              options={PRICING_TYPE_OPTIONS}
             />
 
             <ModalInput
               type="number"
-              value={editForm.price}
-              onChange={(v) => setEditForm((prev) => ({ ...prev, price: v }))}
-              placeholder="Price"
+              value={editForm.light_price}
+              onChange={(v) => setEditForm((prev) => ({ ...prev, light_price: v }))}
+              placeholder="Light Vehicle Price"
+              required
+            />
+
+            <ModalInput
+              type="number"
+              value={editForm.heavy_price}
+              onChange={(v) => setEditForm((prev) => ({ ...prev, heavy_price: v }))}
+              placeholder="Heavy Vehicle Price"
+              required
+            />
+
+            <ModalInput
+              type="number"
+              value={editForm.extra_heavy_price}
+              onChange={(v) => setEditForm((prev) => ({ ...prev, extra_heavy_price: v }))}
+              placeholder="Extra Heavy Vehicle Price"
               required
             />
 
@@ -947,13 +815,6 @@ export function PricingManagement() {
               value={editForm.status}
               onChange={(v) => setEditForm((prev) => ({ ...prev, status: v }))}
               options={STATUS_OPTIONS}
-            />
-
-            <ModalInput
-              type="text"
-              value={editForm.description}
-              onChange={(v) => setEditForm((prev) => ({ ...prev, description: v }))}
-              placeholder="Description (optional)"
             />
           </ModalSection>
 
@@ -978,11 +839,7 @@ export function PricingManagement() {
           <div>
             <div className="bg-neutral-100 rounded-xl p-4 my-4">
               <p className="text-neutral-900">
-                Are you sure you want to delete the{" "}
-                <strong className="text-neutral-950">
-                  {pricingTypeLabel(itemToDelete.pricing_type)}
-                </strong>{" "}
-                pricing rule for{" "}
+                Are you sure you want to delete the pricing rule for{" "}
                 <strong className="text-neutral-950">
                   {itemToDelete.catalog_items?.name || "Unknown Item"}
                 </strong>

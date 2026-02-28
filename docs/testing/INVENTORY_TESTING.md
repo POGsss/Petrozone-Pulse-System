@@ -198,24 +198,28 @@ Use the **Add New Item** button on the Inventory page. Enter each item below int
 
 **Goal:** Verify automatic stock deduction when a JO is approved.
 
-> **Pre-requisite:** You need a catalog item whose name matches an inventory item name exactly. For example, if your catalog has `"Shell Helix Ultra 5W-40 (1L)"` as a product, it should match the inventory item.
+> **How it works:** When a catalog item is added to a JO, the system captures **inventory snapshots** from the catalog's inventory template (`catalog_inventory_links`). Each snapshot records the `inventory_item_id`, `quantity_per_unit`, and `unit_cost`. On approval, the system aggregates quantities across all JO items and creates `stock_out` movements for each inventory item.
 
-1. Go to **Job Orders** → Create a new Job Order
-2. Add the product `"Shell Helix Ultra 5W-40 (1L)"` with quantity `2`
-3. Save and submit the Job Order
-4. Approve the Job Order (as POC/HM or whoever has approval rights)
+1. Ensure a catalog item (e.g., `Oil Change Service`) is linked to inventory items:
+   - Shell Helix Ultra 5W-40 (1L) — quantity\_per\_unit = 1
+   - Denso Oil Filter — quantity\_per\_unit = 1
+2. Go to **Job Orders** → Create a new Job Order
+3. Add `Oil Change Service` with JO item quantity = `2`
+   - This means the system will deduct: Shell Helix × (1 × 2) = 2, Denso Filter × (1 × 2) = 2
+4. Request and approve the Job Order (as R or T)
 5. Navigate back to **Inventory**
 6. Verify:
-   - ✅ Shell Helix Ultra stock decreased from `25` to `23`
-   - ✅ Movement History shows a `Stock Out` entry with reference type `Job Order`
+   - ✅ Shell Helix Ultra stock decreased by 2 (e.g., `25` → `23`)
+   - ✅ Denso Oil Filter stock decreased by 2 (e.g., `15` → `13`)
+   - ✅ Movement History for each item shows a `Stock Out` entry with `reference_type: "job_order"` and `reference_id` = the JO ID
 
 **Test insufficient stock block:**
 
-1. Adjust Shell Helix stock to `1` (decrease by 22)
-2. Create another JO with Shell Helix quantity `5`
+1. Adjust Shell Helix stock down to `1`
+2. Create a JO with `Oil Change Service` × quantity `5` (which needs 5 Shell Helix)
 3. Try to approve it
 4. Verify:
-   - ✅ Approval is **blocked** with error: `"Insufficient stock for Shell Helix Ultra 5W-40 (1L)"`
+   - ✅ Approval is **blocked** with error: `"Insufficient stock for Shell Helix Ultra 5W-40 (1L): need 5 but only 1 available"`
 
 ---
 
@@ -223,12 +227,14 @@ Use the **Add New Item** button on the Inventory page. Enter each item below int
 
 **Goal:** Verify stock is restored when an approved JO is cancelled.
 
-1. Note the current stock of an item used in an approved JO (e.g., Shell Helix = 23)
+> **How it works:** When an approved JO is cancelled, the system finds all `stock_out` movements with `reference_id` = the JO ID and creates matching `stock_in` movements to reverse them.
+
+1. Note the current stock of items used in an approved JO (e.g., Shell Helix = 23, Denso Filter = 13)
 2. Cancel that approved Job Order
 3. Navigate back to **Inventory**
 4. Verify:
-   - ✅ Stock restored back (23 → 25)
-   - ✅ Movement History shows a `Stock In` entry with reason `"Stock restored — Job Order cancelled"`
+   - ✅ Stock restored (Shell Helix 23 → 25, Denso Filter 13 → 15)
+   - ✅ Movement History shows new `Stock In` entries with reason `"Stock restored — Job Order cancelled"`
 
 ---
 

@@ -6,57 +6,57 @@
 
 ### Overview
 
-The Pricing Matrices module defines labor and packaging pricing rules for catalog items at each branch. When a catalog item is added to a job order, the system resolves the active pricing rules to calculate the full price (base + labor + packaging). Each pricing rule links a catalog item to a branch with a specific pricing type and price.
+The Pricing Matrices module defines vehicle-class-based pricing rules for catalog items. Each pricing matrix maps a catalog item to three price tiers: **light**, **heavy**, and **extra heavy** — corresponding to the vehicle class selected on a job order. When a catalog item is added to a JO, the system resolves the active pricing matrix to determine the labor price based on the vehicle class.
+
+Pricing matrices are **global** (no branch scoping). There can be only **one active pricing matrix per catalog item** at any time.
 
 ### Key Business Rules
 
-1. **Two pricing types** — `labor` and `packaging`.
-2. **Active uniqueness constraint** — only **one active** pricing rule is allowed per combination of (catalog item + pricing type + branch). To create a new active rule for the same combo, deactivate the existing one first.
-3. **Branch-scoped** — each rule belongs to a specific branch. Non-HM users see only rules for their assigned branches.
-4. **Catalog item selector** — the dropdown shows only active catalog items (global + branch-scoped) for the selected branch, with format: `"{name} ({type}) — Base: PHP {base_price}"`.
-5. **Conditional delete** — attempts hard delete first. If the rule is referenced by other records (FK constraint), it falls back to soft delete (deactivation).
-6. **T role is view-only** — Technicians can see pricing data via the API but the frontend doesn't load catalog items for them to create rules.
-7. **Resolve endpoint** — used by the Job Order module to determine the total price (base + labor + packaging) for a given catalog item at a specific branch.
+1. **3-tier pricing** — each matrix has `light_price`, `heavy_price`, and `extra_heavy_price` (all required, must be ≥ 0).
+2. **One active per catalog item** — creating or activating a pricing matrix when another active one exists for the same catalog item results in a 409 conflict error.
+3. **Global scope** — pricing matrices are not scoped to branches. Any user with view access can see all matrices.
+4. **No pricing types** — there are no labor/packaging type distinctions. Each matrix represents a single unified pricing rule.
+5. **Resolve endpoint** — `GET /api/pricing/resolve/:catalogItemId` returns the active pricing for a given catalog item, or `null` if no active matrix exists.
 
 ### RBAC (Roles & Permissions)
 
-| Action              | HM  | POC | JS  |  R  |  T  |
-| ------------------- | :-: | :-: | :-: | :-: | :-: |
-| View Pricing Rules  | ✅  | ✅  | ✅  | ✅  | ✅  |
-| Create Pricing Rule | ✅  | ✅  | ✅  | ✅  |  —  |
-| Update Pricing Rule | ✅  | ✅  | ✅  | ✅  |  —  |
-| Delete Pricing Rule | ✅  | ✅  | ✅  | ✅  |  —  |
+| Action                     | HM  | POC | JS  |  R  |  T  |
+| -------------------------- | :-: | :-: | :-: | :-: | :-: |
+| View Pricing Matrices      | ✅  | ✅  | ✅  | ✅  | ✅  |
+| Create Pricing Rule        | ✅  | ✅  | ✅  | ✅  |  —  |
+| Update Pricing Rule        | ✅  | ✅  | ✅  | ✅  |  —  |
+| Delete Pricing Rule        | ✅  | ✅  | ✅  | ✅  |  —  |
+
+> **Note:** T (Technician) is view-only for pricing.
 
 ### API Endpoints
 
-| Method   | Endpoint                              | Description                                           |
-| -------- | ------------------------------------- | ----------------------------------------------------- |
-| `GET`    | `/api/pricing`                        | List pricing matrices (paginated, filtered)           |
-| `GET`    | `/api/pricing/:id`                    | Get single pricing matrix                             |
-| `GET`    | `/api/pricing/resolve/:catalogItemId` | Resolve active pricing for a catalog item at a branch |
-| `POST`   | `/api/pricing/resolve-bulk`           | Bulk resolve pricing for multiple items               |
-| `POST`   | `/api/pricing`                        | Create pricing matrix                                 |
-| `PUT`    | `/api/pricing/:id`                    | Update pricing matrix                                 |
-| `DELETE` | `/api/pricing/:id`                    | Delete/deactivate pricing matrix                      |
+| Method   | Endpoint                                   | Description                                   |
+| -------- | ------------------------------------------ | --------------------------------------------- |
+| `GET`    | `/api/pricing`                             | List pricing matrices (filtered, paginated)   |
+| `GET`    | `/api/pricing/:id`                         | Get single pricing matrix                     |
+| `GET`    | `/api/pricing/resolve/:catalogItemId`      | Resolve active pricing for a catalog item     |
+| `POST`   | `/api/pricing/resolve-bulk`                | Bulk resolve pricing for multiple items       |
+| `POST`   | `/api/pricing`                             | Create pricing matrix                         |
+| `PUT`    | `/api/pricing/:id`                         | Update pricing matrix                         |
+| `DELETE` | `/api/pricing/:id`                         | Delete pricing matrix                         |
 
 ---
 
 ## Sample Data to Populate
 
-> **Pre-requisite:** Catalog items and branches must exist first (see `CATALOG_TESTING.md`).
+Use the **"Add Pricing Rule"** button. Create each pricing rule below:
 
-Use the **"Add Pricing Matrix"** button. Create each rule below:
+| #   | Catalog Item              | Light Price | Heavy Price | Extra Heavy Price | Status   |
+| --- | ------------------------- | ----------: | ----------: | ----------------: | -------- |
+| 1   | Oil Change Service        |     500.00  |     800.00  |          1,200.00 | Active   |
+| 2   | Brake Pad Replacement     |     700.00  |   1,000.00  |          1,500.00 | Active   |
+| 3   | Engine Tune-Up Package    |   1,200.00  |   1,800.00  |          2,500.00 | Active   |
+| 4   | Wheel Alignment           |     400.00  |     600.00  |            900.00 | Active   |
+| 5   | Air Filter Replacement    |     200.00  |     350.00  |            500.00 | Active   |
+| 6   | Tire Replacement          |     300.00  |     500.00  |            800.00 | Inactive |
 
-| #   | Branch | Catalog Item           | Pricing Type | Price | Status |
-| --- | ------ | ---------------------- | ------------ | ----- | ------ |
-| 1   | MAIN   | Oil Change Service     | Labor        | 300   | Active |
-| 2   | MAIN   | Oil Change Service     | Packaging    | 50    | Active |
-| 3   | MAIN   | Brake Pad Replacement  | Labor        | 800   | Active |
-| 4   | NORTH  | Oil Change Service     | Labor        | 350   | Active |
-| 5   | NORTH  | Engine Tune-Up Package | Labor        | 1,500 | Active |
-| 6   | SOUTH  | Wheel Alignment        | Labor        | 500   | Active |
-
-> **Tip:** Rules #1 and #2 demonstrate both labor AND packaging for the same catalog item at the same branch.
+> **Note:** Ensure the catalog items above exist first (see `CATALOG_TESTING.md`). Item 6 is set to Inactive intentionally for testing.
 
 ---
 
@@ -66,215 +66,204 @@ Use the **"Add Pricing Matrix"** button. Create each rule below:
 
 - Backend and frontend servers are running
 - You are logged in as **HM**, **POC**, **JS**, or **R**
-- At least one branch and one active catalog item exist
+- Catalog items exist (see `CATALOG_TESTING.md`)
 
 ---
 
-### Test 1 — View Pricing Rules
+### Test 1 — View Pricing Matrices
 
-**Goal:** Verify the pricing table loads correctly with stats.
+**Goal:** Verify the pricing list loads correctly with stats and dual-view display.
 
-1. Navigate to **Pricing Matrices** from the sidebar
-2. Verify the **stats cards** at the top:
-   - ✅ **All Rules** — total count
-   - ✅ **Active** — active rule count
-   - ✅ **Inactive** — inactive count
-3. Verify the table columns:
-   - ✅ **Catalog Item** — item name (bold), or "Unknown"
-   - ✅ **Price** — formatted as PHP currency (bold)
-   - ✅ **Type** — pill badge: "Labor" (primary color) or "Packaging" (green)
-   - ✅ **Branch** — branch name badge
-   - ✅ **Status** — pill badge: "Active" / "Inactive"
-   - ✅ **Actions** — Edit + Delete buttons
+1. Navigate to **Pricing** from the sidebar
+2. Verify the header shows **"Pricing Matrix"** with subtitle
+3. Verify **3 stats cards** at the top:
+   - ✅ **All Rules** — total count of pricing matrices
+   - ✅ **Active** — count of active matrices
+   - ✅ **Inactive** — count of inactive matrices
+4. Verify the display supports both:
+   - **Mobile view** — cards with pricing details
+   - **Desktop view** — table with columns:
+     - Catalog Item (name)
+     - Light (₱ formatted)
+     - Heavy (₱ formatted)
+     - Extra Heavy (₱ formatted)
+     - Status (Active/Inactive badge)
+     - Actions (Edit / Delete buttons)
+5. Verify pagination: **5 items per page**
 
 ---
 
 ### Test 2 — Create Pricing Rule
 
-**Goal:** Verify a new pricing rule can be created.
+**Goal:** Verify a pricing matrix can be created with all three vehicle class prices.
 
-1. Click **"Add Pricing Matrix"** → the **"Add Pricing Matrix"** modal opens
+1. Click **"Add Pricing Rule"** → the **"Add Pricing Rule"** modal opens
 2. Fill in the form:
-   - **Branch**: select `MAIN` (must be selected first — this filters catalog items)
-   - **Catalog Item**: select `Oil Change Service (Service) — Base: PHP 500.00`
-   - **Pricing Type**: select `Labor`
-   - **Price**: `300`
-   - **Status**: `Active`
-   - **Description**: (optional)
-3. Click **"Create Pricing"**
+   - **Catalog Item**: Select `Oil Change Service` from dropdown (shows only active items)
+   - **Light Vehicle Price**: `500`
+   - **Heavy Vehicle Price**: `800`
+   - **Extra Heavy Vehicle Price**: `1200`
+   - **Status**: `Active` (default)
+3. Click **"Create Pricing Rule"**
 4. Verify:
-   - ✅ Button shows **"Creating..."** while processing
    - ✅ Toast: `"Pricing rule created successfully"`
-   - ✅ Rule appears in the table
-   - ✅ Stats update: All Rules and Active counts increase
-5. Repeat for all 6 sample rules
+   - ✅ New row appears in the table with correct values
+   - ✅ Stats cards update (All Rules and Active counts increase)
+   - ✅ Modal closes
 
 **Edge cases to test:**
 
-- No catalog item selected → error: `"Please select a catalog item"`
-- No pricing type selected → error: `"Please select a pricing type"`
-- Empty or negative price → error: `"Please enter a valid price (non-negative number)"`
-- No branch selected → error: `"Please select a branch"`
+- Leave any price field empty → validation: `"All price fields are required"`
+- Enter a negative price → validation: `"Prices must be non-negative"`
+- Create an active matrix for a catalog item that already has one → ✅ Error toast: `"An active pricing matrix already exists for this catalog item"` (409 conflict)
+- Create an inactive matrix for the same catalog item → should succeed
 
 ---
 
-### Test 3 — Active Uniqueness Constraint
+### Test 3 — View Pricing Rule
 
-**Goal:** Verify only one active rule per (item + type + branch) combo.
+**Goal:** Verify pricing details are visible.
 
-1. Try creating another **active Labor** rule for `Oil Change Service` at `MAIN` branch (same as rule #1)
-2. Click **"Create Pricing"**
-3. Verify:
-   - ✅ Error (409): `"An active labor pricing rule already exists for this catalog item in this branch. Deactivate it first or create as inactive."`
-4. Change the Status to **Inactive** and create again → should succeed
-5. Try setting the inactive rule to Active via Edit:
-   - ✅ Error (409): `"An active labor pricing rule already exists for this catalog item in this branch. Deactivate it first."`
-
----
-
-### Test 4 — View Pricing Rule Details
-
-**Goal:** Verify the view modal shows all rule data.
-
-1. Click on a table row to open the view modal
-2. Verify the **"Pricing Rule Details"** modal shows:
-   - ✅ **"Pricing Information"** — Catalog Item name, Item Type (capitalized), Pricing Type, Price (formatted) (all disabled)
-   - ✅ **"Assignment"** — Status, Branch (all disabled)
-   - ✅ **"Additional Information"** — Description (disabled)
-   - ✅ **"Timestamps"** — Created and Updated dates
+1. Click on a pricing row/card to view it
+2. Verify all fields are displayed:
+   - ✅ Catalog item name
+   - ✅ Light Vehicle Price
+   - ✅ Heavy Vehicle Price
+   - ✅ Extra Heavy Vehicle Price
+   - ✅ Status
 
 ---
 
-### Test 5 — Update Pricing Rule
+### Test 4 — Edit Pricing Rule
 
-**Goal:** Verify a pricing rule can be edited.
+**Goal:** Verify pricing matrix can be updated.
 
-1. Click the **Edit** (pencil) icon on a rule
-2. Verify the **"Edit Pricing Rule"** modal opens with pre-filled data
-3. Change the **Price** to a new value (e.g., `350`)
-4. Change the **Description** to add a note
+1. Click the **Edit** button on a pricing row
+2. Verify the **"Edit Pricing Rule"** modal opens with pre-filled data:
+   - ✅ Catalog Item selector (pre-selected)
+   - ✅ Light Vehicle Price
+   - ✅ Heavy Vehicle Price
+   - ✅ Extra Heavy Vehicle Price
+   - ✅ Status dropdown (active/inactive)
+3. Change the **Heavy Vehicle Price** to a new value
+4. Change the **Status** to Inactive
 5. Click **"Save Changes"**
 6. Verify:
    - ✅ Toast: `"Pricing rule updated successfully"`
-   - ✅ Table reflects the new price
-
-**Test branch change:** 6. Open Edit and change the **Branch** → verify the Catalog Item dropdown resets (filters to new branch's items)
-
----
-
-### Test 6 — Search Pricing Rules
-
-**Goal:** Verify search works.
-
-1. Type `"Oil"` → rules for Oil Change Service appear (matched on catalog item name)
-2. Type `"Labor"` → only labor rules shown (matched on pricing type)
-3. Type `"MAIN"` → only MAIN branch rules shown (matched on branch name)
-4. Clear the search → all rules reappear
+   - ✅ Table row reflects updated values
+   - ✅ Stats cards update (Active/Inactive counts adjust)
 
 ---
 
-### Test 7 — Filter Pricing Rules
+### Test 5 — Delete Pricing Rule
 
-**Goal:** Verify filter functionality.
+**Goal:** Verify pricing matrix can be permanently deleted.
 
-1. **Filter by Status**: select `"Active"` → only active rules shown
-2. **Advanced Filters** (click toggle):
-   - **Filter by Type**: select `"Packaging"` → only packaging rules shown
-   - **Filter by Branch**: select `"NORTH"` → only NORTH branch rules shown
-3. Click **"Apply"** to apply filters
-4. Click **"Reset"** to clear
-5. Verify pagination: 5 items per page
-
----
-
-### Test 8 — Delete Pricing Rule (No References — Hard Delete)
-
-**Goal:** Verify a pricing rule not referenced by other records is permanently deleted.
-
-1. Find a rule that has NOT been used in any job order pricing resolution
-2. Click the **Delete** (trash) icon
-3. Verify the confirmation modal:
-   - ✅ Title: **"Delete Pricing Rule"**
-   - ✅ Message: `"Are you sure you want to delete the {type} pricing rule for {catalog item name}?"`
+1. Click the **Delete** button on a pricing row
+2. Verify the confirmation modal:
+   - ✅ Title: mentions deleting pricing rule
    - ✅ Warning: `"This action cannot be undone. The pricing rule will be permanently removed."`
-4. Click **"Delete"**
-5. Verify:
-   - ✅ Toast: `"Pricing rule deleted successfully"`
-   - ✅ Rule disappears from the table
-
----
-
-### Test 9 — Delete Pricing Rule (Referenced — Soft Delete)
-
-**Goal:** Verify a referenced pricing rule is deactivated.
-
-1. Use a pricing rule in a job order (by creating a JO with that catalog item)
-2. Return to Pricing and click **Delete** on that rule
-3. Confirm the deletion
+3. Click **"Delete"**
 4. Verify:
-   - ✅ Toast: `"Pricing rule deleted successfully"` (frontend doesn't distinguish)
-   - ✅ The rule is deactivated (status changes to Inactive) instead of removed
+   - ✅ Toast: `"Pricing rule deleted successfully"`
+   - ✅ Row disappears from the table
+   - ✅ Stats cards update
 
 ---
 
-### Test 10 — Branch Scoping
+### Test 6 — Search and Filter
 
-**Goal:** Verify users only see rules for their assigned branches.
+**Goal:** Verify search and filter functionality.
 
-1. Log in as a non-HM user assigned to MAIN branch
-2. Navigate to Pricing → should only see rules for MAIN branch
-3. Log in as **HM** → should see rules across all branches
-
----
-
-### Test 11 — Pricing Resolution (Integration)
-
-**Goal:** Verify the resolve endpoint returns correct pricing.
-
-> This test is best observed through the Job Order creation flow:
-
-1. Create pricing rules: Oil Change Service at MAIN → Labor: 300, Packaging: 50
-2. Go to **Job Orders** → Create a new JO at MAIN branch
-3. Add `Oil Change Service` as an item
-4. Verify the resolved price shows:
-   - ✅ Base: 500 (from catalog)
-   - ✅ Labor: 300 (from pricing rule)
-   - ✅ Packaging: 50 (from pricing rule)
-   - ✅ Line total per item = (500 + 300 + 50) × quantity
-5. If no pricing rules exist for an item, a warning toast appears: `"No labor or packaging pricing found for ... at this branch."`
+1. **Search by catalog item name**: Type `"Oil"` in the search field → only matching rows shown
+2. **Filter by status**: Select `"Active"` → only active rows shown; `"Inactive"` → only inactive
+3. Combine search + filter → verify correct combined results
+4. Clear search and reset filter → all items shown
+5. Verify search is case-insensitive
 
 ---
 
-### Test 12 — Audit Logging
+### Test 7 — One Active Per Catalog Item (Conflict Detection)
+
+**Goal:** Verify the system prevents duplicate active matrices for the same catalog item.
+
+1. Create an **Active** pricing rule for `Oil Change Service`
+2. Try creating another **Active** pricing rule for `Oil Change Service`
+3. Verify:
+   - ✅ Error toast: `"An active pricing matrix already exists for this catalog item"`
+   - ✅ The record is **not** created
+4. Create an **Inactive** pricing rule for the same item → ✅ succeeds
+5. Edit the inactive rule, change status to Active → ✅ should either conflict if the original active one still exists, or succeed if the original was deactivated
+
+---
+
+### Test 8 — Resolve Pricing (API Level)
+
+**Goal:** Verify the resolve endpoint works correctly.
+
+1. Ensure an **active** pricing matrix exists for a catalog item
+2. Call `GET /api/pricing/resolve/{catalogItemId}`
+3. Verify response structure:
+   ```json
+   {
+     "catalog_item": { "id": "...", "name": "..." },
+     "pricing": {
+       "id": "...",
+       "light_price": 500,
+       "heavy_price": 800,
+       "extra_heavy_price": 1200
+     }
+   }
+   ```
+4. Deactivate all pricing for a catalog item
+5. Call resolve again → `pricing` should be `null`
+6. Verify this flows correctly into the Job Order create flow (labor price = 0 when no pricing)
+
+---
+
+### Test 9 — RBAC Enforcement
+
+**Goal:** Verify access control per role.
+
+1. **Log in as T (Technician):**
+   - Navigate to Pricing
+   - ✅ Can view pricing matrices
+   - ✅ **No** "Add Pricing Rule" button
+   - ✅ **No** Edit or Delete buttons on rows
+2. **Log in as R (Receptionist):**
+   - ✅ Can view, create, edit, and delete pricing rules
+3. **Log in as HM, POC, or JS:**
+   - ✅ Full CRUD access
+
+---
+
+### Test 10 — Audit Logging
 
 **Goal:** Verify pricing operations are logged.
 
-1. Navigate to **Audit Logs**
-2. Verify entries exist for:
-   - ✅ Pricing rule creation (action: CREATE)
-   - ✅ Pricing rule update (action: UPDATE)
-   - ✅ Pricing rule deletion or deactivation (action: DELETE / UPDATE)
+1. Perform create, update, delete operations on pricing rules
+2. Navigate to **Audit Logs**
+3. Verify entries exist for:
+   - ✅ Pricing rule creation (entity_type: pricing_matrices)
+   - ✅ Pricing rule update
+   - ✅ Pricing rule deletion
 
 ---
 
 ## Summary Checklist
 
-| Requirement                                | Status |
-| ------------------------------------------ | ------ |
-| View Pricing Rules with Stats              | ⬜     |
-| Create Pricing Rule (Labor/Packaging)      | ⬜     |
-| Active Uniqueness Constraint               | ⬜     |
-| Catalog Item Dropdown (Filtered by Branch) | ⬜     |
-| View Pricing Rule Details                  | ⬜     |
-| Update Pricing Rule                        | ⬜     |
-| Search (Item Name, Type, Branch)           | ⬜     |
-| Filter by Status                           | ⬜     |
-| Filter by Pricing Type (Advanced)          | ⬜     |
-| Filter by Branch (Advanced)                | ⬜     |
-| Delete — Hard Delete (No References)       | ⬜     |
-| Delete — Soft Delete (Referenced)          | ⬜     |
-| Branch Scoping (HM vs Others)              | ⬜     |
-| Pricing Resolution in JO Creation          | ⬜     |
-| Pagination (5 per page)                    | ⬜     |
-| Audit Logging                              | ⬜     |
-| RBAC Enforcement                           | ⬜     |
+| Requirement                                     | Status |
+| ----------------------------------------------- | ------ |
+| View Pricing Matrices (Stats + Table)           | ⬜     |
+| 3 Stats Cards (All / Active / Inactive)         | ⬜     |
+| Dual View (Mobile Cards + Desktop Table)        | ⬜     |
+| Create Rule (3 Prices + Status)                 | ⬜     |
+| Edit Rule                                       | ⬜     |
+| Delete Rule (Permanent)                         | ⬜     |
+| Search by Catalog Item Name                     | ⬜     |
+| Filter by Status                                | ⬜     |
+| Pagination (5 per page)                         | ⬜     |
+| One Active Per Catalog Item (409 Conflict)      | ⬜     |
+| Resolve Endpoint (returns pricing or null)      | ⬜     |
+| RBAC (HM/POC/JS/R manage, T view-only)         | ⬜     |
+| Audit Logging                                   | ⬜     |

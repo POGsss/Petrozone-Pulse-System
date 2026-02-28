@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   LuPlus,
   LuCircleAlert,
@@ -8,12 +8,9 @@ import {
   LuPackage,
   LuChevronLeft,
   LuChevronRight,
-  LuBox,
   LuX,
-  LuEllipsisVertical,
-  LuHistory,
 } from "react-icons/lu";
-import { catalogApi, branchesApi, inventoryApi } from "../../lib/api";
+import { catalogApi, inventoryApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
 import { useAuth } from "../../auth";
 import {
@@ -21,21 +18,14 @@ import {
   ModalSection,
   ModalInput,
   ModalSelect,
-  ModalToggle,
   ModalButtons,
   ModalError,
   SearchFilter,
 } from "../../components";
 import type { FilterGroup } from "../../components";
-import type { CatalogItem, CatalogInventoryLink, InventoryItem, Branch } from "../../types";
+import type { CatalogItem, CatalogInventoryLink, InventoryItem } from "../../types";
 
 const ITEMS_PER_PAGE = 12;
-
-const TYPE_OPTIONS = [
-  { value: "service", label: "Service" },
-  { value: "product", label: "Product" },
-  { value: "package", label: "Package" },
-];
 
 const STATUS_OPTIONS = [
   { value: "active", label: "Active" },
@@ -57,11 +47,6 @@ function formatPrice(price: number): string {
   }).format(price);
 }
 
-function typeLabel(type: string): string {
-  return TYPE_OPTIONS.find((o) => o.value === type)?.label || type;
-}
-
-
 export function CatalogManagement() {
   const { user } = useAuth();
   const userRoles = user?.roles || [];
@@ -74,7 +59,6 @@ export function CatalogManagement() {
 
   // Data state
   const [allItems, setAllItems] = useState<CatalogItem[]>([]);
-  const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -88,17 +72,15 @@ export function CatalogManagement() {
   const [addingItem, setAddingItem] = useState(false);
   const [addForm, setAddForm] = useState({
     name: "",
-    type: "service",
     description: "",
-    base_price: "",
-    branch_id: "",
-    is_global: false,
   });
   const [addError, setAddError] = useState<string | null>(null);
 
   // View modal
   const [showViewModal, setShowViewModal] = useState(false);
   const [viewItem, setViewItem] = useState<CatalogItem | null>(null);
+  const [viewLinks, setViewLinks] = useState<CatalogInventoryLink[]>([]);
+  const [viewLinksLoading, setViewLinksLoading] = useState(false);
 
   // Edit modal
   const [showEditModal, setShowEditModal] = useState(false);
@@ -106,12 +88,8 @@ export function CatalogManagement() {
   const [selectedItem, setSelectedItem] = useState<CatalogItem | null>(null);
   const [editForm, setEditForm] = useState({
     name: "",
-    type: "service",
     description: "",
-    base_price: "",
     status: "active",
-    branch_id: "",
-    is_global: false,
   });
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -120,62 +98,32 @@ export function CatalogManagement() {
   const [deletingItem, setDeletingItem] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<CatalogItem | null>(null);
 
-  // Inventory links state
-  const [inventoryLinks, setInventoryLinks] = useState<CatalogInventoryLink[]>([]);
-  const [loadingLinks, setLoadingLinks] = useState(false);
-  const [showLinksModal, setShowLinksModal] = useState(false);
-  const [linksItem, setLinksItem] = useState<CatalogItem | null>(null);
-  const [branchInventory, setBranchInventory] = useState<InventoryItem[]>([]);
-  const [addLinkInventoryId, setAddLinkInventoryId] = useState("");
-  const [addingLink, setAddingLink] = useState(false);
+  // Inventory counts for card display
+  const [inventoryCounts, setInventoryCounts] = useState<Record<string, number>>({});
 
-  // Inventory List (read-only) modal
-  const [showInventoryListModal, setShowInventoryListModal] = useState(false);
-  const [inventoryListItem, setInventoryListItem] = useState<CatalogItem | null>(null);
-  const [inventoryListLinks, setInventoryListLinks] = useState<CatalogInventoryLink[]>([]);
-  const [inventoryListLoading, setInventoryListLoading] = useState(false);
+  // Add modal – draft inventory
+  const [addDraftInv, setAddDraftInv] = useState<InventoryItem[]>([]);
+  const [addAvailInv, setAddAvailInv] = useState<InventoryItem[]>([]);
+  const [addInvSelectId, setAddInvSelectId] = useState("");
+  const [addLoadingInv, setAddLoadingInv] = useState(false);
 
-  // Actions overflow dropdown
-  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  const closeDropdown = useCallback(() => setOpenDropdownId(null), []);
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        closeDropdown();
-      }
-    }
-    if (openDropdownId) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [openDropdownId, closeDropdown]);
+  // Edit modal – live inventory links
+  const [editInvLinks, setEditInvLinks] = useState<CatalogInventoryLink[]>([]);
+  const [editInvLoading, setEditInvLoading] = useState(false);
+  const [editAvailInv, setEditAvailInv] = useState<InventoryItem[]>([]);
+  const [editInvSelectId, setEditInvSelectId] = useState("");
+  const [editInvAdding, setEditInvAdding] = useState(false);
 
   // Filter groups for SearchFilter
   const filterGroups: FilterGroup[] = useMemo(() => {
-    const branchFilterOptions = branches.map((b) => ({
-      value: b.id,
-      label: b.name,
-    }));
     return [
       {
         key: "status",
         label: "Status",
         options: STATUS_OPTIONS,
       },
-      {
-        key: "type",
-        label: "Type",
-        options: TYPE_OPTIONS,
-      },
-      {
-        key: "branch",
-        label: "Branch",
-        options: [{ value: "global", label: "Global" }, ...branchFilterOptions],
-      },
     ];
-  }, [branches]);
+  }, []);
 
   // Filtered + paginated
   const { paginatedItems, totalPages } = useMemo(() => {
@@ -185,23 +133,13 @@ export function CatalogManagement() {
       const matchSearch =
         !q ||
         item.name.toLowerCase().includes(q) ||
-        item.description?.toLowerCase().includes(q) ||
-        item.type.toLowerCase().includes(q);
+        item.description?.toLowerCase().includes(q);
 
       // Filters
       const statusFilter = activeFilters.status;
       const matchStatus = !statusFilter || statusFilter === "all" || item.status === statusFilter;
 
-      const typeFilter = activeFilters.type;
-      const matchType = !typeFilter || typeFilter === "all" || item.type === typeFilter;
-
-      const branchFilter = activeFilters.branch;
-      const matchBranch =
-        !branchFilter ||
-        branchFilter === "all" ||
-        (branchFilter === "global" ? item.is_global : item.branch_id === branchFilter);
-
-      return matchSearch && matchStatus && matchType && matchBranch;
+      return matchSearch && matchStatus;
     });
     const pages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -223,12 +161,21 @@ export function CatalogManagement() {
     try {
       setLoading(true);
       setError(null);
-      const [catalogRes, branchesData] = await Promise.all([
-        catalogApi.getAll({ limit: 1000 }),
-        branchesApi.getAll(),
-      ]);
+      const catalogRes = await catalogApi.getAll({ limit: 1000 });
       setAllItems(catalogRes.data);
-      setBranches(branchesData);
+      // Load inventory link counts
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        catalogRes.data.map(async (item) => {
+          try {
+            const links = await catalogApi.getInventoryLinks(item.id);
+            counts[item.id] = links.length;
+          } catch {
+            counts[item.id] = 0;
+          }
+        })
+      );
+      setInventoryCounts(counts);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch data");
     } finally {
@@ -236,38 +183,22 @@ export function CatalogManagement() {
     }
   }
 
-  // Default branch
-  const defaultBranchId = useMemo(() => {
-    if (!isHM && user?.branches?.length) {
-      const primary = user.branches.find((b) => b.is_primary);
-      return primary?.branch_id || user.branches[0]?.branch_id || "";
-    }
-    return "";
-  }, [user, isHM]);
-
-  // Branch options
-  const branchOptions = useMemo(() => {
-    if (!isHM && user?.branches) {
-      return user.branches.map((ba) => ({
-        value: ba.branch_id,
-        label: ba.branches.name,
-      }));
-    }
-    return branches.map((b) => ({ value: b.id, label: b.name }));
-  }, [branches, user, isHM]);
-
   // --- Add ---
-  function openAddModal() {
-    setAddForm({
-      name: "",
-      type: "service",
-      description: "",
-      base_price: "",
-      branch_id: defaultBranchId,
-      is_global: false,
-    });
+  async function openAddModal() {
+    setAddForm({ name: "", description: "" });
     setAddError(null);
+    setAddDraftInv([]);
+    setAddInvSelectId("");
+    setAddLoadingInv(true);
     setShowAddModal(true);
+    try {
+      const invRes = await inventoryApi.getAll({ status: "active", limit: 500 });
+      setAddAvailInv(invRes.data);
+    } catch {
+      // Silently fail
+    } finally {
+      setAddLoadingInv(false);
+    }
   }
 
   async function handleAddItem(e: React.FormEvent) {
@@ -278,25 +209,21 @@ export function CatalogManagement() {
       setAddError("Name is required");
       return;
     }
-    if (!addForm.base_price || isNaN(parseFloat(addForm.base_price)) || parseFloat(addForm.base_price) < 0) {
-      setAddError("Base price must be a valid non-negative number");
-      return;
-    }
-    if (!addForm.is_global && !addForm.branch_id) {
-      setAddError("Select a branch or mark as global");
-      return;
-    }
 
     try {
       setAddingItem(true);
-      await catalogApi.create({
+      const created = await catalogApi.create({
         name: addForm.name.trim(),
-        type: addForm.type,
         description: addForm.description.trim() || undefined,
-        base_price: parseFloat(addForm.base_price),
-        branch_id: addForm.is_global ? undefined : addForm.branch_id,
-        is_global: addForm.is_global,
       });
+      // Add inventory links
+      for (const inv of addDraftInv) {
+        try {
+          await catalogApi.addInventoryLink(created.id, { inventory_item_id: inv.id });
+        } catch {
+          // continue
+        }
+      }
       setShowAddModal(false);
       showToast.success("Catalog item created successfully");
       fetchData();
@@ -309,25 +236,46 @@ export function CatalogManagement() {
   }
 
   // --- View ---
-  function openViewModal(item: CatalogItem) {
+  async function openViewModal(item: CatalogItem) {
     setViewItem(item);
+    setViewLinks([]);
+    setViewLinksLoading(true);
     setShowViewModal(true);
+    try {
+      const links = await catalogApi.getInventoryLinks(item.id);
+      setViewLinks(links);
+    } catch {
+      // Silently fail
+    } finally {
+      setViewLinksLoading(false);
+    }
   }
 
   // --- Edit ---
-  function openEditModal(item: CatalogItem) {
+  async function openEditModal(item: CatalogItem) {
     setSelectedItem(item);
     setEditForm({
       name: item.name,
-      type: item.type,
       description: item.description || "",
-      base_price: item.base_price.toString(),
       status: item.status,
-      branch_id: item.branch_id || "",
-      is_global: item.is_global,
     });
     setEditError(null);
+    setEditInvLinks([]);
+    setEditInvSelectId("");
+    setEditInvLoading(true);
     setShowEditModal(true);
+    try {
+      const [links, invRes] = await Promise.all([
+        catalogApi.getInventoryLinks(item.id),
+        inventoryApi.getAll({ status: "active", limit: 500 }),
+      ]);
+      setEditInvLinks(links);
+      setEditAvailInv(invRes.data);
+    } catch {
+      // Silently fail
+    } finally {
+      setEditInvLoading(false);
+    }
   }
 
   async function handleEditItem(e: React.FormEvent) {
@@ -339,30 +287,14 @@ export function CatalogManagement() {
       setEditError("Name cannot be empty");
       return;
     }
-    if (!editForm.base_price || isNaN(parseFloat(editForm.base_price)) || parseFloat(editForm.base_price) < 0) {
-      setEditError("Base price must be a valid non-negative number");
-      return;
-    }
-    if (isHM && !editForm.is_global && !editForm.branch_id) {
-      setEditError("Select a branch or mark as global");
-      return;
-    }
 
     try {
       setEditingItem(true);
-      const updatePayload: Record<string, unknown> = {
+      await catalogApi.update(selectedItem.id, {
         name: editForm.name.trim(),
-        type: editForm.type,
         description: editForm.description.trim() || null,
-        base_price: parseFloat(editForm.base_price),
         status: editForm.status,
-      };
-      // Only HM can change global/branch assignment
-      if (isHM) {
-        updatePayload.branch_id = editForm.is_global ? null : editForm.branch_id;
-        updatePayload.is_global = editForm.is_global;
-      }
-      await catalogApi.update(selectedItem.id, updatePayload);
+      });
       setShowEditModal(false);
       setSelectedItem(null);
       showToast.success("Catalog item updated successfully");
@@ -402,79 +334,46 @@ export function CatalogManagement() {
     }
   }
 
-  // --- Inventory List (read-only) ---
-  async function openInventoryListModal(item: CatalogItem) {
-    setInventoryListItem(item);
-    setShowInventoryListModal(true);
-    setInventoryListLoading(true);
+  // --- Edit modal: inventory link management ---
+  async function handleEditAddLink() {
+    if (!selectedItem || !editInvSelectId) return;
     try {
-      const links = await catalogApi.getInventoryLinks(item.id);
-      setInventoryListLinks(links);
-    } catch {
-      showToast.error("Failed to load inventory list");
-    } finally {
-      setInventoryListLoading(false);
-    }
-  }
-
-  // --- Inventory Links (edit) ---
-  async function openLinksModal(item: CatalogItem) {
-    setLinksItem(item);
-    setShowLinksModal(true);
-    setAddLinkInventoryId("");
-    setLoadingLinks(true);
-    try {
-      const [links, invRes] = await Promise.all([
-        catalogApi.getInventoryLinks(item.id),
-        inventoryApi.getAll({
-          branch_id: item.branch_id || undefined,
-          status: "active",
-          limit: 500,
-        }),
-      ]);
-      setInventoryLinks(links);
-      setBranchInventory(invRes.data);
-    } catch {
-      showToast.error("Failed to load inventory links");
-    } finally {
-      setLoadingLinks(false);
-    }
-  }
-
-  async function handleAddLink() {
-    if (!linksItem || !addLinkInventoryId) return;
-    try {
-      setAddingLink(true);
-      const newLink = await catalogApi.addInventoryLink(linksItem.id, {
-        inventory_item_id: addLinkInventoryId,
-        quantity: 1,
+      setEditInvAdding(true);
+      const newLink = await catalogApi.addInventoryLink(selectedItem.id, {
+        inventory_item_id: editInvSelectId,
       });
-      setInventoryLinks((prev) => [...prev, newLink]);
-      setAddLinkInventoryId("");
+      setEditInvLinks((prev) => [...prev, newLink]);
+      setEditInvSelectId("");
       showToast.success("Inventory item linked");
     } catch (err) {
       showToast.error(err instanceof Error ? err.message : "Failed to add link");
     } finally {
-      setAddingLink(false);
+      setEditInvAdding(false);
     }
   }
 
-  async function handleRemoveLink(linkId: string) {
-    if (!linksItem) return;
+  async function handleEditRemoveLink(linkId: string) {
+    if (!selectedItem) return;
     try {
-      await catalogApi.removeInventoryLink(linksItem.id, linkId);
-      setInventoryLinks((prev) => prev.filter((l) => l.id !== linkId));
+      await catalogApi.removeInventoryLink(selectedItem.id, linkId);
+      setEditInvLinks((prev) => prev.filter((l) => l.id !== linkId));
       showToast.success("Inventory link removed");
     } catch (err) {
       showToast.error(err instanceof Error ? err.message : "Failed to remove link");
     }
   }
 
-  // Available inventory items (not already linked)
-  const availableInventoryItems = useMemo(() => {
-    const linkedIds = new Set(inventoryLinks.map((l) => l.inventory_item_id));
-    return branchInventory.filter((inv) => !linkedIds.has(inv.id));
-  }, [branchInventory, inventoryLinks]);
+  // Available inventory for add modal
+  const addAvailableInvItems = useMemo(() => {
+    const draftIds = new Set(addDraftInv.map((inv) => inv.id));
+    return addAvailInv.filter((inv) => !draftIds.has(inv.id));
+  }, [addAvailInv, addDraftInv]);
+
+  // Available inventory for edit modal
+  const editAvailableInvItems = useMemo(() => {
+    const linkedIds = new Set(editInvLinks.map((l) => l.inventory_item_id));
+    return editAvailInv.filter((inv) => !linkedIds.has(inv.id));
+  }, [editAvailInv, editInvLinks]);
 
   if (loading) {
     return (
@@ -550,15 +449,9 @@ export function CatalogManagement() {
                 </div>
                 <div>
                   <h4 className="font-semibold text-neutral-950">{item.name}</h4>
-                  {item.is_global ? (
-                    <span className="text-xs font-mono bg-primary-100 text-primary px-2 py-0.5 rounded">
-                      Global
-                    </span>
-                  ) : item.branches ? (
-                    <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
-                      {item.branches.code}
-                    </span>
-                  ) : null}
+                  <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
+                    GLOBAL
+                  </span>
                 </div>
               </div>
               <span
@@ -574,8 +467,7 @@ export function CatalogManagement() {
 
             {/* Item details */}
             <div className="space-y-1 text-sm text-neutral-900 mb-3">
-              <p className="text-neutral-900">{formatPrice(item.base_price)}</p>
-              <p className="text-neutral-900">{typeLabel(item.type)}</p>
+              <p className="text-xs">{inventoryCounts[item.id] ?? 0} inventory item{(inventoryCounts[item.id] ?? 0) !== 1 ? "s" : ""}</p>
               {item.description && <p className="text-neutral-900 line-clamp-2">{item.description}</p>}
             </div>
 
@@ -585,7 +477,7 @@ export function CatalogManagement() {
                 canUpdate || canDelete ? "gap-4 pt-3 border-t border-neutral-200" : ""
               }`}
             >
-              {canUpdate && (!item.is_global || isHM) && (
+              {canUpdate && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -597,7 +489,7 @@ export function CatalogManagement() {
                   Edit
                 </button>
               )}
-              {canDelete && (!item.is_global || isHM) && (
+              {canDelete && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -609,33 +501,7 @@ export function CatalogManagement() {
                   Delete
                 </button>
               )}
-              {canUpdate && (!item.is_global || isHM) && (
-                <div className="relative" ref={openDropdownId === `card-${item.id}` ? dropdownRef : undefined}>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${item.id}` ? null : `card-${item.id}`); }}
-                    className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
-                    title="More actions"
-                  >
-                    <LuEllipsisVertical className="w-4 h-4" /> More
-                  </button>
-                  {openDropdownId === `card-${item.id}` && (
-                    <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); closeDropdown(); openInventoryListModal(item); }}
-                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                      >
-                        <LuHistory className="w-4 h-4" /> Inventory List
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); closeDropdown(); openLinksModal(item); }}
-                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                      >
-                        <LuPencil className="w-4 h-4" /> Edit Inventory
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
+
             </div>
           </div>
         ))}
@@ -693,18 +559,6 @@ export function CatalogManagement() {
               placeholder="Name *"
               required
             />
-            <ModalSelect
-              value={addForm.type}
-              onChange={(v) => setAddForm((prev) => ({ ...prev, type: v }))}
-              options={TYPE_OPTIONS}
-            />
-            <ModalInput
-              type="number"
-              value={addForm.base_price}
-              onChange={(v) => setAddForm((prev) => ({ ...prev, base_price: v }))}
-              placeholder="Base Price *"
-              required
-            />
             <textarea
               value={addForm.description}
               onChange={(e) =>
@@ -716,30 +570,53 @@ export function CatalogManagement() {
             />
           </ModalSection>
 
-          <ModalSection title="Scope">
-            {isHM && (
-              <ModalToggle
-                label="Global Item"
-                checked={addForm.is_global}
-                onChange={(v) =>
-                  setAddForm((prev) => ({
-                    ...prev,
-                    is_global: v,
-                    branch_id: v ? "" : prev.branch_id,
-                  }))
-                }
-                description="Available to all branches"
-              />
-            )}
-            {!addForm.is_global && (
-              <ModalSelect
-                value={addForm.branch_id}
-                onChange={(v) =>
-                  setAddForm((prev) => ({ ...prev, branch_id: v }))
-                }
-                placeholder="Select Branch *"
-                options={branchOptions}
-              />
+          <ModalSection title="Inventory Items">
+            <div className="flex gap-2 items-end">
+              <div className="flex-1">
+                <ModalSelect
+                  value={addInvSelectId}
+                  onChange={setAddInvSelectId}
+                  placeholder={addLoadingInv ? "Loading..." : "Select Inventory Item"}
+                  options={addAvailableInvItems.map((inv) => ({
+                    value: inv.id,
+                    label: `${inv.item_name} (${inv.sku_code}) \u2014 ${formatPrice(inv.cost_price)}`,
+                  }))}
+                  disabled={addLoadingInv}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const inv = addAvailInv.find((i) => i.id === addInvSelectId);
+                  if (inv) {
+                    setAddDraftInv((prev) => [...prev, inv]);
+                    setAddInvSelectId("");
+                  }
+                }}
+                disabled={!addInvSelectId || addLoadingInv}
+                className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+              >
+                <LuPlus className="w-4 h-4" />
+              </button>
+            </div>
+            {addDraftInv.length > 0 && (
+              <div className="mt-3 space-y-4">
+                {addDraftInv.map((inv) => (
+                  <div key={inv.id} className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-neutral-950 text-sm truncate">{inv.item_name}</p>
+                      <p className="text-xs text-neutral-900">SKU: {inv.sku_code} | {formatPrice(inv.cost_price)} / {inv.unit_of_measure || "unit"}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAddDraftInv((prev) => prev.filter((i) => i.id !== inv.id))}
+                      className="text-negative hover:text-negative-900 p-1 ml-3"
+                    >
+                      <LuX className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
             )}
           </ModalSection>
 
@@ -771,19 +648,6 @@ export function CatalogManagement() {
                 disabled
               />
               <ModalSelect
-                value={viewItem.type}
-                onChange={() => {}}
-                options={TYPE_OPTIONS}
-                disabled
-              />
-              <ModalInput
-                type="text"
-                value={formatPrice(viewItem.base_price)}
-                onChange={() => {}}
-                placeholder="Base Price"
-                disabled
-              />
-              <ModalSelect
                 value={viewItem.status}
                 onChange={() => {}}
                 options={STATUS_OPTIONS}
@@ -798,20 +662,35 @@ export function CatalogManagement() {
               />
             </ModalSection>
 
-            <ModalSection title="Scope">
-              <ModalInput
-                type="text"
-                value={
-                  viewItem.is_global
-                    ? "Global (all branches)"
-                    : viewItem.branches
-                    ? `${viewItem.branches.name} (${viewItem.branches.code})`
-                    : "-"
-                }
-                onChange={() => {}}
-                placeholder="Branch"
-                disabled
-              />
+            <ModalSection title="Linked Inventory">
+              {viewLinksLoading ? (
+                <div className="space-y-4">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
+                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
+                    </div>
+                  ))}
+                </div>
+              ) : viewLinks.length > 0 ? (
+                <div className="max-h-40 overflow-y-auto space-y-4">
+                  {viewLinks.map((link) => (
+                    <div
+                      key={link.id}
+                      className="bg-neutral-100 rounded-xl px-4 py-3"
+                    >
+                      <p className="font-medium text-neutral-950 text-sm">
+                        {link.inventory_items?.item_name || "Unknown"}
+                      </p>
+                      <p className="text-xs text-neutral-900">
+                        SKU: {link.inventory_items?.sku_code || "-"} · {formatPrice(link.inventory_items?.cost_price || 0)} / {link.inventory_items?.unit_of_measure || "unit"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-neutral-900 text-center py-3">No inventory items linked.</p>
+              )}
             </ModalSection>
 
             <ModalSection title="Timestamps">
@@ -853,20 +732,6 @@ export function CatalogManagement() {
               required
             />
             <ModalSelect
-              value={editForm.type}
-              onChange={(v) => setEditForm((prev) => ({ ...prev, type: v }))}
-              options={TYPE_OPTIONS}
-            />
-            <ModalInput
-              type="number"
-              value={editForm.base_price}
-              onChange={(v) =>
-                setEditForm((prev) => ({ ...prev, base_price: v }))
-              }
-              placeholder="Base Price *"
-              required
-            />
-            <ModalSelect
               value={editForm.status}
               onChange={(v) =>
                 setEditForm((prev) => ({ ...prev, status: v }))
@@ -884,31 +749,66 @@ export function CatalogManagement() {
             />
           </ModalSection>
 
-          <ModalSection title="Scope">
-            {isHM && (
-              <ModalToggle
-                label="Global Item"
-                checked={editForm.is_global}
-                onChange={(v) =>
-                  setEditForm((prev) => ({
-                    ...prev,
-                    is_global: v,
-                    branch_id: v ? "" : prev.branch_id,
-                  }))
-                }
-                description="Available to all branches"
-              />
-            )}
-            {!editForm.is_global && (
-              <ModalSelect
-                value={editForm.branch_id}
-                onChange={(v) =>
-                  setEditForm((prev) => ({ ...prev, branch_id: v }))
-                }
-                placeholder="Select Branch *"
-                options={branchOptions}
-                disabled={!isHM}
-              />
+          <ModalSection title="Inventory Items">
+            <div className="flex gap-2 items-end">
+              <div className="flex-1">
+                <ModalSelect
+                  value={editInvSelectId}
+                  onChange={setEditInvSelectId}
+                  placeholder={editInvLoading ? "Loading..." : "Select Inventory Item"}
+                  options={editAvailableInvItems.map((inv) => ({
+                    value: inv.id,
+                    label: `${inv.item_name} (${inv.sku_code}) \u2014 ${formatPrice(inv.cost_price)}`,
+                  }))}
+                  disabled={editInvLoading}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleEditAddLink}
+                disabled={editInvAdding || !editInvSelectId}
+                className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+              >
+                {editInvAdding ? (
+                  <LuRefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <LuPlus className="w-4 h-4" />
+                )}
+              </button>
+            </div>
+            {editInvLoading ? (
+              <div className="mt-3 space-y-4">
+                {[1, 2].map((i) => (
+                  <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
+                    <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
+                    <div className="h-3 bg-neutral-200 rounded w-1/2" />
+                  </div>
+                ))}
+              </div>
+            ) : editInvLinks.length > 0 ? (
+              <div className="mt-3 space-y-4">
+                {editInvLinks.map((link) => (
+                  <div key={link.id} className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-neutral-950 text-sm truncate">
+                        {link.inventory_items?.item_name || "Unknown"}
+                      </p>
+                      <p className="text-xs text-neutral-900">
+                        SKU: {link.inventory_items?.sku_code || "-"} | {formatPrice(link.inventory_items?.cost_price || 0)} / {link.inventory_items?.unit_of_measure || "unit"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleEditRemoveLink(link.id)}
+                      className="text-negative hover:text-negative-900 p-1 ml-3"
+                    >
+                      <LuX className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-neutral-900 text-center py-3">No inventory items linked.</p>
             )}
           </ModalSection>
 
@@ -936,8 +836,7 @@ export function CatalogManagement() {
                 Are you sure you want to delete{" "}
                 <strong className="text-neutral-950">
                   {itemToDelete.name}
-                </strong>{" "}
-                ({typeLabel(itemToDelete.type)})?
+                </strong>?
               </p>
             </div>
             <p className="text-sm text-neutral-900 mb-2">
@@ -961,194 +860,6 @@ export function CatalogManagement() {
                 {deletingItem ? "Deleting..." : "Delete"}
               </button>
             </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* Inventory Links Modal (Edit Inventory) */}
-      <Modal
-        isOpen={showLinksModal && !!linksItem}
-        onClose={() => {
-          setShowLinksModal(false);
-          setLinksItem(null);
-        }}
-        title="Edit Inventory"
-        maxWidth="lg"
-      >
-        {linksItem && (
-          <div>
-            <ModalSection title="Inventory Items">
-              {/* Add inventory item - select + plus button only */}
-              {canUpdate && (!linksItem.is_global || isHM) && (
-                <div className="flex gap-2 items-end">
-                  <div className="flex-1">
-                    <ModalSelect
-                      value={addLinkInventoryId}
-                      onChange={setAddLinkInventoryId}
-                      placeholder="Select Inventory Item"
-                      options={availableInventoryItems.map((inv) => ({
-                        value: inv.id,
-                        label: `${inv.item_name} (${inv.sku_code}) — ${formatPrice(inv.cost_price)}`,
-                      }))}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleAddLink}
-                    disabled={addingLink || !addLinkInventoryId}
-                    className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
-                  >
-                    {addingLink ? (
-                      <LuRefreshCw className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <LuPlus className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              )}
-
-              {/* Linked items list - remove only, no edit */}
-              {loadingLinks ? (
-                <div className="mt-3 space-y-4">
-                  {[1, 2].map((i) => (
-                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
-                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
-                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
-                    </div>
-                  ))}
-                </div>
-              ) : inventoryLinks.length > 0 ? (
-                <div className="mt-3 space-y-4">
-                  {inventoryLinks.map((link) => (
-                    <div
-                      key={link.id}
-                      className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-neutral-950 text-sm truncate">
-                          {link.inventory_items?.item_name || "Unknown"}
-                        </p>
-                        <p className="text-xs text-neutral-900">
-                          SKU: {link.inventory_items?.sku_code || "-"} · Cost:{" "}
-                          {formatPrice(link.inventory_items?.cost_price || 0)} /{" "}
-                          {link.inventory_items?.unit_of_measure || "unit"}
-                        </p>
-                        <p className="text-xs text-neutral-900">
-                          Qty: {link.quantity} · Line Total: {formatPrice((link.inventory_items?.cost_price || 0) * link.quantity)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3 ml-3">
-                        <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap">
-                          {formatPrice((link.inventory_items?.cost_price || 0) * link.quantity)}
-                        </span>
-                        {canDelete && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveLink(link.id)}
-                            className="text-negative hover:text-negative-900 p-1"
-                          >
-                            <LuX className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Inventory Total */}
-                  <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
-                    <span className="font-semibold text-neutral-950">Inventory Total</span>
-                    <span className="font-bold text-primary text-lg">
-                      {formatPrice(
-                        inventoryLinks.reduce(
-                          (sum, l) => sum + (l.inventory_items?.cost_price || 0) * l.quantity,
-                          0
-                        )
-                      )}
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-neutral-900 text-center py-4">
-                  No inventory items linked. Select an item above and click +.
-                </p>
-              )}
-            </ModalSection>
-
-            <ModalButtons
-              onCancel={() => {
-                setShowLinksModal(false);
-                setLinksItem(null);
-              }}
-              submitText="Done"
-              type="button"
-              onSubmit={() => {
-                setShowLinksModal(false);
-                setLinksItem(null);
-              }}
-            />
-          </div>
-        )}
-      </Modal>
-
-      {/* ───── Inventory List Modal (read-only, styled like stock movement history) ───── */}
-      <Modal
-        isOpen={showInventoryListModal && !!inventoryListItem}
-        onClose={() => { setShowInventoryListModal(false); setInventoryListItem(null); }}
-        title="Inventory List"
-        maxWidth="lg"
-      >
-        {inventoryListItem && (
-          <div>
-            <ModalSection title="Item">
-              <ModalInput type="text" value={inventoryListItem.name} onChange={() => {}} placeholder="Item" disabled />
-            </ModalSection>
-
-            <ModalSection title="Linked Inventory">
-              {inventoryListLoading ? (
-                <div className="space-y-4">
-                  {[1, 2].map((i) => (
-                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
-                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
-                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
-                    </div>
-                  ))}
-                </div>
-              ) : inventoryListLinks.length > 0 ? (
-                <div className="space-y-3">
-                  {inventoryListLinks.map((link) => (
-                    <div key={link.id} className="bg-neutral-100 rounded-xl px-4 py-3 group relative">
-                      <div className="flex items-center gap-2 mb-1">
-                        <LuBox className="w-3.5 h-3.5 text-neutral-600" />
-                        <span className="text-xs font-semibold uppercase text-neutral-950">
-                          {link.inventory_items?.item_name || "Unknown"}
-                        </span>
-                        <span className="text-xs font-medium text-neutral-950">
-                          x{link.quantity}
-                        </span>
-                        <span className="text-xs text-neutral-600 ml-auto">
-                          {formatPrice((link.inventory_items?.cost_price || 0) * link.quantity)}
-                        </span>
-                      </div>
-                      <p className="text-xs text-neutral-900 cursor-default">
-                        SKU: {link.inventory_items?.sku_code || "-"} · {formatPrice(link.inventory_items?.cost_price || 0)} / {link.inventory_items?.unit_of_measure || "unit"}
-                      </p>
-                      {/* Tooltip on hover */}
-                      <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-50 w-64 bg-white rounded-lg border border-neutral-200 py-3 pointer-events-none">
-                        <div className="px-4 gap-1 flex flex-col">
-                          <p className="font-medium text-neutral-950">{link.inventory_items?.item_name || "Unknown"}</p>
-                          <p className="text-sm text-neutral-900">SKU: {link.inventory_items?.sku_code || "-"}</p>
-                          <p className="text-sm text-neutral-900">Quantity: {link.quantity}</p>
-                          <p className="text-sm text-neutral-900">Cost: {formatPrice(link.inventory_items?.cost_price || 0)} / {link.inventory_items?.unit_of_measure || "unit"}</p>
-                          <p className="text-sm text-neutral-900">Line Total: {formatPrice((link.inventory_items?.cost_price || 0) * link.quantity)}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-neutral-900 text-center py-3">No inventory items linked.</p>
-              )}
-            </ModalSection>
           </div>
         )}
       </Modal>

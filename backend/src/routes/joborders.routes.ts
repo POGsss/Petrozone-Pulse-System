@@ -165,7 +165,7 @@ router.post(
   requireRoles("POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { customer_id, vehicle_id, branch_id, notes, items } = req.body;
+      const { customer_id, vehicle_id, branch_id, notes, items, vehicle_class } = req.body;
 
       // Validation
       if (!customer_id) {
@@ -182,6 +182,15 @@ router.post(
       }
       if (!items || !Array.isArray(items) || items.length === 0) {
         res.status(400).json({ error: "At least one item is required" });
+        return;
+      }
+
+      // Validate vehicle_class
+      const VALID_VEHICLE_CLASSES = ["light", "heavy", "extra_heavy"];
+      if (!vehicle_class || !VALID_VEHICLE_CLASSES.includes(vehicle_class)) {
+        res.status(400).json({
+          error: `vehicle_class is required and must be one of: ${VALID_VEHICLE_CLASSES.join(", ")}`,
+        });
         return;
       }
 
@@ -227,15 +236,13 @@ router.post(
         catalog_item_name: string;
         catalog_item_type: string;
         quantity: number;
-        base_price: number;
-        labor_price: number | null;
-        packaging_price: number | null;
+        labor_price: number;
         inventory_cost: number;
         line_total: number;
         _inventory_links: Array<{
           inventory_item_id: string;
           inventory_item_name: string;
-          link_quantity: number;
+          quantity: number;
           unit_cost: number;
         }>;
       }> = [];
@@ -251,10 +258,10 @@ router.post(
           return;
         }
 
-        // Resolve pricing for this catalog item + branch
+        // Resolve catalog item
         const { data: catalogItem, error: catError } = await supabaseAdmin
           .from("catalog_items")
-          .select("id, name, type, base_price")
+          .select("id, name")
           .eq("id", item.catalog_item_id)
           .single();
 
@@ -263,66 +270,94 @@ router.post(
           return;
         }
 
-        // Get pricing rules for this item + branch
-        const { data: pricingRules } = await supabaseAdmin
+        // Get active pricing matrix for this catalog item
+        const { data: pricingMatrix } = await supabaseAdmin
           .from("pricing_matrices")
           .select("*")
           .eq("catalog_item_id", item.catalog_item_id)
-          .eq("branch_id", branch_id)
-          .eq("status", "active");
+          .eq("status", "active")
+          .maybeSingle();
 
-        const laborRule = pricingRules?.find((r: { pricing_type: string }) => r.pricing_type === "labor");
-        const packagingRule = pricingRules?.find((r: { pricing_type: string }) => r.pricing_type === "packaging");
+        // Select labor price based on vehicle_class
+        let laborPrice = 0;
+        if (pricingMatrix) {
+          const priceKey = `${vehicle_class}_price` as "light_price" | "heavy_price" | "extra_heavy_price";
+          laborPrice = pricingMatrix[priceKey] || 0;
+        }
 
-        const basePrice = catalogItem.base_price;
-        const laborPrice = laborRule ? laborRule.price : null;
-        const packagingPrice = packagingRule ? packagingRule.price : null;
-
-        // Fetch linked inventory items for this catalog item
-        const { data: inventoryLinks } = await supabaseAdmin
+        // Fetch catalog inventory template links
+        const { data: templateLinks } = await supabaseAdmin
           .from("catalog_inventory_links")
-          .select("*, inventory_items(id, item_name, cost_price, branch_id, status)")
+          .select("inventory_item_id, inventory_items(id, item_name, cost_price, branch_id, status)")
           .eq("catalog_item_id", item.catalog_item_id);
 
-        // Only include active inventory items that belong to the JO branch
-        const applicableLinks = (inventoryLinks ?? []).filter(
-          (link: any) =>
-            link.inventory_items &&
-            link.inventory_items.status === "active" &&
-            link.inventory_items.branch_id === branch_id
-        );
+        const catalogTemplateIds = (templateLinks ?? []).map((l: any) => l.inventory_item_id);
 
-        // Compute inventory cost per unit of catalog item
+        // User-provided inventory quantities
+        const userInventoryQuantities: Array<{ inventory_item_id: string; quantity: number }> =
+          item.inventory_quantities || [];
+
+        // Validate: user cannot add inventory items outside catalog template
+        for (const uiq of userInventoryQuantities) {
+          if (!catalogTemplateIds.includes(uiq.inventory_item_id)) {
+            res.status(400).json({
+              error: `Inventory item ${uiq.inventory_item_id} is not in the catalog template for ${catalogItem.name}`,
+            });
+            return;
+          }
+        }
+
+        // Validate: all template items must be present
+        for (const templateId of catalogTemplateIds) {
+          const found = userInventoryQuantities.find((uiq: any) => uiq.inventory_item_id === templateId);
+          if (!found) {
+            res.status(400).json({
+              error: `Missing inventory quantity for template item ${templateId} in catalog ${catalogItem.name}. All template items must be included.`,
+            });
+            return;
+          }
+        }
+
+        // Compute inventory cost and build snapshot details
         let inventoryCost = 0;
         const invLinkDetails: Array<{
           inventory_item_id: string;
           inventory_item_name: string;
-          link_quantity: number;
+          quantity: number;
           unit_cost: number;
         }> = [];
 
-        for (const link of applicableLinks) {
-          const invItem = link.inventory_items as any;
-          const linkCost = link.quantity * invItem.cost_price;
-          inventoryCost += linkCost;
+        for (const uiq of userInventoryQuantities) {
+          const userQty = uiq.quantity || 0;
+          if (userQty < 0) {
+            res.status(400).json({ error: "Inventory quantity cannot be negative" });
+            return;
+          }
+
+          const templateLink = (templateLinks ?? []).find((l: any) => l.inventory_item_id === uiq.inventory_item_id);
+          const invItem = templateLink?.inventory_items as any;
+          if (!invItem) continue;
+
+          const unitCost = invItem.cost_price || 0;
+          inventoryCost += unitCost * userQty;
+
           invLinkDetails.push({
             inventory_item_id: invItem.id,
             inventory_item_name: invItem.item_name,
-            link_quantity: link.quantity,
-            unit_cost: invItem.cost_price,
+            quantity: userQty,
+            unit_cost: unitCost,
           });
         }
 
-        const lineTotal = (basePrice + inventoryCost + (laborPrice || 0) + (packagingPrice || 0)) * qty;
+        // New formula: line_total = (labor_price + inventory_cost) * quantity
+        const lineTotal = (laborPrice + inventoryCost) * qty;
 
         orderItems.push({
           catalog_item_id: catalogItem.id,
           catalog_item_name: catalogItem.name,
-          catalog_item_type: catalogItem.type,
+          catalog_item_type: "labor_package",
           quantity: qty,
-          base_price: basePrice,
           labor_price: laborPrice,
-          packaging_price: packagingPrice,
           inventory_cost: inventoryCost,
           line_total: lineTotal,
           _inventory_links: invLinkDetails,
@@ -339,6 +374,7 @@ router.post(
           customer_id,
           vehicle_id,
           branch_id,
+          vehicle_class,
           notes: notes?.trim() || null,
           total_amount: totalAmount,
           created_by: req.user!.id,
@@ -381,8 +417,9 @@ router.post(
         job_order_item_id: string;
         inventory_item_id: string;
         inventory_item_name: string;
-        quantity_per_unit: number;
+        quantity: number;
         unit_cost: number;
+        line_total: number;
       }> = [];
 
       for (let i = 0; i < orderItems.length; i++) {
@@ -392,13 +429,15 @@ router.post(
         const links = orderItem._inventory_links;
         if (!links) continue;
         for (const link of links) {
-          const effectiveQty = link.link_quantity * orderItem.quantity;
+          // quantity is the user-entered quantity per item, multiplied by JO item quantity
+          const effectiveQty = link.quantity * orderItem.quantity;
           inventorySnapshots.push({
             job_order_item_id: joItem.id,
             inventory_item_id: link.inventory_item_id,
             inventory_item_name: link.inventory_item_name,
-            quantity_per_unit: effectiveQty,
+            quantity: effectiveQty,
             unit_cost: link.unit_cost,
+            line_total: effectiveQty * link.unit_cost,
           });
         }
       }
@@ -595,7 +634,7 @@ router.delete(
         if (joItems && joItems.length > 0) {
           const itemIds = joItems.map((i: any) => i.id);
           await supabaseAdmin
-            .from("job_order_inventory_snapshots")
+            .from("job_order_item_inventories")
             .delete()
             .in("job_order_item_id", itemIds);
         }
@@ -1046,7 +1085,7 @@ router.post(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const orderId = req.params.id as string;
-      const { catalog_item_id, quantity } = req.body;
+      const { catalog_item_id, quantity, inventory_quantities } = req.body;
 
       if (!catalog_item_id) {
         res.status(400).json({ error: "Catalog item ID is required" });
@@ -1093,10 +1132,10 @@ router.post(
         return;
       }
 
-      // Resolve pricing
+      // Resolve catalog item
       const { data: catalogItem, error: catError } = await supabaseAdmin
         .from("catalog_items")
-        .select("id, name, type, base_price")
+        .select("id, name")
         .eq("id", catalog_item_id)
         .single();
 
@@ -1105,54 +1144,90 @@ router.post(
         return;
       }
 
-      const { data: pricingRules } = await supabaseAdmin
+      // Get the JO's vehicle_class
+      const { data: orderForClass } = await supabaseAdmin
+        .from("job_orders")
+        .select("vehicle_class")
+        .eq("id", orderId)
+        .single();
+      const joVehicleClass = orderForClass?.vehicle_class || "light";
+
+      // Get active pricing matrix
+      const { data: pricingMatrix } = await supabaseAdmin
         .from("pricing_matrices")
         .select("*")
         .eq("catalog_item_id", catalog_item_id)
-        .eq("branch_id", existing.branch_id)
-        .eq("status", "active");
+        .eq("status", "active")
+        .maybeSingle();
 
-      const laborRule = pricingRules?.find((r: { pricing_type: string }) => r.pricing_type === "labor");
-      const packagingRule = pricingRules?.find((r: { pricing_type: string }) => r.pricing_type === "packaging");
+      let laborPrice = 0;
+      if (pricingMatrix) {
+        const priceKey = `${joVehicleClass}_price` as "light_price" | "heavy_price" | "extra_heavy_price";
+        laborPrice = pricingMatrix[priceKey] || 0;
+      }
 
-      const basePrice = catalogItem.base_price;
-      const laborPrice = laborRule ? laborRule.price : null;
-      const packagingPrice = packagingRule ? packagingRule.price : null;
-
-      // Fetch linked inventory items for this catalog item
-      const { data: inventoryLinks } = await supabaseAdmin
+      // Fetch catalog inventory template links
+      const { data: templateLinks } = await supabaseAdmin
         .from("catalog_inventory_links")
-        .select("*, inventory_items(id, item_name, cost_price, branch_id, status)")
+        .select("inventory_item_id, inventory_items(id, item_name, cost_price, branch_id, status)")
         .eq("catalog_item_id", catalog_item_id);
 
-      const applicableLinks = (inventoryLinks ?? []).filter(
-        (link: any) =>
-          link.inventory_items &&
-          link.inventory_items.status === "active" &&
-          link.inventory_items.branch_id === existing.branch_id
-      );
+      const catalogTemplateIds = (templateLinks ?? []).map((l: any) => l.inventory_item_id);
 
+      // User-provided inventory quantities
+      const userInventoryQuantities: Array<{ inventory_item_id: string; quantity: number }> =
+        inventory_quantities || [];
+
+      // Validate: user cannot add items outside template
+      for (const uiq of userInventoryQuantities) {
+        if (!catalogTemplateIds.includes(uiq.inventory_item_id)) {
+          res.status(400).json({
+            error: `Inventory item ${uiq.inventory_item_id} is not in the catalog template for ${catalogItem.name}`,
+          });
+          return;
+        }
+      }
+
+      // Validate: all template items must be present
+      for (const templateId of catalogTemplateIds) {
+        if (!userInventoryQuantities.find((uiq: any) => uiq.inventory_item_id === templateId)) {
+          res.status(400).json({
+            error: `Missing inventory quantity for template item ${templateId} in catalog ${catalogItem.name}`,
+          });
+          return;
+        }
+      }
+
+      // Compute inventory cost
       let inventoryCost = 0;
       const invLinkDetails: Array<{
         inventory_item_id: string;
         inventory_item_name: string;
-        link_quantity: number;
+        quantity: number;
         unit_cost: number;
       }> = [];
 
-      for (const link of applicableLinks) {
-        const invItem = link.inventory_items as any;
-        const linkCost = link.quantity * invItem.cost_price;
-        inventoryCost += linkCost;
+      for (const uiq of userInventoryQuantities) {
+        const userQty = uiq.quantity || 0;
+        if (userQty < 0) {
+          res.status(400).json({ error: "Inventory quantity cannot be negative" });
+          return;
+        }
+        const templateLink = (templateLinks ?? []).find((l: any) => l.inventory_item_id === uiq.inventory_item_id);
+        const invItem = templateLink?.inventory_items as any;
+        if (!invItem) continue;
+
+        const unitCost = invItem.cost_price || 0;
+        inventoryCost += unitCost * userQty;
         invLinkDetails.push({
           inventory_item_id: invItem.id,
           inventory_item_name: invItem.item_name,
-          link_quantity: link.quantity,
-          unit_cost: invItem.cost_price,
+          quantity: userQty,
+          unit_cost: unitCost,
         });
       }
 
-      const lineTotal = (basePrice + inventoryCost + (laborPrice || 0) + (packagingPrice || 0)) * qty;
+      const lineTotal = (laborPrice + inventoryCost) * qty;
 
       // Insert the item
       const { data: newItem, error: insertError } = await supabaseAdmin
@@ -1161,11 +1236,9 @@ router.post(
           job_order_id: orderId,
           catalog_item_id: catalogItem.id,
           catalog_item_name: catalogItem.name,
-          catalog_item_type: catalogItem.type,
+          catalog_item_type: "labor_package",
           quantity: qty,
-          base_price: basePrice,
           labor_price: laborPrice,
-          packaging_price: packagingPrice,
           inventory_cost: inventoryCost,
           line_total: lineTotal,
         })
@@ -1183,8 +1256,9 @@ router.post(
           job_order_item_id: newItem.id,
           inventory_item_id: link.inventory_item_id,
           inventory_item_name: link.inventory_item_name,
-          quantity_per_unit: link.link_quantity * qty,
+          quantity: link.quantity * qty,
           unit_cost: link.unit_cost,
+          line_total: link.quantity * qty * link.unit_cost,
         }));
         await supabaseAdmin.from("job_order_item_inventories").insert(snapshots);
       }
@@ -1244,7 +1318,7 @@ router.put(
     try {
       const orderId = req.params.id as string;
       const itemId = req.params.itemId as string;
-      const { quantity } = req.body;
+      const { quantity, inventory_quantities } = req.body;
 
       if (!quantity || quantity < 1) {
         res.status(400).json({ error: "Quantity must be at least 1" });
@@ -1299,38 +1373,66 @@ router.put(
         return;
       }
 
-      // Recalculate line total with new quantity (include inventory_cost)
-      const unitPrice = item.base_price + (item.inventory_cost || 0) + (item.labor_price || 0) + (item.packaging_price || 0);
+      // If inventory_quantities provided, update individual snapshot quantities
+      let inventoryCost = item.inventory_cost || 0;
+      if (inventory_quantities && Array.isArray(inventory_quantities) && inventory_quantities.length > 0) {
+        const { data: existingSnapshots } = await supabaseAdmin
+          .from("job_order_item_inventories")
+          .select("*")
+          .eq("job_order_item_id", itemId);
+
+        if (existingSnapshots && existingSnapshots.length > 0) {
+          // Update each snapshot with the user-provided per-unit quantity
+          for (const snap of existingSnapshots) {
+            const userEntry = inventory_quantities.find(
+              (iq: { inventory_item_id: string; quantity: number }) => iq.inventory_item_id === snap.inventory_item_id
+            );
+            if (userEntry) {
+              const perUnitQty = userEntry.quantity;
+              const effectiveQty = perUnitQty * quantity;
+              const snapLineTotal = effectiveQty * snap.unit_cost;
+              await supabaseAdmin
+                .from("job_order_item_inventories")
+                .update({ quantity: effectiveQty, line_total: snapLineTotal })
+                .eq("id", snap.id);
+            }
+          }
+          // Recalculate inventory_cost from the per-unit quantities
+          inventoryCost = inventory_quantities.reduce(
+            (sum: number, iq: { inventory_item_id: string; quantity: number }) => {
+              const snap = existingSnapshots.find((s) => s.inventory_item_id === iq.inventory_item_id);
+              return sum + (snap ? snap.unit_cost * iq.quantity : 0);
+            },
+            0
+          );
+        }
+      } else {
+        // No inventory_quantities provided — just scale existing snapshots proportionally
+        const { data: existingSnapshots } = await supabaseAdmin
+          .from("job_order_item_inventories")
+          .select("*")
+          .eq("job_order_item_id", itemId);
+
+        if (existingSnapshots && existingSnapshots.length > 0 && item.quantity !== quantity) {
+          for (const snap of existingSnapshots) {
+            const perUnit = snap.quantity / item.quantity;
+            const newSnapQty = perUnit * quantity;
+            const newSnapLineTotal = newSnapQty * snap.unit_cost;
+            await supabaseAdmin
+              .from("job_order_item_inventories")
+              .update({ quantity: newSnapQty, line_total: newSnapLineTotal })
+              .eq("id", snap.id);
+          }
+        }
+      }
+
+      // Recalculate line total with (potentially updated) inventory cost
+      const unitPrice = (item.labor_price || 0) + inventoryCost;
       const newLineTotal = unitPrice * quantity;
 
       await supabaseAdmin
         .from("job_order_items")
-        .update({ quantity, line_total: newLineTotal })
-        .eq("id", itemId);
-
-      // Update inventory snapshots quantities for the new JO item quantity
-      const { data: existingSnapshots } = await supabaseAdmin
-        .from("job_order_item_inventories")
-        .select("*")
-        .eq("job_order_item_id", itemId);
-
-      if (existingSnapshots && existingSnapshots.length > 0 && item.quantity !== quantity) {
-        // Recalculate each snapshot's quantity proportionally
-        for (const snap of existingSnapshots) {
-          const perUnit = snap.quantity_per_unit / item.quantity; // original per-catalog-unit quantity
-          const newSnapQty = perUnit * quantity;
-          await supabaseAdmin
-            .from("job_order_item_inventories")
-            .update({
-              quantity_per_unit: newSnapQty,
-            })
-            .eq("id", snap.id);
-        }
-      }
-
-      await supabaseAdmin
-        .from("job_order_items")
-        .update({ quantity, line_total: newLineTotal })
+        .update({ quantity, inventory_cost: inventoryCost, line_total: newLineTotal })
         .eq("id", itemId);
 
       // Recalculate order total
