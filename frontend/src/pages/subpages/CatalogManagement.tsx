@@ -50,7 +50,6 @@ function formatPrice(price: number): string {
 export function CatalogManagement() {
   const { user } = useAuth();
   const userRoles = user?.roles || [];
-  const isHM = userRoles.includes("HM");
 
   // Permission checks - HM, POC, JS can manage; R and T can only view
   const canCreate = userRoles.some((r) => ["HM", "POC", "JS"].includes(r));
