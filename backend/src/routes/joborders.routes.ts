@@ -547,8 +547,8 @@ router.put(
 /**
  * DELETE /api/job-orders/:id
  * Conditional delete:
- *   - Hard delete if status is "created" and has no items (empty draft)
- *   - Soft delete (is_deleted: true) otherwise
+ *   - Hard delete if status is "created" (draft) — cascades items, snapshots, repairs
+ *   - Soft delete (is_deleted: true) for all other statuses
  * Roles: POC, JS, R
  */
 router.delete(
@@ -584,52 +584,64 @@ router.delete(
         return;
       }
 
-      // Check if JO has items
-      const { count: itemCount } = await supabaseAdmin
-        .from("job_order_items")
-        .select("id", { count: "exact", head: true })
-        .eq("job_order_id", orderId);
-
-      // Hard delete: only if status is "created" and has no items (empty draft)
-      if (existing.status === "created" && (!itemCount || itemCount === 0)) {
-        // Check for third-party repairs too
-        const { count: tprCount } = await supabaseAdmin
-          .from("third_party_repairs")
-          .select("id", { count: "exact", head: true })
+      // Hard delete: if status is "created" (draft), cascade delete items, snapshots, repairs
+      if (existing.status === "created") {
+        // Delete inventory snapshots for all JO items first
+        const { data: joItems } = await supabaseAdmin
+          .from("job_order_items")
+          .select("id")
           .eq("job_order_id", orderId);
 
-        if (!tprCount || tprCount === 0) {
-          // Safe to hard delete â€” empty draft with no items or repairs
-          const { error: deleteError } = await supabaseAdmin
-            .from("job_orders")
+        if (joItems && joItems.length > 0) {
+          const itemIds = joItems.map((i: any) => i.id);
+          await supabaseAdmin
+            .from("job_order_inventory_snapshots")
             .delete()
-            .eq("id", orderId);
+            .in("job_order_item_id", itemIds);
+        }
 
-          if (deleteError) {
-            res.status(500).json({ error: deleteError.message });
-            return;
-          }
+        // Delete job order items
+        await supabaseAdmin
+          .from("job_order_items")
+          .delete()
+          .eq("job_order_id", orderId);
 
-          // Log hard delete
-          try {
-            await supabaseAdmin.rpc("log_admin_action", {
-              p_action: "DELETE",
-              p_entity_type: "JOB_ORDER",
-              p_entity_id: orderId,
-              p_performed_by_user_id: req.user!.id,
-              p_performed_by_branch_id: req.user!.branchIds[0] || null,
-              p_new_values: { order_number: existing.order_number, deleted: true, type: "hard_delete" },
-            });
-          } catch (auditErr) {
-            console.error("Audit log error:", auditErr);
-          }
+        // Delete third-party repairs
+        await supabaseAdmin
+          .from("third_party_repairs")
+          .delete()
+          .eq("job_order_id", orderId);
 
-          res.json({ message: `Job order ${existing.order_number} deleted permanently` });
+        // Delete the job order itself
+        const { error: deleteError } = await supabaseAdmin
+          .from("job_orders")
+          .delete()
+          .eq("id", orderId);
+
+        if (deleteError) {
+          res.status(500).json({ error: deleteError.message });
           return;
         }
+
+        // Log hard delete
+        try {
+          await supabaseAdmin.rpc("log_admin_action", {
+            p_action: "DELETE",
+            p_entity_type: "JOB_ORDER",
+            p_entity_id: orderId,
+            p_performed_by_user_id: req.user!.id,
+            p_performed_by_branch_id: req.user!.branchIds[0] || null,
+            p_new_values: { order_number: existing.order_number, deleted: true, type: "hard_delete" },
+          });
+        } catch (auditErr) {
+          console.error("Audit log error:", auditErr);
+        }
+
+        res.json({ message: `Job order ${existing.order_number} deleted permanently` });
+        return;
       }
 
-      // Soft delete: JO has progressed or has items
+      // Soft delete: JO has progressed beyond "created"
       const { error: updateError } = await supabaseAdmin
         .from("job_orders")
         .update({ is_deleted: true })

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   LuPlus,
   LuCircleAlert,
@@ -10,6 +10,8 @@ import {
   LuChevronRight,
   LuBox,
   LuX,
+  LuEllipsisVertical,
+  LuHistory,
 } from "react-icons/lu";
 import { catalogApi, branchesApi, inventoryApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
@@ -125,10 +127,30 @@ export function CatalogManagement() {
   const [linksItem, setLinksItem] = useState<CatalogItem | null>(null);
   const [branchInventory, setBranchInventory] = useState<InventoryItem[]>([]);
   const [addLinkInventoryId, setAddLinkInventoryId] = useState("");
-  const [addLinkQuantity, setAddLinkQuantity] = useState("1");
   const [addingLink, setAddingLink] = useState(false);
-  const [editLinkId, setEditLinkId] = useState<string | null>(null);
-  const [editLinkQty, setEditLinkQty] = useState("");
+
+  // Inventory List (read-only) modal
+  const [showInventoryListModal, setShowInventoryListModal] = useState(false);
+  const [inventoryListItem, setInventoryListItem] = useState<CatalogItem | null>(null);
+  const [inventoryListLinks, setInventoryListLinks] = useState<CatalogInventoryLink[]>([]);
+  const [inventoryListLoading, setInventoryListLoading] = useState(false);
+
+  // Actions overflow dropdown
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const closeDropdown = useCallback(() => setOpenDropdownId(null), []);
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        closeDropdown();
+      }
+    }
+    if (openDropdownId) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [openDropdownId, closeDropdown]);
 
   // Filter groups for SearchFilter
   const filterGroups: FilterGroup[] = useMemo(() => {
@@ -380,13 +402,26 @@ export function CatalogManagement() {
     }
   }
 
-  // --- Inventory Links ---
+  // --- Inventory List (read-only) ---
+  async function openInventoryListModal(item: CatalogItem) {
+    setInventoryListItem(item);
+    setShowInventoryListModal(true);
+    setInventoryListLoading(true);
+    try {
+      const links = await catalogApi.getInventoryLinks(item.id);
+      setInventoryListLinks(links);
+    } catch {
+      showToast.error("Failed to load inventory list");
+    } finally {
+      setInventoryListLoading(false);
+    }
+  }
+
+  // --- Inventory Links (edit) ---
   async function openLinksModal(item: CatalogItem) {
     setLinksItem(item);
     setShowLinksModal(true);
     setAddLinkInventoryId("");
-    setAddLinkQuantity("1");
-    setEditLinkId(null);
     setLoadingLinks(true);
     try {
       const [links, invRes] = await Promise.all([
@@ -408,37 +443,19 @@ export function CatalogManagement() {
 
   async function handleAddLink() {
     if (!linksItem || !addLinkInventoryId) return;
-    const qty = parseInt(addLinkQuantity) || 1;
-    if (qty < 1) return;
     try {
       setAddingLink(true);
       const newLink = await catalogApi.addInventoryLink(linksItem.id, {
         inventory_item_id: addLinkInventoryId,
-        quantity: qty,
+        quantity: 1,
       });
       setInventoryLinks((prev) => [...prev, newLink]);
       setAddLinkInventoryId("");
-      setAddLinkQuantity("1");
       showToast.success("Inventory item linked");
     } catch (err) {
       showToast.error(err instanceof Error ? err.message : "Failed to add link");
     } finally {
       setAddingLink(false);
-    }
-  }
-
-  async function handleUpdateLinkQty(linkId: string) {
-    if (!linksItem) return;
-    const qty = parseInt(editLinkQty);
-    if (!qty || qty < 1) return;
-    try {
-      const updated = await catalogApi.updateInventoryLink(linksItem.id, linkId, { quantity: qty });
-      setInventoryLinks((prev) => prev.map((l) => (l.id === linkId ? updated : l)));
-      setEditLinkId(null);
-      setEditLinkQty("");
-      showToast.success("Quantity updated");
-    } catch (err) {
-      showToast.error(err instanceof Error ? err.message : "Failed to update");
     }
   }
 
@@ -572,18 +589,6 @@ export function CatalogManagement() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    openLinksModal(item);
-                  }}
-                  className="flex items-center gap-1 text-sm text-neutral-900 hover:text-neutral-950"
-                >
-                  <LuBox className="w-4 h-4" />
-                  Inventory
-                </button>
-              )}
-              {canUpdate && (!item.is_global || isHM) && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
                     openEditModal(item);
                   }}
                   className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
@@ -603,6 +608,33 @@ export function CatalogManagement() {
                   <LuTrash2 className="w-4 h-4" />
                   Delete
                 </button>
+              )}
+              {canUpdate && (!item.is_global || isHM) && (
+                <div className="relative" ref={openDropdownId === `card-${item.id}` ? dropdownRef : undefined}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${item.id}` ? null : `card-${item.id}`); }}
+                    className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+                    title="More actions"
+                  >
+                    <LuEllipsisVertical className="w-4 h-4" /> More
+                  </button>
+                  {openDropdownId === `card-${item.id}` && (
+                    <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); closeDropdown(); openInventoryListModal(item); }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                      >
+                        <LuHistory className="w-4 h-4" /> Inventory List
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); closeDropdown(); openLinksModal(item); }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                      >
+                        <LuPencil className="w-4 h-4" /> Edit Inventory
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -933,57 +965,49 @@ export function CatalogManagement() {
         )}
       </Modal>
 
-      {/* Inventory Links Modal */}
+      {/* Inventory Links Modal (Edit Inventory) */}
       <Modal
         isOpen={showLinksModal && !!linksItem}
         onClose={() => {
           setShowLinksModal(false);
           setLinksItem(null);
         }}
-        title={`Inventory Links — ${linksItem?.name || ""}`}
+        title="Edit Inventory"
         maxWidth="lg"
       >
         {linksItem && (
           <div>
             <ModalSection title="Inventory Items">
-              {/* Add inventory item inputs */}
+              {/* Add inventory item - select + plus button only */}
               {canUpdate && (!linksItem.is_global || isHM) && (
-                <>
-                  <ModalSelect
-                    value={addLinkInventoryId}
-                    onChange={setAddLinkInventoryId}
-                    placeholder="Select Inventory Item"
-                    options={availableInventoryItems.map((inv) => ({
-                      value: inv.id,
-                      label: `${inv.item_name} (${inv.sku_code}) — ${formatPrice(inv.cost_price)}`,
-                    }))}
-                  />
-                  <div className="flex gap-2 items-end">
-                    <div className="flex-1">
-                      <ModalInput
-                        type="number"
-                        value={addLinkQuantity}
-                        onChange={setAddLinkQuantity}
-                        placeholder="Quantity"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleAddLink}
-                      disabled={addingLink || !addLinkInventoryId}
-                      className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
-                    >
-                      {addingLink ? (
-                        <LuRefreshCw className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <LuPlus className="w-4 h-4" />
-                      )}
-                    </button>
+                <div className="flex gap-2 items-end">
+                  <div className="flex-1">
+                    <ModalSelect
+                      value={addLinkInventoryId}
+                      onChange={setAddLinkInventoryId}
+                      placeholder="Select Inventory Item"
+                      options={availableInventoryItems.map((inv) => ({
+                        value: inv.id,
+                        label: `${inv.item_name} (${inv.sku_code}) — ${formatPrice(inv.cost_price)}`,
+                      }))}
+                    />
                   </div>
-                </>
+                  <button
+                    type="button"
+                    onClick={handleAddLink}
+                    disabled={addingLink || !addLinkInventoryId}
+                    className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+                  >
+                    {addingLink ? (
+                      <LuRefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <LuPlus className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
               )}
 
-              {/* Linked items list */}
+              {/* Linked items list - remove only, no edit */}
               {loadingLinks ? (
                 <div className="mt-3 space-y-4">
                   {[1, 2].map((i) => (
@@ -1009,54 +1033,14 @@ export function CatalogManagement() {
                           {formatPrice(link.inventory_items?.cost_price || 0)} /{" "}
                           {link.inventory_items?.unit_of_measure || "unit"}
                         </p>
-                        {editLinkId === link.id ? (
-                          <div className="flex items-center gap-2 mt-1">
-                            <input
-                              type="number"
-                              value={editLinkQty}
-                              onChange={(e) => setEditLinkQty(e.target.value)}
-                              min={1}
-                              className="w-16 px-2 py-1 bg-white border border-neutral-200 rounded-lg text-sm text-center"
-                            />
-                            <button
-                              onClick={() => handleUpdateLinkQty(link.id)}
-                              className="text-xs text-positive font-medium hover:underline"
-                            >
-                              Save
-                            </button>
-                            <button
-                              onClick={() => {
-                                setEditLinkId(null);
-                                setEditLinkQty("");
-                              }}
-                              className="text-xs text-neutral-900 hover:underline"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <p className="text-xs text-neutral-900">
-                            Qty: {link.quantity} · Line Total: {formatPrice((link.inventory_items?.cost_price || 0) * link.quantity)}
-                          </p>
-                        )}
+                        <p className="text-xs text-neutral-900">
+                          Qty: {link.quantity} · Line Total: {formatPrice((link.inventory_items?.cost_price || 0) * link.quantity)}
+                        </p>
                       </div>
                       <div className="flex items-center gap-3 ml-3">
                         <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap">
                           {formatPrice((link.inventory_items?.cost_price || 0) * link.quantity)}
                         </span>
-                        {canUpdate && editLinkId !== link.id && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditLinkId(link.id);
-                              setEditLinkQty(link.quantity.toString());
-                            }}
-                            className="p-1 text-primary hover:text-primary-900"
-                            title="Edit quantity"
-                          >
-                            <LuPencil className="w-4 h-4" />
-                          </button>
-                        )}
                         {canDelete && (
                           <button
                             type="button"
@@ -1096,11 +1080,75 @@ export function CatalogManagement() {
                 setLinksItem(null);
               }}
               submitText="Done"
+              type="button"
               onSubmit={() => {
                 setShowLinksModal(false);
                 setLinksItem(null);
               }}
             />
+          </div>
+        )}
+      </Modal>
+
+      {/* ───── Inventory List Modal (read-only, styled like stock movement history) ───── */}
+      <Modal
+        isOpen={showInventoryListModal && !!inventoryListItem}
+        onClose={() => { setShowInventoryListModal(false); setInventoryListItem(null); }}
+        title="Inventory List"
+        maxWidth="lg"
+      >
+        {inventoryListItem && (
+          <div>
+            <ModalSection title="Item">
+              <ModalInput type="text" value={inventoryListItem.name} onChange={() => {}} placeholder="Item" disabled />
+            </ModalSection>
+
+            <ModalSection title="Linked Inventory">
+              {inventoryListLoading ? (
+                <div className="space-y-4">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
+                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
+                    </div>
+                  ))}
+                </div>
+              ) : inventoryListLinks.length > 0 ? (
+                <div className="space-y-3">
+                  {inventoryListLinks.map((link) => (
+                    <div key={link.id} className="bg-neutral-100 rounded-xl px-4 py-3 group relative">
+                      <div className="flex items-center gap-2 mb-1">
+                        <LuBox className="w-3.5 h-3.5 text-neutral-600" />
+                        <span className="text-xs font-semibold uppercase text-neutral-950">
+                          {link.inventory_items?.item_name || "Unknown"}
+                        </span>
+                        <span className="text-xs font-medium text-neutral-950">
+                          x{link.quantity}
+                        </span>
+                        <span className="text-xs text-neutral-600 ml-auto">
+                          {formatPrice((link.inventory_items?.cost_price || 0) * link.quantity)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-neutral-900 cursor-default">
+                        SKU: {link.inventory_items?.sku_code || "-"} · {formatPrice(link.inventory_items?.cost_price || 0)} / {link.inventory_items?.unit_of_measure || "unit"}
+                      </p>
+                      {/* Tooltip on hover */}
+                      <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-50 w-64 bg-white rounded-lg border border-neutral-200 py-3 pointer-events-none">
+                        <div className="px-4 gap-1 flex flex-col">
+                          <p className="font-medium text-neutral-950">{link.inventory_items?.item_name || "Unknown"}</p>
+                          <p className="text-sm text-neutral-900">SKU: {link.inventory_items?.sku_code || "-"}</p>
+                          <p className="text-sm text-neutral-900">Quantity: {link.quantity}</p>
+                          <p className="text-sm text-neutral-900">Cost: {formatPrice(link.inventory_items?.cost_price || 0)} / {link.inventory_items?.unit_of_measure || "unit"}</p>
+                          <p className="text-sm text-neutral-900">Line Total: {formatPrice((link.inventory_items?.cost_price || 0) * link.quantity)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-neutral-900 text-center py-3">No inventory items linked.</p>
+              )}
+            </ModalSection>
           </div>
         )}
       </Modal>
