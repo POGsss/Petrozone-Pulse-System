@@ -64,7 +64,7 @@ router.get(
       if (status) {
         query = query.eq(
           "status",
-          status as "created" | "pending" | "approved" | "rejected" | "cancelled"
+          status as "draft" | "pending_approval" | "approved" | "in_progress" | "ready_for_release" | "completed" | "rejected" | "cancelled"
         );
       }
       if (search) {
@@ -451,6 +451,20 @@ router.post(
       // Fix audit log user_id (trigger may set it from created_by)
       await fixAuditLogUser("JOB_ORDER", order.id, "CREATE", req.user!.id, req.user!.branchIds[0] || null);
 
+      // Audit log: JO_CREATED
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "JO_CREATED",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: order.id,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { order_number: order.order_number, status: "draft" },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
       // Fetch complete order with inventory details
       const { data: completeOrder } = await supabaseAdmin
         .from("job_orders")
@@ -469,7 +483,7 @@ router.post(
       res.status(201).json(completeOrder || { ...order, job_order_items: insertedItems });
     } catch (error) {
       console.error("Create job order error:", error);
-      await logFailedAction(req, "CREATE", "JOB_ORDER", null, error instanceof Error ? error.message : "Failed to create job order");
+      await logFailedAction(req, "JO_CREATED", "JOB_ORDER", null, error instanceof Error ? error.message : "Failed to create job order");
       res.status(500).json({ error: "Failed to create job order" });
     }
   }
@@ -477,8 +491,8 @@ router.post(
 
 /**
  * PUT /api/job-orders/:id
- * Update a job order (notes, and items when status allows)
- * Items can be modified when status is "created" or "rejected"
+ * Update a job order notes (only when status is "draft")
+ * Immutability rule: once past draft, the order is frozen.
  * Roles: POC, JS, R, T
  */
 router.put(
@@ -492,7 +506,7 @@ router.put(
       // Get existing order
       const { data: existing, error: fetchError } = await supabaseAdmin
         .from("job_orders")
-        .select("id, branch_id, notes")
+        .select("id, branch_id, notes, status")
         .eq("id", orderId)
         .eq("is_deleted", false)
         .single();
@@ -512,6 +526,14 @@ router.put(
         !req.user!.branchIds.includes(existing.branch_id)
       ) {
         res.status(403).json({ error: "No access to this job order's branch" });
+        return;
+      }
+
+      // Immutability: only draft orders can have notes edited
+      if (existing.status !== "draft") {
+        res.status(400).json({
+          error: `Cannot update a job order with status "${existing.status}". Only draft orders can be edited.`,
+        });
         return;
       }
 
@@ -563,7 +585,7 @@ router.put(
       // Audit log
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "UPDATE",
+          p_action: "JO_UPDATED",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -577,7 +599,7 @@ router.put(
       res.json(updated);
     } catch (error) {
       console.error("Update job order error:", error);
-      await logFailedAction(req, "UPDATE", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to update job order");
+      await logFailedAction(req, "JO_UPDATED", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to update job order");
       res.status(500).json({ error: "Failed to update job order" });
     }
   }
@@ -586,9 +608,9 @@ router.put(
 /**
  * DELETE /api/job-orders/:id
  * Conditional delete:
- *   - Hard delete if status is "created" (draft) — cascades items, snapshots, repairs
- *   - Soft delete (is_deleted: true) for all other statuses
- * Roles: POC, JS, R
+ *   - Hard delete if status is "draft" — cascades items, snapshots, repairs
+ *   - Soft delete (is_deleted, deleted_at, deleted_by) for all other statuses
+ * Roles: POC, JS, R (DRAFT only per spec)
  */
 router.delete(
   "/:id",
@@ -623,8 +645,8 @@ router.delete(
         return;
       }
 
-      // Hard delete: if status is "created" (draft), cascade delete items, snapshots, repairs
-      if (existing.status === "created") {
+      // Hard delete: if status is "draft", cascade delete items, snapshots, repairs
+      if (existing.status === "draft") {
         // Delete inventory snapshots for all JO items first
         const { data: joItems } = await supabaseAdmin
           .from("job_order_items")
@@ -662,15 +684,15 @@ router.delete(
           return;
         }
 
-        // Log hard delete
+        // Log hard delete (JO_SOFT_DELETED event name kept for audit completeness)
         try {
           await supabaseAdmin.rpc("log_admin_action", {
-            p_action: "DELETE",
+            p_action: "JO_SOFT_DELETED",
             p_entity_type: "JOB_ORDER",
             p_entity_id: orderId,
             p_performed_by_user_id: req.user!.id,
             p_performed_by_branch_id: req.user!.branchIds[0] || null,
-            p_new_values: { order_number: existing.order_number, deleted: true, type: "hard_delete" },
+            p_new_values: { order_number: existing.order_number, deleted: true, type: "hard_delete", deleted_by: req.user!.id, deleted_at: new Date().toISOString() },
           });
         } catch (auditErr) {
           console.error("Audit log error:", auditErr);
@@ -680,10 +702,11 @@ router.delete(
         return;
       }
 
-      // Soft delete: JO has progressed beyond "created"
+      // Soft delete: JO has progressed beyond "draft"
+      const now = new Date().toISOString();
       const { error: updateError } = await supabaseAdmin
         .from("job_orders")
-        .update({ is_deleted: true })
+        .update({ is_deleted: true, deleted_at: now, deleted_by: req.user!.id })
         .eq("id", orderId);
 
       if (updateError) {
@@ -694,12 +717,12 @@ router.delete(
       // Log soft delete
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "DELETE",
+          p_action: "JO_SOFT_DELETED",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
-          p_new_values: { order_number: existing.order_number, is_deleted: true, type: "soft_delete" },
+          p_new_values: { order_number: existing.order_number, is_deleted: true, type: "soft_delete", deleted_by: req.user!.id, deleted_at: now },
         });
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);
@@ -708,7 +731,7 @@ router.delete(
       res.json({ message: `Job order ${existing.order_number} deleted successfully` });
     } catch (error) {
       console.error("Delete job order error:", error);
-      await logFailedAction(req, "DELETE", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to delete job order");
+      await logFailedAction(req, "JO_SOFT_DELETED", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to delete job order");
       res.status(500).json({ error: "Failed to delete job order" });
     }
   }
@@ -717,12 +740,13 @@ router.delete(
 /**
  * PATCH /api/job-orders/:id/request-approval
  * Request customer approval for a job order
- * Changes status from "created" to "pending"
- * Roles: R, T (and POC, JS for flexibility)
+ * Changes status from "draft" to "pending_approval"
+ * Idempotent: if already pending_approval, allow "resend" without duplicate log
+ * Roles: R, T
  */
 router.patch(
   "/:id/request-approval",
-  requireRoles("POC", "JS", "R", "T"),
+  requireRoles("R", "T"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const orderId = req.params.id as string;
@@ -730,7 +754,7 @@ router.patch(
       // Get existing order
       const { data: existing, error: fetchError } = await supabaseAdmin
         .from("job_orders")
-        .select("id, branch_id, status, order_number")
+        .select("id, branch_id, status, order_number, total_amount, approval_status")
         .eq("id", orderId)
         .eq("is_deleted", false)
         .single();
@@ -754,17 +778,67 @@ router.patch(
       }
 
       // Validate status transition: "created" or "rejected" â†’ "pending"
-      if (existing.status !== "created" && existing.status !== "rejected") {
+      // Idempotent: if already pending_approval with REQUESTED status, allow resend
+      if (existing.status === "pending_approval" && existing.approval_status === "REQUESTED") {
+        const { data: current } = await supabaseAdmin
+          .from("job_orders")
+          .select(`*, customers(id, full_name, contact_number, email), vehicles(id, plate_number, model, vehicle_type), branches(id, name, code), job_order_items(*, job_order_item_inventories(*))`)
+          .eq("id", orderId)
+          .eq("is_deleted", false)
+          .single();
+        res.json(current);
+        return;
+      }
+
+      // Validate status transition: only "draft" can go to "pending_approval"
+      if (existing.status !== "draft") {
         res.status(400).json({
-          error: `Cannot request approval for a job order with status "${existing.status}". Only "created" or "rejected" orders can be sent for approval.`,
+          error: `Cannot request approval for a job order with status "${existing.status}". Only draft orders can be sent for approval.`,
         });
         return;
       }
 
-      // Update status
+      // Precondition: at least one line item
+      const { count: itemCount } = await supabaseAdmin
+        .from("job_order_items")
+        .select("id", { count: "exact", head: true })
+        .eq("job_order_id", orderId);
+
+      if (!itemCount || itemCount < 1) {
+        res.status(400).json({ error: "Missing scope/total/contact or unresolved pricing. At least one line item is required." });
+        return;
+      }
+
+      // Precondition: total_amount > 0
+      if (!existing.total_amount || existing.total_amount <= 0) {
+        res.status(400).json({ error: "Missing scope/total/contact or unresolved pricing. Total amount must be greater than zero." });
+        return;
+      }
+
+      // Precondition: all matrix-priced items must have resolved pricing
+      const { data: unresolvedItems } = await supabaseAdmin
+        .from("job_order_items")
+        .select("id, catalog_item_name, labor_price, inventory_cost")
+        .eq("job_order_id", orderId)
+        .eq("labor_price", 0)
+        .eq("inventory_cost", 0);
+
+      if (unresolvedItems && unresolvedItems.length > 0) {
+        res.status(400).json({
+          error: `Missing scope/total/contact or unresolved pricing. Items with zero pricing: ${unresolvedItems.map((i: any) => i.catalog_item_name).join(", ")}`,
+        });
+        return;
+      }
+
+      // Update status and set approval fields
+      const now = new Date().toISOString();
       const { error: updateError } = await supabaseAdmin
         .from("job_orders")
-        .update({ status: "pending" })
+        .update({
+          status: "pending_approval",
+          approval_status: "REQUESTED",
+          approval_requested_at: now,
+        })
         .eq("id", orderId);
 
       if (updateError) {
@@ -793,15 +867,29 @@ router.patch(
         return;
       }
 
-      // Audit log
+      // Audit log: APPROVAL_REQUESTED
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "REQUEST_APPROVAL",
+          p_action: "APPROVAL_REQUESTED",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
-          p_new_values: { order_number: existing.order_number, status: "pending" },
+          p_new_values: { order_number: existing.order_number, status: "pending_approval", approval_status: "REQUESTED", approval_requested_at: now },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      // Also log STATUS_CHANGED
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "STATUS_CHANGED",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: orderId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { from: "draft", to: "pending_approval" },
         });
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);
@@ -810,7 +898,7 @@ router.patch(
       res.json(updated);
     } catch (error) {
       console.error("Request approval error:", error);
-      await logFailedAction(req, "REQUEST_APPROVAL", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to request approval");
+      await logFailedAction(req, "APPROVAL_REQUESTED", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to request approval");
       res.status(500).json({ error: "Failed to request approval" });
     }
   }
@@ -819,16 +907,16 @@ router.patch(
 /**
  * PATCH /api/job-orders/:id/record-approval
  * Record customer approval or rejection for a job order
- * Changes status from "pending" to "approved" or "rejected"
- * Roles: R, T (and POC, JS for flexibility)
+ * Changes status from "pending_approval" to "approved" or "rejected"
+ * Roles: R, T
  */
 router.patch(
   "/:id/record-approval",
-  requireRoles("POC", "JS", "R", "T"),
+  requireRoles("R", "T"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const orderId = req.params.id as string;
-      const { decision } = req.body;
+      const { decision, rejection_reason, approval_method } = req.body;
 
       // Validate decision
       if (!decision || !["approved", "rejected"].includes(decision)) {
@@ -836,10 +924,16 @@ router.patch(
         return;
       }
 
+      // Validate rejection_reason when rejecting
+      if (decision === "rejected" && (!rejection_reason || !rejection_reason.trim())) {
+        res.status(400).json({ error: "Provide rejection reason." });
+        return;
+      }
+
       // Get existing order
       const { data: existing, error: fetchError } = await supabaseAdmin
         .from("job_orders")
-        .select("id, branch_id, status, order_number")
+        .select("id, branch_id, status, order_number, approval_requested_at")
         .eq("id", orderId)
         .eq("is_deleted", false)
         .single();
@@ -862,11 +956,18 @@ router.patch(
         return;
       }
 
-      // Validate status transition: only "pending" â†’ "approved" / "rejected"
-      if (existing.status !== "pending") {
+      // Validate status transition: only "pending_approval" can be approved/rejected
+      if (existing.status !== "pending_approval") {
         res.status(400).json({
-          error: `Cannot record approval for a job order with status "${existing.status}". Only "pending" orders can be approved or rejected.`,
+          error: `Cannot record approval for a job order with status "${existing.status}". Only pending_approval orders can be approved or rejected.`,
         });
+        return;
+      }
+
+      // Timestamp coherence: approved_at must be >= approval_requested_at
+      const now = new Date().toISOString();
+      if (existing.approval_requested_at && new Date(now) < new Date(existing.approval_requested_at)) {
+        res.status(400).json({ error: "Approval details incomplete. Timestamp coherence violation." });
         return;
       }
 
@@ -898,9 +999,16 @@ router.patch(
       // Update status and approval fields
       const updatePayload: Record<string, unknown> = {
         status: decision,
-        approved_at: new Date().toISOString(),
+        approved_at: now,
         approved_by: req.user!.id,
+        approval_status: decision === "approved" ? "APPROVED" : "REJECTED",
+        approval_method: approval_method || null,
       };
+
+      // Add rejection_reason if rejecting
+      if (decision === "rejected") {
+        updatePayload.rejection_reason = rejection_reason.trim();
+      }
 
       const { error: updateError } = await supabaseAdmin
         .from("job_orders")
@@ -933,10 +1041,10 @@ router.patch(
         return;
       }
 
-      // Audit log
+      // Audit log: APPROVAL_RECORDED
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: decision === "approved" ? "APPROVE" : "REJECT",
+          p_action: "APPROVAL_RECORDED",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -944,7 +1052,24 @@ router.patch(
           p_new_values: {
             order_number: existing.order_number,
             status: decision,
+            approval_status: decision === "approved" ? "APPROVED" : "REJECTED",
+            approval_method: approval_method || null,
+            rejection_reason: decision === "rejected" ? rejection_reason : null,
           },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      // Also log STATUS_CHANGED
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "STATUS_CHANGED",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: orderId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { from: "pending_approval", to: decision },
         });
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);
@@ -954,7 +1079,7 @@ router.patch(
     } catch (error) {
       console.error("Record approval error:", error);
       const bodyDecision = req.body?.decision;
-      const action = typeof bodyDecision === "string" && bodyDecision === "approved" ? "APPROVE" : "REJECT";
+      const action = typeof bodyDecision === "string" && bodyDecision === "approved" ? "APPROVAL_RECORDED" : "APPROVAL_RECORDED";
       await logFailedAction(req, action, "JOB_ORDER", req.params.id as string || null, error instanceof Error ? error.message : "Failed to record approval");
       res.status(500).json({ error: "Failed to record approval" });
     }
@@ -973,6 +1098,13 @@ router.patch(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const orderId = req.params.id as string;
+      const { cancellation_reason } = req.body;
+
+      // Require cancellation reason
+      if (!cancellation_reason || !cancellation_reason.trim()) {
+        res.status(400).json({ error: "Provide cancellation reason." });
+        return;
+      }
 
       // Get existing order
       const { data: existing, error: fetchError } = await supabaseAdmin
@@ -1000,28 +1132,35 @@ router.patch(
         return;
       }
 
-      // Validate status: only created, pending, rejected, or approved can be cancelled
-      const cancellableStatuses = ["created", "pending", "rejected", "approved"];
+      // Validate status: only draft and pending_approval can be cancelled
+      // Role enforcement: draft -> POC, JS, R; pending_approval -> POC, R
+      const cancellableStatuses = ["draft", "pending_approval"];
       if (!cancellableStatuses.includes(existing.status)) {
         res.status(400).json({
-          error: `Cannot cancel a job order with status "${existing.status}". Only created, pending, rejected, or approved orders can be cancelled.`,
+          error: `Cannot cancel a job order with status "${existing.status}". Only draft or pending_approval orders can be cancelled.`,
         });
         return;
       }
 
-      // FR-3: If cancelling an approved order, restore deducted stock
-      if (existing.status === "approved") {
-        try {
-          await restoreStockForJobOrder(orderId, existing.branch_id, req.user!.id);
-        } catch (restoreErr) {
-          console.error("Stock restoration error:", restoreErr);
+      // Role enforcement per status
+      if (existing.status === "pending_approval") {
+        const allowedRolesForPending = ["POC", "R"];
+        if (!req.user!.roles.some((r: string) => allowedRolesForPending.includes(r))) {
+          res.status(403).json({ error: "Only POC and R roles can cancel a pending_approval order." });
+          return;
         }
       }
 
-      // Update status
+      // Update status and cancellation fields
+      const cancelNow = new Date().toISOString();
       const { error: updateError } = await supabaseAdmin
         .from("job_orders")
-        .update({ status: "cancelled" })
+        .update({
+          status: "cancelled",
+          cancellation_reason: cancellation_reason.trim(),
+          cancelled_at: cancelNow,
+          cancelled_by: req.user!.id,
+        })
         .eq("id", orderId);
 
       if (updateError) {
@@ -1050,15 +1189,29 @@ router.patch(
         return;
       }
 
-      // Audit log
+      // Audit log: JO_CANCELLED
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "CANCEL",
+          p_action: "JO_CANCELLED",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
-          p_new_values: { order_number: existing.order_number, status: "cancelled" },
+          p_new_values: { order_number: existing.order_number, status: "cancelled", cancellation_reason: cancellation_reason.trim(), cancelled_at: cancelNow },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      // Also log STATUS_CHANGED
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "STATUS_CHANGED",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: orderId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { from: existing.status, to: "cancelled" },
         });
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);
@@ -1067,7 +1220,7 @@ router.patch(
       res.json(updated);
     } catch (error) {
       console.error("Cancel job order error:", error);
-      await logFailedAction(req, "CANCEL", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to cancel job order");
+      await logFailedAction(req, "JO_CANCELLED", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to cancel job order");
       res.status(500).json({ error: "Failed to cancel job order" });
     }
   }
@@ -1076,7 +1229,7 @@ router.patch(
 /**
  * POST /api/job-orders/:id/items
  * Add an item to an existing job order and recalculate totals
- * Only "created" or "rejected" orders can be modified
+ * Only "draft" orders can be modified (immutability rule)
  * Roles: POC, JS, R
  */
 router.post(
@@ -1123,11 +1276,10 @@ router.post(
         return;
       }
 
-      // Only editable statuses
-      const editableStatuses = ["created", "rejected"];
-      if (!editableStatuses.includes(existing.status)) {
+      // Only draft orders can have items modified (immutability rule)
+      if (existing.status !== "draft") {
         res.status(400).json({
-          error: `Cannot modify items on a job order with status "${existing.status}". Only "created" or "rejected" orders can be edited.`,
+          error: `Cannot modify items on a job order with status "${existing.status}". Only draft orders can be edited.`,
         });
         return;
       }
@@ -1263,13 +1415,21 @@ router.post(
         await supabaseAdmin.from("job_order_item_inventories").insert(snapshots);
       }
 
-      // Recalculate total
+      // Recalculate total (items + third-party repairs)
       const { data: allItems } = await supabaseAdmin
         .from("job_order_items")
         .select("line_total")
         .eq("job_order_id", orderId);
 
-      const newTotal = (allItems || []).reduce((sum: number, item: { line_total: number }) => sum + item.line_total, 0);
+      const { data: allRepairs } = await supabaseAdmin
+        .from("third_party_repairs")
+        .select("cost")
+        .eq("job_order_id", orderId)
+        .eq("is_deleted", false);
+
+      const itemsTotal = (allItems || []).reduce((sum: number, item: { line_total: number }) => sum + item.line_total, 0);
+      const repairsTotal = (allRepairs || []).reduce((sum: number, r: { cost: number }) => sum + r.cost, 0);
+      const newTotal = itemsTotal + repairsTotal;
 
       await supabaseAdmin
         .from("job_orders")
@@ -1308,7 +1468,7 @@ router.post(
 /**
  * PUT /api/job-orders/:id/items/:itemId
  * Update an item's quantity on an existing job order and recalculate
- * Only "created" or "rejected" orders can be modified
+ * Only "draft" orders can be modified (immutability rule)
  * Roles: POC, JS, R
  */
 router.put(
@@ -1351,11 +1511,10 @@ router.put(
         return;
       }
 
-      // Only editable statuses
-      const editableStatuses = ["created", "rejected"];
-      if (!editableStatuses.includes(existing.status)) {
+      // Only draft orders can have items modified (immutability rule)
+      if (existing.status !== "draft") {
         res.status(400).json({
-          error: `Cannot modify items on a job order with status "${existing.status}".`,
+          error: `Cannot modify items on a job order with status "${existing.status}". Only draft orders can be edited.`,
         });
         return;
       }
@@ -1435,13 +1594,21 @@ router.put(
         .update({ quantity, inventory_cost: inventoryCost, line_total: newLineTotal })
         .eq("id", itemId);
 
-      // Recalculate order total
+      // Recalculate order total (items + third-party repairs)
       const { data: allItems } = await supabaseAdmin
         .from("job_order_items")
         .select("line_total")
         .eq("job_order_id", orderId);
 
-      const newTotal = (allItems || []).reduce((sum: number, i: { line_total: number }) => sum + i.line_total, 0);
+      const { data: allRepairs } = await supabaseAdmin
+        .from("third_party_repairs")
+        .select("cost")
+        .eq("job_order_id", orderId)
+        .eq("is_deleted", false);
+
+      const itemsTotal = (allItems || []).reduce((sum: number, i: { line_total: number }) => sum + i.line_total, 0);
+      const repairsTotal = (allRepairs || []).reduce((sum: number, r: { cost: number }) => sum + r.cost, 0);
+      const newTotal = itemsTotal + repairsTotal;
 
       await supabaseAdmin
         .from("job_orders")
@@ -1480,7 +1647,7 @@ router.put(
 /**
  * DELETE /api/job-orders/:id/items/:itemId
  * Remove an item from an existing job order and recalculate
- * Only "created" or "rejected" orders can be modified
+ * Only "draft" orders can be modified (immutability rule)
  * Must have at least 1 item remaining
  * Roles: POC, JS, R
  */
@@ -1518,11 +1685,10 @@ router.delete(
         return;
       }
 
-      // Only editable statuses
-      const editableStatuses = ["created", "rejected"];
-      if (!editableStatuses.includes(existing.status)) {
+      // Only draft orders can have items modified (immutability rule)
+      if (existing.status !== "draft") {
         res.status(400).json({
-          error: `Cannot modify items on a job order with status "${existing.status}".`,
+          error: `Cannot modify items on a job order with status "${existing.status}". Only draft orders can be edited.`,
         });
         return;
       }
@@ -1550,13 +1716,21 @@ router.delete(
         return;
       }
 
-      // Recalculate order total
+      // Recalculate order total (items + third-party repairs)
       const { data: remainingItems } = await supabaseAdmin
         .from("job_order_items")
         .select("line_total")
         .eq("job_order_id", orderId);
 
-      const newTotal = (remainingItems || []).reduce((sum: number, i: { line_total: number }) => sum + i.line_total, 0);
+      const { data: remainingRepairs } = await supabaseAdmin
+        .from("third_party_repairs")
+        .select("cost")
+        .eq("job_order_id", orderId)
+        .eq("is_deleted", false);
+
+      const itemsTotal = (remainingItems || []).reduce((sum: number, i: { line_total: number }) => sum + i.line_total, 0);
+      const repairsTotal = (remainingRepairs || []).reduce((sum: number, r: { cost: number }) => sum + r.cost, 0);
+      const newTotal = itemsTotal + repairsTotal;
 
       await supabaseAdmin
         .from("job_orders")
@@ -1588,6 +1762,374 @@ router.delete(
     } catch (error) {
       console.error("Delete job order item error:", error);
       res.status(500).json({ error: "Failed to remove item from job order" });
+    }
+  }
+);
+
+// ============================================================
+// NEW LIFECYCLE TRANSITIONS: start-work, mark-ready, complete
+// ============================================================
+
+/**
+ * PATCH /api/job-orders/:id/start-work
+ * Transition: approved -> in_progress
+ * Sets start_time. Auto-assigns the current technician as assigned_technician_id.
+ * Timestamp coherence: start_time >= approved_at
+ * Roles: T (Technician only)
+ */
+router.patch(
+  "/:id/start-work",
+  requireRoles("T"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const orderId = req.params.id as string;
+
+      // Get existing order
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select("id, branch_id, order_number, status, approved_at")
+        .eq("id", orderId)
+        .eq("is_deleted", false)
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === "PGRST116") {
+          res.status(404).json({ error: "Job order not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError.message });
+        return;
+      }
+
+      // Branch access check
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(existing.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this job order's branch" });
+        return;
+      }
+
+      // Status check: must be approved
+      if (existing.status !== "approved") {
+        res.status(400).json({
+          error: `Cannot start work on a job order with status "${existing.status}". Only approved orders can be started.`,
+        });
+        return;
+      }
+
+      // Timestamp coherence: start_time >= approved_at
+      const startTime = new Date().toISOString();
+      if (existing.approved_at && new Date(startTime) < new Date(existing.approved_at)) {
+        res.status(400).json({
+          error: "Start time cannot be before approval time.",
+        });
+        return;
+      }
+
+      // Update status, set start_time, and auto-assign technician
+      const { error: updateError } = await supabaseAdmin
+        .from("job_orders")
+        .update({
+          status: "in_progress",
+          start_time: startTime,
+          assigned_technician_id: req.user!.id,
+        })
+        .eq("id", orderId);
+
+      if (updateError) {
+        res.status(500).json({ error: updateError.message });
+        return;
+      }
+
+      // Fetch updated order
+      const { data: updated, error: refetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select(
+          `*,
+          customers(id, full_name, contact_number, email),
+          vehicles(id, plate_number, model, vehicle_type),
+          branches(id, name, code),
+          job_order_items(*, job_order_item_inventories(*))`
+        )
+        .eq("id", orderId)
+        .eq("is_deleted", false)
+        .single();
+
+      if (refetchError) {
+        res.status(500).json({ error: refetchError.message });
+        return;
+      }
+
+      // Audit logs
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "WORK_STARTED",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: orderId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { order_number: existing.order_number, start_time: startTime },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "STATUS_CHANGED",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: orderId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { from: "approved", to: "in_progress" },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Start work error:", error);
+      await logFailedAction(req, "WORK_STARTED", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to start work");
+      res.status(500).json({ error: "Failed to start work on job order" });
+    }
+  }
+);
+
+/**
+ * PATCH /api/job-orders/:id/mark-ready
+ * Transition: in_progress -> ready_for_release
+ * Roles: T, POC
+ */
+router.patch(
+  "/:id/mark-ready",
+  requireRoles("T", "POC"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const orderId = req.params.id as string;
+
+      // Get existing order
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select("id, branch_id, order_number, status, start_time")
+        .eq("id", orderId)
+        .eq("is_deleted", false)
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === "PGRST116") {
+          res.status(404).json({ error: "Job order not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError.message });
+        return;
+      }
+
+      // Branch access check
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(existing.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this job order's branch" });
+        return;
+      }
+
+      // Status check: must be in_progress
+      if (existing.status !== "in_progress") {
+        res.status(400).json({
+          error: `Cannot mark ready a job order with status "${existing.status}". Only in-progress orders can be marked ready.`,
+        });
+        return;
+      }
+
+      // Update status
+      const { error: updateError } = await supabaseAdmin
+        .from("job_orders")
+        .update({ status: "ready_for_release" })
+        .eq("id", orderId);
+
+      if (updateError) {
+        res.status(500).json({ error: updateError.message });
+        return;
+      }
+
+      // Fetch updated order
+      const { data: updated, error: refetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select(
+          `*,
+          customers(id, full_name, contact_number, email),
+          vehicles(id, plate_number, model, vehicle_type),
+          branches(id, name, code),
+          job_order_items(*, job_order_item_inventories(*))`
+        )
+        .eq("id", orderId)
+        .eq("is_deleted", false)
+        .single();
+
+      if (refetchError) {
+        res.status(500).json({ error: refetchError.message });
+        return;
+      }
+
+      // Audit logs
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "MARKED_READY",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: orderId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { order_number: existing.order_number },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "STATUS_CHANGED",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: orderId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { from: "in_progress", to: "ready_for_release" },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Mark ready error:", error);
+      await logFailedAction(req, "MARKED_READY", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to mark ready");
+      res.status(500).json({ error: "Failed to mark job order as ready" });
+    }
+  }
+);
+
+/**
+ * PATCH /api/job-orders/:id/complete
+ * Transition: ready_for_release -> completed
+ * Sets completion_time. Timestamp coherence: completion_time >= start_time.
+ * Roles: HM, POC
+ */
+router.patch(
+  "/:id/complete",
+  requireRoles("HM", "POC"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const orderId = req.params.id as string;
+
+      // Get existing order
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select("id, branch_id, order_number, status, start_time")
+        .eq("id", orderId)
+        .eq("is_deleted", false)
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === "PGRST116") {
+          res.status(404).json({ error: "Job order not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError.message });
+        return;
+      }
+
+      // Branch access check
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(existing.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this job order's branch" });
+        return;
+      }
+
+      // Status check: must be ready_for_release
+      if (existing.status !== "ready_for_release") {
+        res.status(400).json({
+          error: `Cannot complete a job order with status "${existing.status}". Only ready-for-release orders can be completed.`,
+        });
+        return;
+      }
+
+      // Timestamp coherence: completion_time >= start_time
+      const completionTime = new Date().toISOString();
+      if (existing.start_time && new Date(completionTime) < new Date(existing.start_time)) {
+        res.status(400).json({
+          error: "Completion time cannot be before start time.",
+        });
+        return;
+      }
+
+      // Update status and set completion_time
+      const { error: updateError } = await supabaseAdmin
+        .from("job_orders")
+        .update({
+          status: "completed",
+          completion_time: completionTime,
+        })
+        .eq("id", orderId);
+
+      if (updateError) {
+        res.status(500).json({ error: updateError.message });
+        return;
+      }
+
+      // Fetch updated order
+      const { data: updated, error: refetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select(
+          `*,
+          customers(id, full_name, contact_number, email),
+          vehicles(id, plate_number, model, vehicle_type),
+          branches(id, name, code),
+          job_order_items(*, job_order_item_inventories(*))`
+        )
+        .eq("id", orderId)
+        .eq("is_deleted", false)
+        .single();
+
+      if (refetchError) {
+        res.status(500).json({ error: refetchError.message });
+        return;
+      }
+
+      // Audit logs
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "JO_COMPLETED",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: orderId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { order_number: existing.order_number, completion_time: completionTime },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "STATUS_CHANGED",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: orderId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { from: "ready_for_release", to: "completed" },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Complete job order error:", error);
+      await logFailedAction(req, "JO_COMPLETED", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to complete job order");
+      res.status(500).json({ error: "Failed to complete job order" });
     }
   }
 );

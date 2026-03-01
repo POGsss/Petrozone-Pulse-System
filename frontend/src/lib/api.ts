@@ -703,15 +703,34 @@ export const jobOrdersApi = {
     });
   },
 
-  recordApproval: async (id: string, data: { decision: "approved" | "rejected" }) => {
+  recordApproval: async (id: string, data: { decision: "approved" | "rejected"; rejection_reason?: string; approval_method?: string }) => {
     return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/record-approval`, {
       method: "PATCH",
       body: JSON.stringify(data),
     });
   },
 
-  cancel: async (id: string) => {
+  cancel: async (id: string, data: { cancellation_reason: string }) => {
     return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/cancel`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  startWork: async (id: string) => {
+    return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/start-work`, {
+      method: "PATCH",
+    });
+  },
+
+  markReady: async (id: string) => {
+    return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/mark-ready`, {
+      method: "PATCH",
+    });
+  },
+
+  complete: async (id: string) => {
+    return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/complete`, {
       method: "PATCH",
     });
   },

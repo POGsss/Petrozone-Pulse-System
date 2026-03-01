@@ -15,6 +15,9 @@ import {
   LuBan,
   LuHistory,
   LuEllipsisVertical,
+  LuPlay,
+  LuPackageCheck,
+  LuCircleCheck,
 } from "react-icons/lu";
 import { jobOrdersApi, branchesApi, customersApi, vehiclesApi, catalogApi, pricingApi, thirdPartyRepairsApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
@@ -61,9 +64,12 @@ function formatPrice(price: number): string {
 // Status display helpers
 function getStatusLabel(status: string): string {
   const labels: Record<string, string> = {
-    created: "Created",
-    pending: "Pending",
+    draft: "Draft",
+    pending_approval: "Pending",
     approved: "Approved",
+    in_progress: "In Progress",
+    ready_for_release: "Ready",
+    completed: "Completed",
     rejected: "Rejected",
     cancelled: "Cancelled",
   };
@@ -72,11 +78,14 @@ function getStatusLabel(status: string): string {
 
 function getStatusColors(status: string): string {
   const colors: Record<string, string> = {
-    created: "bg-neutral-100 text-neutral-950",
-    pending: "bg-primary-100 text-primary-950",
+    draft: "bg-neutral-100 text-neutral-950",
+    pending_approval: "bg-primary-100 text-primary-950",
     approved: "bg-positive-100 text-positive-950",
+    in_progress: "bg-neutral-100 text-neutral-950",
+    ready_for_release: "bg-primary-100 text-primary-950",
+    completed: "bg-positive-100 text-positive-950",
     rejected: "bg-negative-100 text-negative-950",
-    cancelled: "bg-neutral-200 text-neutral-950",
+    cancelled: "bg-negative-100 text-negative-950",
   };
   return colors[status] || "bg-neutral-100 text-neutral-950";
 }
@@ -119,6 +128,9 @@ export function JobOrderManagement() {
   const canDelete = userRoles.some((r) => ["POC", "JS", "R"].includes(r));
   const canRepair = userRoles.some((r) => ["HM", "POC", "JS", "R", "T"].includes(r));
   const canApproval = userRoles.some((r) => ["R", "T"].includes(r));
+  const canStartWork = userRoles.includes("T");
+  const canMarkReady = userRoles.some((r) => ["T", "POC"].includes(r));
+  const canComplete = userRoles.some((r) => ["HM", "POC"].includes(r));
 
   // Data state
   const [allOrders, setAllOrders] = useState<JobOrder[]>([]);
@@ -224,6 +236,11 @@ export function JobOrderManagement() {
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [approvalOrder, setApprovalOrder] = useState<JobOrder | null>(null);
 
+  // Shared reason modal (for cancel & reject actions)
+  const [showReasonModal, setShowReasonModal] = useState(false);
+  const [reasonModalAction, setReasonModalAction] = useState<"cancel" | "reject">("cancel");
+  const [reasonText, setReasonText] = useState("");
+
   // Actions overflow dropdown
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -252,9 +269,12 @@ export function JobOrderManagement() {
         key: "status",
         label: "Status",
         options: [
-          { value: "created", label: "Created" },
-          { value: "pending", label: "Pending Approval" },
+          { value: "draft", label: "Draft" },
+          { value: "pending_approval", label: "Pending Approval" },
           { value: "approved", label: "Approved" },
+          { value: "in_progress", label: "In Progress" },
+          { value: "ready_for_release", label: "Ready for Release" },
+          { value: "completed", label: "Completed" },
           { value: "rejected", label: "Rejected" },
           { value: "cancelled", label: "Cancelled" },
         ],
@@ -676,7 +696,7 @@ export function JobOrderManagement() {
   }
 
   // --- Edit ---
-  const isEditableStatus = (status: string) => status === "created" || status === "rejected";
+  const isEditableStatus = (status: string) => status === "draft";
 
   function openEditModal(order: JobOrder) {
     setEditOrder(order);
@@ -960,12 +980,18 @@ export function JobOrderManagement() {
 
   // --- Cancel ---
   async function handleCancelOrder(order: JobOrder) {
+    if (!reasonText.trim()) {
+      showToast.error("Please provide a cancellation reason");
+      return;
+    }
     try {
       setProcessingCancel(true);
-      await jobOrdersApi.cancel(order.id);
+      await jobOrdersApi.cancel(order.id, { cancellation_reason: reasonText.trim() });
       showToast.success("Job order cancelled");
       setShowCancelConfirm(false);
+      setShowReasonModal(false);
       setOrderToCancel(null);
+      setReasonText("");
       setShowViewModal(false);
       setViewOrder(null);
       fetchData();
@@ -991,6 +1017,7 @@ export function JobOrderManagement() {
   // --- Open Cancel Confirmation from card/dropdown ---
   function openCancelConfirmModal(order: JobOrder) {
     setOrderToCancel(order);
+    setReasonText("");
     setShowCancelConfirm(true);
   }
 
@@ -1288,7 +1315,7 @@ export function JobOrderManagement() {
                     >
                       <LuHistory className="w-4 h-4" /> Job Order History
                     </button>
-                    {canApproval && (order.status === "created" || order.status === "pending" || order.status === "rejected") && (
+                    {canApproval && (order.status === "draft" || order.status === "pending_approval") && (
                       <button
                         onClick={(e) => { e.stopPropagation(); closeDropdown(); openApprovalModal(order); }}
                         className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
@@ -1296,7 +1323,7 @@ export function JobOrderManagement() {
                         <LuSend className="w-4 h-4" /> Customer Approval
                       </button>
                     )}
-                    {canApproval && (order.status === "created" || order.status === "pending" || order.status === "rejected") && (
+                    {canApproval && (order.status === "draft" || order.status === "pending_approval") && (
                       <button
                         onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelConfirmModal(order); }}
                         className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
@@ -1304,7 +1331,58 @@ export function JobOrderManagement() {
                         <LuBan className="w-4 h-4" /> Cancel Job Order
                       </button>
                     )}
-                    {canRepair && (
+                    {canStartWork && order.status === "approved" && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation(); closeDropdown();
+                          try {
+                            await jobOrdersApi.startWork(order.id);
+                            showToast.success("Work started — status changed to In Progress");
+                            fetchData();
+                          } catch (err) {
+                            showToast.error(err instanceof Error ? err.message : "Failed to start work");
+                          }
+                        }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                      >
+                        <LuPlay className="w-4 h-4" /> Start Work
+                      </button>
+                    )}
+                    {canMarkReady && order.status === "in_progress" && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation(); closeDropdown();
+                          try {
+                            await jobOrdersApi.markReady(order.id);
+                            showToast.success("Marked ready for release");
+                            fetchData();
+                          } catch (err) {
+                            showToast.error(err instanceof Error ? err.message : "Failed to mark ready");
+                          }
+                        }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                      >
+                        <LuPackageCheck className="w-4 h-4" /> Mark Ready
+                      </button>
+                    )}
+                    {canComplete && order.status === "ready_for_release" && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation(); closeDropdown();
+                          try {
+                            await jobOrdersApi.complete(order.id);
+                            showToast.success("Job order completed");
+                            fetchData();
+                          } catch (err) {
+                            showToast.error(err instanceof Error ? err.message : "Failed to complete");
+                          }
+                        }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                      >
+                        <LuCircleCheck className="w-4 h-4" /> Complete
+                      </button>
+                    )}
+                    {canRepair && order.status === "draft" && (
                       <button
                         onClick={(e) => { e.stopPropagation(); closeDropdown(); openRepairActionModal(order); }}
                         className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
@@ -2278,11 +2356,15 @@ export function JobOrderManagement() {
               </button>
               <button
                 type="button"
-                onClick={() => handleCancelOrder(orderToCancel)}
-                disabled={processingCancel}
-                className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                onClick={() => {
+                  setShowCancelConfirm(false);
+                  setReasonText("");
+                  setReasonModalAction("cancel");
+                  setShowReasonModal(true);
+                }}
+                className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 transition-colors"
               >
-                {processingCancel ? "Cancelling..." : "Cancel Order"}
+                Proceed
               </button>
             </div>
           </div>
@@ -2300,24 +2382,20 @@ export function JobOrderManagement() {
           <div>
             <div className="bg-neutral-100 rounded-xl p-4 my-4">
               <p className="text-neutral-900">
-                {approvalOrder.status === "created" && (
+                {approvalOrder.status === "draft" && (
                   <>Request customer approval for <strong className="text-neutral-950">{approvalOrder.order_number}</strong>?</>
                 )}
-                {approvalOrder.status === "pending" && (
+                {approvalOrder.status === "pending_approval" && (
                   <>Record the customer's decision for <strong className="text-neutral-950">{approvalOrder.order_number}</strong>?</>
-                )}
-                {approvalOrder.status === "rejected" && (
-                  <>Re-request customer approval for <strong className="text-neutral-950">{approvalOrder.order_number}</strong>?</>
                 )}
               </p>
             </div>
             <p className="text-sm text-neutral-900 mb-2">
-              {approvalOrder.status === "created" && "This will change the status to Pending Approval and notify the customer for review."}
-              {approvalOrder.status === "pending" && "Select whether the customer approved or rejected this job order."}
-              {approvalOrder.status === "rejected" && "This will re-send the approval request and change the status back to Pending Approval."}
+              {approvalOrder.status === "draft" && "This will change the status to Pending Approval and notify the customer for review."}
+              {approvalOrder.status === "pending_approval" && "Select whether the customer approved or rejected this job order."}
             </p>
 
-            {approvalOrder.status === "created" && (
+            {approvalOrder.status === "draft" && (
               <div className="flex gap-3 mt-6">
                 <button
                   type="button"
@@ -2350,28 +2428,20 @@ export function JobOrderManagement() {
               </div>
             )}
 
-            {approvalOrder.status === "pending" && (
+            {approvalOrder.status === "pending_approval" && (
               <div className="flex gap-3 mt-6">
                 <button
                   type="button"
                   disabled={processingApproval}
-                  onClick={async () => {
-                    try {
-                      setProcessingApproval(true);
-                      await jobOrdersApi.recordApproval(approvalOrder.id, { decision: "rejected" });
-                      setShowApprovalModal(false);
-                      setApprovalOrder(null);
-                      showToast.success("Customer rejected the job order");
-                      fetchData();
-                    } catch (err) {
-                      showToast.error(err instanceof Error ? err.message : "Failed to record approval");
-                    } finally {
-                      setProcessingApproval(false);
-                    }
+                  onClick={() => {
+                    setShowApprovalModal(false);
+                    setReasonText("");
+                    setReasonModalAction("reject");
+                    setShowReasonModal(true);
                   }}
                   className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  {processingApproval ? "Processing..." : "Reject"}
+                  Reject
                 </button>
                 <button
                   type="button"
@@ -2396,41 +2466,91 @@ export function JobOrderManagement() {
                 </button>
               </div>
             )}
+          </div>
+        )}
+      </Modal>
 
-            {approvalOrder.status === "rejected" && (
-              <div className="flex gap-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => setShowApprovalModal(false)}
-                  className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={processingApproval}
-                  onClick={async () => {
+      {/* --- Shared Reason Modal (Cancel / Reject) --- */}
+      <Modal
+        isOpen={showReasonModal && (reasonModalAction === "cancel" ? !!orderToCancel : !!approvalOrder)}
+        onClose={() => {
+          setShowReasonModal(false);
+          setReasonText("");
+        }}
+        title={reasonModalAction === "cancel" ? "Cancel Job Order" : "Reject Job Order"}
+        maxWidth="lg"
+      >
+        {(() => {
+          const targetOrder = reasonModalAction === "cancel" ? orderToCancel : approvalOrder;
+          if (!targetOrder) return null;
+          return (
+            <div>
+              <ModalSection title="Basic Information">
+                <ModalInput
+                  type="text"
+                  value={targetOrder.order_number}
+                  onChange={() => {}}
+                  placeholder="Order #"
+                  disabled
+                />
+                <ModalInput
+                  type="text"
+                  value={getStatusLabel(targetOrder.status)}
+                  onChange={() => {}}
+                  placeholder="Status"
+                  disabled
+                />
+              </ModalSection>
+
+              <ModalSection title={`Reason for ${reasonModalAction === "cancel" ? "Cancellation" : "Rejection"}`}>
+                <textarea
+                  value={reasonText}
+                  onChange={(e) => setReasonText(e.target.value)}
+                  placeholder={reasonModalAction === "cancel" ? "Provide a reason for cancelling this job order..." : "Provide a reason for rejecting this job order..."}
+                  className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all"
+                  rows={3}
+                />
+              </ModalSection>
+
+              <ModalButtons
+                onCancel={() => {
+                  setShowReasonModal(false);
+                  setReasonText("");
+                }}
+                cancelText="Cancel"
+                submitText={reasonModalAction === "cancel"
+                  ? (processingCancel ? "Cancelling..." : "Save")
+                  : (processingApproval ? "Processing..." : "Save")}
+                type="button"
+                onSubmit={async () => {
+                  if (reasonModalAction === "cancel" && orderToCancel) {
+                    handleCancelOrder(orderToCancel);
+                  } else if (reasonModalAction === "reject" && approvalOrder) {
                     try {
                       setProcessingApproval(true);
-                      await jobOrdersApi.requestApproval(approvalOrder.id);
-                      setShowApprovalModal(false);
+                      await jobOrdersApi.recordApproval(approvalOrder.id, {
+                        decision: "rejected",
+                        rejection_reason: reasonText.trim(),
+                      });
+                      setShowReasonModal(false);
+                      setReasonText("");
                       setApprovalOrder(null);
-                      showToast.success("Re-requested approval — status changed to Pending Approval");
+                      showToast.success("Customer rejected the job order");
                       fetchData();
                     } catch (err) {
-                      showToast.error(err instanceof Error ? err.message : "Failed to re-request approval");
+                      showToast.error(err instanceof Error ? err.message : "Failed to record rejection");
                     } finally {
                       setProcessingApproval(false);
                     }
-                  }}
-                  className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {processingApproval ? "Processing..." : "Re-Request"}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+                  }
+                }}
+                disabled={!reasonText.trim()}
+                loading={reasonModalAction === "cancel" ? processingCancel : processingApproval}
+                loadingText={reasonModalAction === "cancel" ? "Cancelling..." : "Processing..."}
+              />
+            </div>
+          );
+        })()}
       </Modal>
     </div>
   );

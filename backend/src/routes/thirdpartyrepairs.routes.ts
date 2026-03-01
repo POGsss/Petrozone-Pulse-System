@@ -10,6 +10,30 @@ const router = Router();
 router.use(requireAuth);
 
 /**
+ * Recalculate job order total_amount = SUM(items.line_total) + SUM(repairs.cost)
+ */
+async function recalcJoTotal(jobOrderId: string) {
+  const { data: items } = await supabaseAdmin
+    .from("job_order_items")
+    .select("line_total")
+    .eq("job_order_id", jobOrderId);
+
+  const { data: repairs } = await supabaseAdmin
+    .from("third_party_repairs")
+    .select("cost")
+    .eq("job_order_id", jobOrderId)
+    .eq("is_deleted", false);
+
+  const itemsTotal = (items || []).reduce((s: number, i: { line_total: number }) => s + i.line_total, 0);
+  const repairsTotal = (repairs || []).reduce((s: number, r: { cost: number }) => s + r.cost, 0);
+
+  await supabaseAdmin
+    .from("job_orders")
+    .update({ total_amount: itemsTotal + repairsTotal })
+    .eq("id", jobOrderId);
+}
+
+/**
  * GET /api/third-party-repairs
  * List third-party repairs with filtering and pagination
  * Optionally filter by job_order_id
@@ -189,12 +213,20 @@ router.post(
       // Verify job order exists and check branch access
       const { data: jobOrder, error: joError } = await supabaseAdmin
         .from("job_orders")
-        .select("id, branch_id")
+        .select("id, branch_id, status")
         .eq("id", job_order_id)
         .single();
 
       if (joError || !jobOrder) {
         res.status(400).json({ error: "Job order not found" });
+        return;
+      }
+
+      // TPR can only be added when JO is in draft status
+      if (jobOrder.status !== "draft") {
+        res.status(400).json({
+          error: `Cannot add third-party repairs to a job order with status "${jobOrder.status}". Only draft orders can be modified.`,
+        });
         return;
       }
 
@@ -232,6 +264,9 @@ router.post(
 
       // Fix audit log user_id (trigger may set it from created_by)
       await fixAuditLogUser("THIRD_PARTY_REPAIR", repair.id, "CREATE", req.user!.id, req.user!.branchIds[0] || null);
+
+      // Recalculate job order total
+      await recalcJoTotal(job_order_id);
 
       res.status(201).json(repair);
     } catch (error) {
@@ -275,12 +310,20 @@ router.put(
       // Verify branch access via parent job order
       const { data: jobOrder, error: joError } = await supabaseAdmin
         .from("job_orders")
-        .select("id, branch_id")
+        .select("id, branch_id, status")
         .eq("id", existing.job_order_id)
         .single();
 
       if (joError || !jobOrder) {
         res.status(400).json({ error: "Parent job order not found" });
+        return;
+      }
+
+      // TPR can only be edited when JO is in draft status
+      if (jobOrder.status !== "draft") {
+        res.status(400).json({
+          error: `Cannot edit third-party repairs on a job order with status "${jobOrder.status}". Only draft orders can be modified.`,
+        });
         return;
       }
 
@@ -365,6 +408,11 @@ router.put(
         console.error("Audit log error:", auditErr);
       }
 
+      // Recalculate job order total if cost changed
+      if (actualChanges.cost !== undefined) {
+        await recalcJoTotal(existing.job_order_id);
+      }
+
       res.json(updated);
     } catch (error) {
       console.error("Update third-party repair error:", error);
@@ -376,9 +424,7 @@ router.put(
 
 /**
  * DELETE /api/third-party-repairs/:id
- * Conditional delete:
- *   - Hard delete if parent JO status is "created" or "rejected" (still modifiable)
- *   - Soft delete (is_deleted: true) otherwise
+ * Hard delete a third-party repair (only when parent JO is in draft status)
  * Roles: HM, POC, JS, R, T
  */
 router.delete(
@@ -425,48 +471,26 @@ router.delete(
         return;
       }
 
-      // Hard delete if parent JO is still in modifiable state
-      if (["created", "rejected"].includes(jobOrder.status)) {
-        const { error: deleteError } = await supabaseAdmin
-          .from("third_party_repairs")
-          .delete()
-          .eq("id", repairId);
-
-        if (deleteError) {
-          res.status(500).json({ error: deleteError.message });
-          return;
-        }
-
-        // Log hard delete
-        try {
-          await supabaseAdmin.rpc("log_admin_action", {
-            p_action: "DELETE",
-            p_entity_type: "THIRD_PARTY_REPAIR",
-            p_entity_id: repairId,
-            p_performed_by_user_id: req.user!.id,
-            p_performed_by_branch_id: req.user!.branchIds[0] || null,
-            p_new_values: { provider_name: existing.provider_name, job_order_id: existing.job_order_id, type: "hard_delete" },
-          });
-        } catch (auditErr) {
-          console.error("Audit log error:", auditErr);
-        }
-
-        res.json({ message: `Third-party repair "${existing.provider_name}" deleted permanently` });
+      // TPR can only be deleted when JO is in draft status
+      if (jobOrder.status !== "draft") {
+        res.status(400).json({
+          error: `Cannot delete third-party repairs on a job order with status "${jobOrder.status}". Only draft orders can be modified.`,
+        });
         return;
       }
 
-      // Soft delete: parent JO has progressed past modifiable state
-      const { error: updateError } = await supabaseAdmin
+      // Hard delete since JO is in draft
+      const { error: deleteError } = await supabaseAdmin
         .from("third_party_repairs")
-        .update({ is_deleted: true })
+        .delete()
         .eq("id", repairId);
 
-      if (updateError) {
-        res.status(500).json({ error: updateError.message });
+      if (deleteError) {
+        res.status(500).json({ error: deleteError.message });
         return;
       }
 
-      // Log soft delete
+      // Log delete
       try {
         await supabaseAdmin.rpc("log_admin_action", {
           p_action: "DELETE",
@@ -474,13 +498,16 @@ router.delete(
           p_entity_id: repairId,
           p_performed_by_user_id: req.user!.id,
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
-          p_new_values: { provider_name: existing.provider_name, job_order_id: existing.job_order_id, is_deleted: true, type: "soft_delete" },
+          p_new_values: { provider_name: existing.provider_name, job_order_id: existing.job_order_id, type: "hard_delete" },
         });
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);
       }
 
-      res.json({ message: `Third-party repair "${existing.provider_name}" deleted successfully` });
+      // Recalculate job order total
+      await recalcJoTotal(existing.job_order_id);
+
+      res.json({ message: `Third-party repair "${existing.provider_name}" deleted permanently` });
     } catch (error) {
       console.error("Delete third-party repair error:", error);
       await logFailedAction(req, "DELETE", "THIRD_PARTY_REPAIR", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to delete third-party repair");

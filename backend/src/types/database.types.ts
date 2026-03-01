@@ -349,16 +349,28 @@ export type Database = {
       job_orders: {
         Row: {
           approval_notes: string | null
+          approval_method: string | null
+          approval_requested_at: string | null
+          approval_status: string | null
           approved_at: string | null
           approved_by: string | null
+          assigned_technician_id: string | null
           branch_id: string
+          cancelled_at: string | null
+          cancelled_by: string | null
+          cancellation_reason: string | null
+          completion_time: string | null
           created_at: string
           created_by: string | null
           customer_id: string
+          deleted_at: string | null
+          deleted_by: string | null
           id: string
           is_deleted: boolean
           notes: string | null
           order_number: string
+          rejection_reason: string | null
+          start_time: string | null
           status: Database["public"]["Enums"]["job_order_status"]
           total_amount: number
           updated_at: string
@@ -367,16 +379,28 @@ export type Database = {
         }
         Insert: {
           approval_notes?: string | null
+          approval_method?: string | null
+          approval_requested_at?: string | null
+          approval_status?: string | null
           approved_at?: string | null
           approved_by?: string | null
+          assigned_technician_id?: string | null
           branch_id: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          cancellation_reason?: string | null
+          completion_time?: string | null
           created_at?: string
           created_by?: string | null
           customer_id: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           id?: string
           is_deleted?: boolean
           notes?: string | null
           order_number: string
+          rejection_reason?: string | null
+          start_time?: string | null
           status?: Database["public"]["Enums"]["job_order_status"]
           total_amount?: number
           updated_at?: string
@@ -385,16 +409,28 @@ export type Database = {
         }
         Update: {
           approval_notes?: string | null
+          approval_method?: string | null
+          approval_requested_at?: string | null
+          approval_status?: string | null
           approved_at?: string | null
           approved_by?: string | null
+          assigned_technician_id?: string | null
           branch_id?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          cancellation_reason?: string | null
+          completion_time?: string | null
           created_at?: string
           created_by?: string | null
           customer_id?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           id?: string
           is_deleted?: boolean
           notes?: string | null
           order_number?: string
+          rejection_reason?: string | null
+          start_time?: string | null
           status?: Database["public"]["Enums"]["job_order_status"]
           total_amount?: number
           updated_at?: string
@@ -1224,7 +1260,7 @@ export type Database = {
       customer_status: "active" | "inactive"
       customer_type: "individual" | "company"
       inventory_item_status: "active" | "inactive"
-      job_order_status: "created" | "pending" | "approved" | "rejected" | "cancelled"
+      job_order_status: "draft" | "pending_approval" | "approved" | "in_progress" | "ready_for_release" | "completed" | "rejected" | "cancelled"
       purchase_order_status: "draft" | "submitted" | "approved" | "received" | "cancelled"
       pricing_matrix_status: "active" | "inactive"
       pricing_type: "labor" | "packaging"
@@ -1375,7 +1411,7 @@ export const Constants = {
       customer_status: ["active", "inactive"],
       customer_type: ["individual", "company"],
       inventory_item_status: ["active", "inactive"],
-      job_order_status: ["created", "pending", "approved", "rejected", "cancelled"],
+      job_order_status: ["draft", "pending_approval", "approved", "in_progress", "ready_for_release", "completed", "rejected", "cancelled"],
       pricing_matrix_status: ["active", "inactive"],
       pricing_type: ["labor", "packaging"],
       stock_movement_type: ["stock_in", "stock_out", "adjustment"],
