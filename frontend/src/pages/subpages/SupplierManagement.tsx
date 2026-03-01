@@ -17,6 +17,9 @@ function formatDate(dateStr: string): string {
 
 export function SupplierManagement() {
   const { user } = useAuth();
+  const userRoles = user?.roles || [];
+  const canWrite = userRoles.some((r) => ["HM", "POC", "JS"].includes(r));
+
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -493,13 +496,15 @@ export function SupplierManagement() {
           <h3 className="text-lg font-semibold text-neutral-950">Suppliers</h3>
           <p className="text-sm text-neutral-900">{suppliers.length} suppliers total</p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
-        >
-          <LuPlus className="w-4 h-4" />
-          Add New Supplier
-        </button>
+        {canWrite && (
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
+          >
+            <LuPlus className="w-4 h-4" />
+            Add New Supplier
+          </button>
+        )}
       </div>
 
       {/* Search & Filter bar */}
@@ -557,26 +562,30 @@ export function SupplierManagement() {
             </div>
 
             <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openEditModal(supplier);
-                }}
-                className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-              >
-                <LuPencil className="w-4 h-4" />
-                Edit
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openDeleteConfirm(supplier);
-                }}
-                className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-              >
-                <LuTrash2 className="w-4 h-4" />
-                Delete
-              </button>
+              {canWrite && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openEditModal(supplier);
+                  }}
+                  className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
+                >
+                  <LuPencil className="w-4 h-4" />
+                  Edit
+                </button>
+              )}
+              {canWrite && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openDeleteConfirm(supplier);
+                  }}
+                  className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
+                >
+                  <LuTrash2 className="w-4 h-4" />
+                  Delete
+                </button>
+              )}
               {/* More actions dropdown */}
               <div className="relative" ref={openDropdownId === `card-${supplier.id}` ? dropdownRef : undefined}>
                 <button

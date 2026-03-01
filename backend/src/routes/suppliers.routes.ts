@@ -289,6 +289,28 @@ router.put(
         }
       }
 
+      // Prevent blanking required fields
+      if (supplier_name !== undefined && !supplier_name.trim()) {
+        res.status(400).json({ error: "Supplier name cannot be empty" });
+        return;
+      }
+      if (contact_person !== undefined && !contact_person.trim()) {
+        res.status(400).json({ error: "Contact person cannot be empty" });
+        return;
+      }
+      if (email !== undefined && !email.trim()) {
+        res.status(400).json({ error: "Email cannot be empty" });
+        return;
+      }
+      if (phone !== undefined && !phone.trim()) {
+        res.status(400).json({ error: "Phone cannot be empty" });
+        return;
+      }
+      if (address !== undefined && !address.trim()) {
+        res.status(400).json({ error: "Address cannot be empty" });
+        return;
+      }
+
       const updateData: SupplierUpdate = {};
       if (supplier_name !== undefined) updateData.supplier_name = supplier_name.trim();
       if (contact_person !== undefined) updateData.contact_person = contact_person.trim();
@@ -375,14 +397,24 @@ router.delete(
         return;
       }
 
-      // Check if supplier is referenced by purchase orders
+      // Check if supplier is referenced by purchase orders (use supplier_id FK, not name)
       const { data: poRefs } = await supabaseAdmin
         .from("purchase_orders")
         .select("id")
-        .eq("supplier_name", existing.supplier_name)
+        .eq("supplier_id", supplierId)
+        .eq("is_deleted", false)
         .limit(1);
 
-      if (poRefs && poRefs.length > 0) {
+      // Check if supplier has linked supplier products
+      const { data: spRefs } = await supabaseAdmin
+        .from("supplier_products")
+        .select("id")
+        .eq("supplier_id", supplierId)
+        .limit(1);
+
+      const hasReferences = (poRefs && poRefs.length > 0) || (spRefs && spRefs.length > 0);
+
+      if (hasReferences) {
         // Soft delete - deactivate
         const { error } = await supabaseAdmin
           .from("suppliers")
@@ -392,6 +424,14 @@ router.delete(
         if (error) {
           res.status(500).json({ error: error.message });
           return;
+        }
+
+        // Also deactivate linked supplier products
+        if (spRefs && spRefs.length > 0) {
+          await supabaseAdmin
+            .from("supplier_products")
+            .update({ status: "inactive" as const })
+            .eq("supplier_id", supplierId);
         }
 
         // Audit log soft delete
@@ -408,7 +448,10 @@ router.delete(
           console.error("Audit log error:", auditErr);
         }
 
-        res.json({ message: "Supplier deactivated (referenced by purchase orders)" });
+        const reason = (poRefs && poRefs.length > 0)
+          ? "Supplier deactivated (referenced by purchase orders)"
+          : "Supplier deactivated (has linked supplier products)";
+        res.json({ message: reason });
         return;
       }
 

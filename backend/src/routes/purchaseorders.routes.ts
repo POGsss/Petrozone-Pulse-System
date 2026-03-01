@@ -9,50 +9,8 @@ const router = Router();
 // All purchase-order routes require authentication
 router.use(requireAuth);
 
-// â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-/**
- * Compute on-hand quantity from the stock_movements ledger.
- */
-async function getOnHandSingle(itemId: string): Promise<number> {
-  const { data: movements } = await supabaseAdmin
-    .from("stock_movements")
-    .select("movement_type, quantity")
-    .eq("inventory_item_id", itemId);
-
-  let qty = 0;
-  for (const m of movements ?? []) {
-    if (m.movement_type === "stock_in") qty += m.quantity;
-    else if (m.movement_type === "stock_out") qty -= m.quantity;
-  }
-  return qty;
-}
-
-/**
- * Recalculate and persist total_amount on a purchase order from its items.
- */
-async function recalcTotal(poId: string): Promise<number> {
-  const { data: items } = await supabaseAdmin
-    .from("purchase_order_items")
-    .select("quantity_ordered, unit_cost")
-    .eq("purchase_order_id", poId);
-
-  const total = (items ?? []).reduce(
-    (sum: number, i: { quantity_ordered: number; unit_cost: number }) =>
-      sum + i.quantity_ordered * i.unit_cost,
-    0
-  );
-
-  await supabaseAdmin
-    .from("purchase_orders")
-    .update({ total_amount: total })
-    .eq("id", poId);
-
-  return total;
-}
-
-// â”€â”€â”€ GET /api/purchase-orders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// List purchase orders â€” UC50
+// ─── GET /api/purchase-orders ──────────────────────────────────────────
+// List purchase orders — UC50
 // Roles: HM, POC, JS, R
 router.get(
   "/",
@@ -112,8 +70,8 @@ router.get(
   }
 );
 
-// â”€â”€â”€ GET /api/purchase-orders/:id â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Get single PO with items â€” UC50
+// ─── GET /api/purchase-orders/:id ──────────────────────────────────────
+// Get single PO with items — UC50
 router.get(
   "/:id",
   requireRoles("HM", "POC", "JS", "R"),
@@ -153,8 +111,8 @@ router.get(
   }
 );
 
-// â”€â”€â”€ POST /api/purchase-orders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Create PO â€” UC49
+// ─── POST /api/purchase-orders ─────────────────────────────────────────
+// Create PO — UC49
 // Roles: HM, POC, JS, R
 router.post(
   "/",
@@ -200,12 +158,18 @@ router.post(
       if (supplier_id) {
         const { data: supplier } = await supabaseAdmin
           .from("suppliers")
-          .select("supplier_name")
+          .select("supplier_name, branch_id")
           .eq("id", supplier_id)
           .single();
-        if (supplier) {
-          resolvedSupplierName = supplier.supplier_name;
+        if (!supplier) {
+          res.status(400).json({ error: "Supplier not found" });
+          return;
         }
+        if (supplier.branch_id !== branch_id) {
+          res.status(400).json({ error: "Supplier does not belong to the selected branch" });
+          return;
+        }
+        resolvedSupplierName = supplier.supplier_name;
       }
 
       // Validate each item
@@ -222,6 +186,30 @@ router.post(
           res.status(400).json({ error: "Unit cost must be a non-negative number" });
           return;
         }
+      }
+
+      // Verify all inventory items belong to the same branch
+      const itemIds = items.map((i: { inventory_item_id: string }) => i.inventory_item_id);
+      const { data: invItems, error: invCheckError } = await supabaseAdmin
+        .from("inventory_items")
+        .select("id, branch_id")
+        .in("id", itemIds);
+
+      if (invCheckError) {
+        res.status(500).json({ error: "Failed to verify inventory items" });
+        return;
+      }
+
+      const missingIds = itemIds.filter((id: string) => !(invItems ?? []).some((inv: any) => inv.id === id));
+      if (missingIds.length > 0) {
+        res.status(400).json({ error: "One or more inventory items not found" });
+        return;
+      }
+
+      const wrongBranchItems = (invItems ?? []).filter((inv: any) => inv.branch_id !== branch_id);
+      if (wrongBranchItems.length > 0) {
+        res.status(400).json({ error: "One or more inventory items do not belong to the selected branch" });
+        return;
       }
 
       // Calculate total
@@ -304,8 +292,8 @@ router.post(
   }
 );
 
-// â”€â”€â”€ PUT /api/purchase-orders/:id â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Update PO â€” UC51 (only draft/submitted can be edited)
+// ─── PUT /api/purchase-orders/:id ──────────────────────────────────────
+// Update PO — UC51 (only draft/submitted can be edited)
 // Roles: HM, POC, JS, R
 router.put(
   "/:id",
@@ -445,7 +433,7 @@ router.put(
       const headerChanges = filterUnchangedFields(updateData, existing);
 
       if (Object.keys(headerChanges).length === 0 && !itemsChanged) {
-        // No real changes â€” return existing data without triggering an update
+        // No real changes — return existing data without triggering an update
         const { data: currentPO } = await supabaseAdmin
           .from("purchase_orders")
           .select("*, suppliers(id, supplier_name), branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))")
@@ -503,8 +491,8 @@ router.put(
   }
 );
 
-// â”€â”€â”€ PATCH /api/purchase-orders/:id/submit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Transition PO from draft â†’ submitted
+// ─── PATCH /api/purchase-orders/:id/submit ─────────────────────────────
+// Transition PO from draft → submitted
 router.patch(
   "/:id/submit",
   requireRoles("HM", "POC", "JS", "R"),
@@ -579,8 +567,8 @@ router.patch(
   }
 );
 
-// â”€â”€â”€ PATCH /api/purchase-orders/:id/approve â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Approve PO â€” submitted â†’ approved (locks from editing)
+// ─── PATCH /api/purchase-orders/:id/approve ────────────────────────────
+// Approve PO — submitted → approved (locks from editing)
 // Roles: HM, POC
 router.patch(
   "/:id/approve",
@@ -656,8 +644,8 @@ router.patch(
   }
 );
 
-// â”€â”€â”€ PATCH /api/purchase-orders/:id/receive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Receive PO â€” stock-in logic (FR-6 stock-in rules)
+// ─── PATCH /api/purchase-orders/:id/receive ────────────────────────────
+// Receive PO — stock-in logic (FR-6 stock-in rules)
 // Atomically increases on-hand quantity for each item
 router.patch(
   "/:id/receive",
@@ -705,12 +693,40 @@ router.patch(
         return;
       }
 
-      // â”€â”€ Stock-in for each PO item (atomic per item) â”€â”€
+      // Atomic status lock: approved -> received (CAS)
+      // Prevents race conditions from double-click or concurrent requests
+      const receiveNow = new Date().toISOString();
+      const { data: locked, error: lockError } = await supabaseAdmin
+        .from("purchase_orders")
+        .update({
+          status: "received",
+          received_at: receiveNow,
+          received_by: req.user!.id,
+        })
+        .eq("id", poId)
+        .eq("status", "approved") // CAS: only update if still approved
+        .select("id")
+        .maybeSingle();
+
+      if (lockError) {
+        res.status(500).json({ error: lockError.message });
+        return;
+      }
+
+      if (!locked) {
+        // Another request already transitioned this PO
+        res.status(409).json({ error: "Purchase order is already being received or has been received" });
+        return;
+      }
+
+      // Stock-in for each PO item
+      // Status is already "received" so retries will be rejected by CAS above
+      let failedItem: string | null = null;
       for (const item of poItems) {
         const qtyToReceive = item.quantity_ordered - item.quantity_received;
         if (qtyToReceive <= 0) continue; // already fully received
 
-        // Create stock_movement record â€” reference_type = "purchase_order"
+        // Create stock_movement record
         const { error: moveError } = await supabaseAdmin
           .from("stock_movements")
           .insert({
@@ -725,10 +741,9 @@ router.patch(
           });
 
         if (moveError) {
-          res.status(500).json({
-            error: `Failed to record stock-in for item ${item.inventory_item_id}: ${moveError.message}`,
-          });
-          return;
+          failedItem = item.inventory_item_id;
+          console.error(`Stock-in failed for item ${item.inventory_item_id}:`, moveError.message);
+          break;
         }
 
         // Update quantity_received on the PO item
@@ -738,23 +753,18 @@ router.patch(
           .eq("id", item.id);
 
         if (updateItemError) {
-          res.status(500).json({ error: updateItemError.message });
-          return;
+          failedItem = item.inventory_item_id;
+          console.error(`quantity_received update failed for item ${item.id}:`, updateItemError.message);
+          break;
         }
       }
 
-      // Update PO status to received
-      const { error: updateError } = await supabaseAdmin
-        .from("purchase_orders")
-        .update({
-          status: "received",
-          received_at: new Date().toISOString(),
-          received_by: req.user!.id,
-        })
-        .eq("id", poId);
-
-      if (updateError) {
-        res.status(500).json({ error: updateError.message });
+      if (failedItem) {
+        // Partial failure: status is already "received" but some items may not have stock movements.
+        // The PO is locked from re-receive by the CAS above.
+        res.status(500).json({
+          error: `Purchase order marked as received, but stock-in failed for item ${failedItem}. Please check inventory movements and correct manually if needed.`,
+        });
         return;
       }
 
@@ -798,7 +808,7 @@ router.patch(
   }
 );
 
-// â”€â”€â”€ PATCH /api/purchase-orders/:id/cancel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── PATCH /api/purchase-orders/:id/cancel ─────────────────────────────
 // Cancel a PO (draft or submitted only)
 router.patch(
   "/:id/cancel",
@@ -870,8 +880,8 @@ router.patch(
   }
 );
 
-// â”€â”€â”€ DELETE /api/purchase-orders/:id â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Soft-delete PO â€” UC52
+// ─── DELETE /api/purchase-orders/:id ───────────────────────────────────
+// Soft-delete PO — UC52
 // Roles: HM, POC, JS, R
 router.delete(
   "/:id",
@@ -905,13 +915,14 @@ router.delete(
         return;
       }
 
-      // Cannot delete received POs â€” they have stock movements
-      if (po.status === "received") {
+      // Only draft, submitted, and cancelled POs can be deleted
+      if (!["draft", "submitted", "cancelled"].includes(po.status)) {
         res.status(400).json({
-          error: "Cannot delete a received purchase order. Cancel it instead if needed.",
+          error: `Cannot delete a purchase order with status "${po.status}". Only draft, submitted, or cancelled POs can be deleted.`,
         });
         return;
       }
+
 
       // Soft delete
       const { error: updateError } = await supabaseAdmin

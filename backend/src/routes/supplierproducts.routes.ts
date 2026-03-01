@@ -194,6 +194,11 @@ router.post(
         return;
       }
 
+      if (supplier.branch_id !== branch_id) {
+        res.status(400).json({ error: "Supplier does not belong to the selected branch" });
+        return;
+      }
+
       // Enforce one-to-one constraint at API level if inventory_item_id is provided
       if (inventory_item_id) {
         // Verify inventory item exists
@@ -209,16 +214,18 @@ router.post(
         }
 
         // Check one-to-one: no other active supplier product should reference this inventory item
+        // Scoped to same branch to allow different branches to link the same catalog item
         const { data: existingLink } = await supabaseAdmin
           .from("supplier_products")
           .select("id, suppliers(supplier_name)")
           .eq("inventory_item_id", inventory_item_id)
+          .eq("branch_id", branch_id)
           .eq("status", "active")
           .limit(1);
 
         if (existingLink && existingLink.length > 0) {
           res.status(400).json({
-            error: "This inventory item is already linked to another active supplier product. One product can only belong to one supplier.",
+            error: "This inventory item is already linked to another active supplier product in this branch. One product can only belong to one supplier per branch.",
           });
           return;
         }
@@ -339,18 +346,19 @@ router.put(
             return;
           }
 
-          // Check one-to-one constraint
+          // Check one-to-one constraint (scoped to same branch)
           const { data: existingLink } = await supabaseAdmin
             .from("supplier_products")
             .select("id")
             .eq("inventory_item_id", inventory_item_id)
+            .eq("branch_id", existing.branch_id)
             .eq("status", "active")
             .neq("id", productId)
             .limit(1);
 
           if (existingLink && existingLink.length > 0) {
             res.status(400).json({
-              error: "This inventory item is already linked to another active supplier product.",
+              error: "This inventory item is already linked to another active supplier product in this branch.",
             });
             return;
           }

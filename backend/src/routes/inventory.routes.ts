@@ -179,10 +179,10 @@ router.get(
 
 // ─── GET /api/inventory/:id ────────────────────────────────────────────
 // Get a single inventory item with on-hand quantity
-// Roles: HM, POC, JS
+// Roles: HM, POC, JS, R (R needs read access for PO item selection)
 router.get(
   "/:id",
-  requireRoles("HM", "POC", "JS"),
+  requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const itemId = req.params.id as string;

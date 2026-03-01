@@ -98,6 +98,7 @@ export function PurchaseOrderManagement() {
   const canCreate = userRoles.some((r) => ["HM", "POC", "JS", "R"].includes(r));
   const canUpdate = canCreate;
   const canDelete = canCreate;
+  const canApprove = userRoles.some((r) => ["HM", "POC"].includes(r));
 
   // Data state
   const [allOrders, setAllOrders] = useState<PurchaseOrder[]>([]);
@@ -174,6 +175,11 @@ export function PurchaseOrderManagement() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [orderToCancel, setOrderToCancel] = useState<PurchaseOrder | null>(null);
   const [processingCancel, setProcessingCancel] = useState(false);
+
+  // Receive confirmation modal
+  const [showReceiveConfirm, setShowReceiveConfirm] = useState(false);
+  const [orderToReceive, setOrderToReceive] = useState<PurchaseOrder | null>(null);
+  const [processingReceive, setProcessingReceive] = useState(false);
 
   // Actions overflow dropdown
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
@@ -639,13 +645,23 @@ export function PurchaseOrderManagement() {
   }
 
   // ─── Receive PO ─────────────────────────────────────────────────────
-  async function handleReceivePO(order: PurchaseOrder) {
+  function openReceiveConfirm(order: PurchaseOrder) {
+    setOrderToReceive(order);
+    setShowReceiveConfirm(true);
+  }
+  async function handleConfirmReceive() {
+    if (!orderToReceive || processingReceive) return;
+    setProcessingReceive(true);
     try {
-      await purchaseOrdersApi.receive(order.id);
-      showToast.success(`PO ${order.po_number} received — stock has been updated`);
+      await purchaseOrdersApi.receive(orderToReceive.id);
+      showToast.success(`PO ${orderToReceive.po_number} received — stock has been updated`);
+      setShowReceiveConfirm(false);
+      setOrderToReceive(null);
       fetchData();
     } catch (err) {
       showToast.error(err instanceof Error ? err.message : "Failed to receive PO");
+    } finally {
+      setProcessingReceive(false);
     }
   }
 
@@ -653,7 +669,7 @@ export function PurchaseOrderManagement() {
   function getDropdownActions(order: PurchaseOrder) {
     const actions: string[] = [];
     if (order.status === "draft") actions.push("submit");
-    if (order.status === "submitted") actions.push("approve");
+    if (order.status === "submitted" && canApprove) actions.push("approve");
     if (order.status === "approved") actions.push("receive");
     if (["draft", "submitted"].includes(order.status)) actions.push("cancel");
     return actions;
@@ -875,11 +891,11 @@ export function PurchaseOrderManagement() {
                             {order.status === "draft" && (
                               <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openSubmitConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuSend className="w-4 h-4" /> Submit PO</button>
                             )}
-                            {order.status === "submitted" && (
+                            {order.status === "submitted" && canApprove && (
                               <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openApproveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBadgeCheck className="w-4 h-4" /> Approve PO</button>
                             )}
                             {order.status === "approved" && (
-                              <button onClick={(e) => { e.stopPropagation(); closeDropdown(); handleReceivePO(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuPackageCheck className="w-4 h-4" /> Receive &amp; Stock In</button>
+                              <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openReceiveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuPackageCheck className="w-4 h-4" /> Receive &amp; Stock In</button>
                             )}
                             {["draft", "submitted"].includes(order.status) && (
                               <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBan className="w-4 h-4" /> Cancel PO</button>
@@ -975,11 +991,11 @@ export function PurchaseOrderManagement() {
                                 {order.status === "draft" && (
                                   <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openSubmitConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuSend className="w-4 h-4" /> Submit PO</button>
                                 )}
-                                {order.status === "submitted" && (
+                                {order.status === "submitted" && canApprove && (
                                   <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openApproveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBadgeCheck className="w-4 h-4" /> Approve PO</button>
                                 )}
                                 {order.status === "approved" && (
-                                  <button onClick={(e) => { e.stopPropagation(); closeDropdown(); handleReceivePO(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuPackageCheck className="w-4 h-4" /> Receive &amp; Stock In</button>
+                                  <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openReceiveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuPackageCheck className="w-4 h-4" /> Receive &amp; Stock In</button>
                                 )}
                                 {["draft", "submitted"].includes(order.status) && (
                                   <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBan className="w-4 h-4" /> Cancel PO</button>
@@ -1509,6 +1525,40 @@ export function PurchaseOrderManagement() {
                 className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {processingCancel ? "Cancelling..." : "Cancel PO"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ═══════════════════ RECEIVE PO CONFIRM MODAL ═══════════════════ */}
+      <Modal isOpen={showReceiveConfirm && !!orderToReceive} onClose={() => setShowReceiveConfirm(false)} title="Receive Purchase Order" maxWidth="sm">
+        {orderToReceive && (
+          <div>
+            <div className="bg-neutral-100 rounded-xl p-4 my-4">
+              <p className="text-neutral-900">
+                Receive purchase order{" "}
+                <strong className="text-neutral-950">{orderToReceive.po_number}</strong> and stock in all items?
+              </p>
+            </div>
+            <p className="text-sm text-neutral-900 mb-2">
+              This will mark the PO as received, create stock-in movements for every line item, and update on-hand quantities. <strong>This action is irreversible.</strong>
+            </p>
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowReceiveConfirm(false)}
+                className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReceive}
+                disabled={processingReceive}
+                className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {processingReceive ? "Receiving..." : "Receive & Stock In"}
               </button>
             </div>
           </div>
