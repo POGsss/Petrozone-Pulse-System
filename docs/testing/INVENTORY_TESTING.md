@@ -223,18 +223,20 @@ Use the **Add New Item** button on the Inventory page. Enter each item below int
 
 ---
 
-### Test 10 — Stock Restore on JO Cancellation (FR-3)
+### Test 10 — Cancellation Does Not Affect Stock (FR-3)
 
-**Goal:** Verify stock is restored when an approved JO is cancelled.
+**Goal:** Verify that cancelling a JO does **not** trigger any stock changes, since cancellation is only allowed from `draft` or `pending_approval` (both pre-approval, meaning stock was never deducted).
 
-> **How it works:** When an approved JO is cancelled, the system finds all `stock_out` movements with `reference_id` = the JO ID and creates matching `stock_in` movements to reverse them.
+> **How it works:** Stock is only deducted when a JO is **approved**. Cancellation is restricted to `draft` and `pending_approval` statuses only. Since stock has not been deducted at those stages, no stock restoration is needed or performed.
 
-1. Note the current stock of items used in an approved JO (e.g., Shell Helix = 23, Denso Filter = 13)
-2. Cancel that approved Job Order
-3. Navigate back to **Inventory**
-4. Verify:
-   - ✅ Stock restored (Shell Helix 23 → 25, Denso Filter 13 → 15)
-   - ✅ Movement History shows new `Stock In` entries with reason `"Stock restored — Job Order cancelled"`
+1. Create a JO with items and request approval (status = `pending_approval`)
+2. Note current stock levels (e.g., Shell Helix = 23, Denso Filter = 13)
+3. Cancel the `pending_approval` JO (provide a cancellation reason)
+4. Navigate back to **Inventory**
+5. Verify:
+   - ✅ Stock levels remain **unchanged** (Shell Helix still 23, Denso Filter still 13)
+   - ✅ No new `stock_in` or `stock_out` movements were created
+   - ✅ Cannot cancel an `approved` JO — cancel option is not available for post-approval statuses
 
 ---
 
@@ -275,7 +277,7 @@ Use the **Add New Item** button on the Inventory page. Enter each item below int
 | UC48 — Delete (Soft) Inventory              | ⬜     |
 | FR-3 — Stock Deduction on JO Approval       | ⬜     |
 | FR-3 — Block Approval on Insufficient Stock | ⬜     |
-| FR-3 — Stock Restore on JO Cancellation     | ⬜     |
+| FR-3 — No Stock Change on JO Cancellation   | ⬜     |
 | FR-4 — Low-Stock Dashboard Indicator        | ⬜     |
 | FR-6 — View Current Stock Levels            | ⬜     |
 | Manual Stock In                             | ⬜     |

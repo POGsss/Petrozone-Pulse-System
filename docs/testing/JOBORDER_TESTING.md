@@ -346,9 +346,7 @@ Ensure the following exist:
 
 ### Test 8 — Start Work (approved → in_progress)
 
-**Goal:** Verify the technician can start work on an approved JO.
-
-**Pre-requisite:** The JO must have an `assigned_technician_id` set.
+**Goal:** Verify the technician can start work on an approved JO and is auto-assigned.
 
 1. Log in as **T** (Technician)
 2. Find a JO with status `Approved`
@@ -357,11 +355,9 @@ Ensure the following exist:
    - ✅ Status changes to `In Progress`
    - ✅ Toast: "Work started — status changed to In Progress"
    - ✅ `start_time` is set
+   - ✅ `assigned_technician_id` is automatically set to the logged-in technician’s ID
    - ✅ Timestamp coherence: `start_time` ≥ `approved_at`
    - ✅ Audit log entries: `WORK_STARTED` + `STATUS_CHANGED`
-
-**Precondition failure test:**
-1. If no technician is assigned → ✅ Error: "Cannot start work: no technician assigned to this job order."
 
 **Role restriction test:**
 1. Log in as **POC** → no "Start Work" button visible for approved JOs (T-only)
@@ -466,11 +462,11 @@ Ensure the following exist:
 
 ---
 
-### Test 13 — Third-Party Repairs
+### Test 13 — Third-Party Repairs (Draft Only)
 
-**Goal:** Verify TPR CRUD within a job order.
+**Goal:** Verify TPR CRUD within a job order. **TPR can only be managed when the JO is in `draft` status.**
 
-1. Open the **Third-Party Repair** action (wrench icon) on a JO
+1. Open the **Third-Party Repair** action (wrench icon) on a `Draft` JO
 2. **Add a repair:**
    - Provider Name: `AutoGlass Shop`
    - Description: `Windshield replacement`
@@ -480,13 +476,20 @@ Ensure the following exist:
    - ✅ Toast: success
    - ✅ Repair appears in the list
    - ✅ Repairs total displayed at the bottom
+   - ✅ `total_amount` on JO recalculates (items total + repairs total)
 3. **Edit a repair:**
    - Click edit on an existing repair
    - Modify the cost
    - Save → toast: update success
+   - ✅ `total_amount` recalculates if cost changed
 4. **Delete a repair:**
    - Click delete on a repair
-   - Confirm → repair is removed
+   - Confirm → repair is hard-deleted (since always draft)
+   - ✅ `total_amount` recalculates
+5. **Draft-only enforcement:**
+   - Verify the wrench icon is **not visible** for non-draft JOs
+   - Attempt API calls to add/edit/delete repairs on non-draft JOs
+   - ✅ Backend returns: `Third-party repairs can only be managed when the job order is in draft status`
 
 ---
 
@@ -641,15 +644,15 @@ Ensure the following exist:
 | Idempotent approval request                           | ⬜     |
 | Record Approval — Approve (stock deduction)           | ⬜     |
 | Record Approval — Reject (terminal, rejection_reason) | ⬜     |
-| Start Work (approved → in_progress, T only)           | ⬜     |
-| Start Work precondition: assigned_technician_id       | ⬜     |
+| Start Work (approved → in_progress, T only, auto-assign) | ⬜     |
+| Start Work precondition: auto-assigns technician      | ⬜     |
 | Mark Ready (in_progress → ready_for_release, T/POC)   | ⬜     |
 | Complete (ready_for_release → completed, HM/POC)      | ⬜     |
 | Cancel with required reason (draft/pending_approval)  | ⬜     |
 | Cancel role enforcement (per status)                  | ⬜     |
 | Hard Delete (draft status — cascade)                  | ⬜     |
 | Soft Delete (other statuses — deleted_at/deleted_by)  | ⬜     |
-| Third-Party Repairs CRUD                              | ⬜     |
+| Third-Party Repairs CRUD (draft only)                  | ⬜     |
 | Cascading Lookups (Branch → Customer → Vehicle)       | ⬜     |
 | Search and Filter (8 status options)                  | ⬜     |
 | Pagination (12 per page)                              | ⬜     |
