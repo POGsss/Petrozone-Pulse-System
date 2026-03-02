@@ -16,8 +16,9 @@ The Vehicle Management module allows authorized users to create and manage vehic
 4. **Branch set at creation** — branch is assigned at creation and cannot be changed in the Edit modal.
 5. **Conditional delete with pre-check** — before showing the delete confirmation, the frontend checks if the vehicle has job order references. If yes, the modal shows "Deactivate" instead of "Delete".
 6. **Vehicle types** — 10 options: Sedan, SUV, Truck, Van, Motorcycle, Hatchback, Coupe, Wagon, Bus, Other.
-7. **OR/CR required** — the vehicle's Official Receipt / Certificate of Registration is mandatory.
-8. **Year validation** — if provided, must be between 1900 and (current year + 1).
+7. **Vehicle class** — weight classification used for job order pricing: Light, Heavy, or Extra Heavy. Defaults to "Light" if not specified. This field is set when creating/editing a vehicle and automatically used when creating job orders.
+8. **OR/CR required** — the vehicle's Official Receipt / Certificate of Registration is mandatory.
+9. **Year validation** — if provided, must be between 1900 and (current year + 1).
 
 ### RBAC (Roles & Permissions)
 
@@ -49,12 +50,12 @@ The Vehicle Management module allows authorized users to create and manage vehic
 
 Use the **"Add New Vehicle"** button. Create each vehicle below:
 
-| #   | Plate Number | Type       | Model             | OR/CR      | Customer           | Branch | Color | Year |
-| --- | ------------ | ---------- | ----------------- | ---------- | ------------------ | ------ | ----- | ---- |
-| 1   | ABC 1234     | Sedan      | Toyota Vios 2022  | 1234567890 | Juan Dela Cruz     | MAIN   | White | 2022 |
-| 2   | XYZ 5678     | SUV        | Ford Everest 2023 | 0987654321 | AutoFleet Corp     | MAIN   | Black | 2023 |
-| 3   | DEF 9012     | Motorcycle | Honda Click 160   | 1122334455 | Maria Clara        | NORTH  | Red   | 2024 |
-| 4   | GHI 3456     | Truck      | Isuzu NLR 2021    | 5566778899 | Pedro Shipping Inc | SOUTH  | Blue  | 2021 |
+| #   | Plate Number | Type       | Model             | OR/CR      | Customer           | Branch | Color | Year | Vehicle Class |
+| --- | ------------ | ---------- | ----------------- | ---------- | ------------------ | ------ | ----- | ---- | ------------- |
+| 1   | ABC 1234     | Sedan      | Toyota Vios 2022  | 1234567890 | Juan Dela Cruz     | MAIN   | White | 2022 | Light         |
+| 2   | XYZ 5678     | SUV        | Ford Everest 2023 | 0987654321 | AutoFleet Corp     | MAIN   | Black | 2023 | Heavy         |
+| 3   | DEF 9012     | Motorcycle | Honda Click 160   | 1122334455 | Maria Clara        | NORTH  | Red   | 2024 | Light         |
+| 4   | GHI 3456     | Truck      | Isuzu NLR 2021    | 5566778899 | Pedro Shipping Inc | SOUTH  | Blue  | 2021 | Extra Heavy   |
 
 ---
 
@@ -80,6 +81,7 @@ Use the **"Add New Vehicle"** button. Create each vehicle below:
    - ✅ **Branch code** badge
    - ✅ **Status** badge ("Active" / "Inactive")
    - ✅ **Vehicle type** label
+   - ✅ **Vehicle class** label (Light / Heavy / Extra Heavy)
    - ✅ **Model**
    - ✅ **OR/CR**
    - ✅ **Color** and **Year** (if present)
@@ -97,6 +99,7 @@ Use the **"Add New Vehicle"** button. Create each vehicle below:
    - **Section: "Vehicle Information"**
      - Plate Number: `abc 1234` (type lowercase — it auto-uppercases)
      - Vehicle Type: `Sedan`
+     - Vehicle Class: `Light`
      - Model: `Toyota Vios 2022`
      - OR/CR: `1234567890`
    - **Section: "Assignment"**
@@ -133,7 +136,7 @@ Use the **"Add New Vehicle"** button. Create each vehicle below:
 
 1. Click on a vehicle card to open the view modal
 2. Verify the **"Vehicle Details"** modal shows:
-   - ✅ **"Vehicle Information"** — Plate Number (monospace), Vehicle Type, Model, OR/CR, Status (all disabled)
+   - ✅ **"Vehicle Information"** — Plate Number (monospace), Vehicle Type, Vehicle Class, Model, OR/CR, Status (all disabled)
    - ✅ **"Assignment"** — Customer, Branch (all disabled)
    - ✅ **"Additional Details"** — Color, Year, Engine Number, Chassis Number, Notes (all disabled)
    - ✅ **"Timestamps"** — Created and Updated dates
@@ -147,9 +150,10 @@ Use the **"Add New Vehicle"** button. Create each vehicle below:
 1. Click the **Edit** (pencil) button on a vehicle card
 2. Verify the **"Edit Vehicle"** modal opens with pre-filled data
 3. Verify that **Branch** is NOT editable (set at creation only)
-4. Change the **Model** to a new value (e.g., `"Toyota Vios 2024 Facelift"`)
-5. Change the **Color** to a new value
-6. Change the **Status** to `Inactive`
+4. Change the **Vehicle Class** to `Heavy`
+5. Change the **Model** to a new value (e.g., `"Toyota Vios 2024 Facelift"`)
+6. Change the **Color** to a new value
+7. Change the **Status** to `Inactive`
 7. Click **"Save Changes"**
 8. Verify:
    - ✅ Toast: `"Vehicle updated successfully"`
@@ -271,6 +275,7 @@ Use the **"Add New Vehicle"** button. Create each vehicle below:
 | Customer Required (Same Branch)               | ⬜     |
 | Branch Set at Creation (Immutable)            | ⬜     |
 | Vehicle Type Selection (10 types)             | ⬜     |
+| Vehicle Class Selection (Light/Heavy/Extra Heavy) | ⬜     |
 | Year Validation (1900 to current+1)           | ⬜     |
 | View Vehicle Details                          | ⬜     |
 | Update Vehicle                                | ⬜     |

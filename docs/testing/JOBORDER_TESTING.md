@@ -10,7 +10,7 @@ The Job Order (JO) module is the central workflow in the system. It manages serv
 
 ### Key Business Rules
 
-1. **Vehicle class pricing** — each JO has a `vehicle_class` (light / heavy / extra\_heavy). When a catalog item is added, the system resolves its pricing matrix and selects the price column matching the vehicle class (e.g., `light_price`, `heavy_price`, or `extra_heavy_price`).
+1. **Vehicle class pricing** — each JO has a `vehicle_class` (light / heavy / extra\_heavy) that is **automatically populated from the selected vehicle's `vehicle_class` field**. When a catalog item is added, the system resolves its pricing matrix and selects the price column matching the vehicle class (e.g., `light_price`, `heavy_price`, or `extra_heavy_price`). The vehicle class is set on the vehicle record itself (via the Vehicle Management page) and cannot be manually overridden during JO creation.
 2. **Pricing formula** — `line_total = (labor_price + inventory_cost) × quantity`, where:
    - `labor_price` = the vehicle-class-specific price from the pricing matrix (0 if no active pricing exists)
    - `inventory_cost` = `Σ(unit_cost × quantity_per_unit)` for all linked inventory items on that catalog item
@@ -19,7 +19,7 @@ The Job Order (JO) module is the central workflow in the system. It manages serv
 5. **Stock deduction on approval** — when a JO is approved, the system aggregates inventory quantities across all JO items and creates `stock_out` movements. If any item has insufficient stock, approval fails with an error.
 6. **Immutability** — once a JO moves past `draft` status, its notes and items are frozen and cannot be modified.
 7. **Branch-scoped** — HM sees all JOs; other roles see only JOs from their assigned branches.
-8. **Cascading lookups** — Branch → Customer (filtered by branch) → Vehicle (filtered by customer).
+8. **Cascading lookups** — Branch → Customer (filtered by branch) → Vehicle (filtered by customer). When a vehicle is selected, the vehicle class is automatically populated from the vehicle record.
 9. **Conditional delete** — `draft` status → hard delete (cascades items, inventories, repairs); other statuses → soft delete (`is_deleted: true`, `deleted_at`, `deleted_by`).
 10. **Cancellation requires reason** — cancelling a JO requires a `cancellation_reason` field.
 11. **Rejection requires reason** — rejecting a JO requires a `rejection_reason` field.
@@ -163,7 +163,7 @@ Ensure the following exist:
    - Select a **Branch** from dropdown (HM sees all, others see assigned branches)
    - Select a **Customer** from dropdown (filtered by selected branch)
    - Select a **Vehicle** from dropdown (filtered by selected customer)
-   - Select **Vehicle Class**: `Light` / `Heavy` / `Extra Heavy`
+   - ✅ **Vehicle Class** is **automatically populated** from the selected vehicle (read-only, displayed as disabled text field)
    - Enter **Notes** (optional)
 4. **Step 2 — Add Catalog Items:**
    - Select a catalog item from the dropdown (shows active items)
@@ -505,18 +505,21 @@ Ensure the following exist:
 
 ---
 
-### Test 15 — Vehicle Class Selection & Price Update
+### Test 15 — Vehicle Class Auto-Population & Price Calculation
 
-**Goal:** Verify changing vehicle class updates pricing.
+**Goal:** Verify that vehicle class is automatically fetched from the vehicle record and prices are calculated accordingly.
 
-1. In the Create JO modal:
-   - Add a catalog item (pricing resolves for current vehicle class)
-   - Note the labor price
-2. Change the **Vehicle Class** (e.g., from Light to Heavy)
-3. Verify:
-   - ✅ The labor price updates to the new vehicle class column
-   - ✅ Line total recalculates accordingly
-   - ✅ If switching to a class where no pricing exists for an item → labor = 0, warning shown
+1. **Pre-requisite:** Ensure vehicles exist with different vehicle classes (Light, Heavy, Extra Heavy) set in Vehicle Management.
+2. In the Create JO modal:
+   - Select a branch and customer
+   - Select a vehicle that has **Vehicle Class = Heavy**
+   - ✅ The Vehicle Class field automatically shows "Heavy Vehicle" (read-only)
+   - Add a catalog item → pricing resolves using the **heavy\_price** column
+3. Change the vehicle to one with **Vehicle Class = Light**
+   - ✅ The Vehicle Class field updates to "Light Vehicle"
+   - ✅ If items were already added, their labor prices recalculate using the **light\_price** column
+   - ✅ Toast: "Prices updated for the vehicle class."
+4. Verify that the Vehicle Class field is **not manually editable** — it is always derived from the selected vehicle.
 
 ---
 
@@ -630,7 +633,7 @@ Ensure the following exist:
 | ----------------------------------------------------- | ------ |
 | View Job Orders (Cards with 8 status badges)          | ⬜     |
 | Create JO with Cascading Lookups                      | ⬜     |
-| Vehicle Class Selection (light/heavy/extra_heavy)     | ⬜     |
+| Vehicle Class Auto-Population from Vehicle        | ⬜     |
 | Pricing Resolution (labor from pricing matrix)        | ⬜     |
 | Inventory Template Loading (from catalog links)       | ⬜     |
 | Editable Inventory Quantities per Item                | ⬜     |
