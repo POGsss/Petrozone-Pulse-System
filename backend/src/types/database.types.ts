@@ -973,6 +973,7 @@ export type Database = {
           plate_number: string
           status: Database["public"]["Enums"]["vehicle_status"]
           updated_at: string
+          vehicle_class: string
           vehicle_type: Database["public"]["Enums"]["vehicle_type"]
           year: number | null
         }
@@ -991,6 +992,7 @@ export type Database = {
           plate_number: string
           status?: Database["public"]["Enums"]["vehicle_status"]
           updated_at?: string
+          vehicle_class?: string
           vehicle_type?: Database["public"]["Enums"]["vehicle_type"]
           year?: number | null
         }
@@ -1009,6 +1011,7 @@ export type Database = {
           plate_number?: string
           status?: Database["public"]["Enums"]["vehicle_status"]
           updated_at?: string
+          vehicle_class?: string
           vehicle_type?: Database["public"]["Enums"]["vehicle_type"]
           year?: number | null
         }

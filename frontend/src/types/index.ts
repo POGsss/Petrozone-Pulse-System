@@ -128,6 +128,7 @@ export interface Vehicle {
   id: string;
   plate_number: string;
   vehicle_type: VehicleType;
+  vehicle_class: VehicleClass;
   orcr: string;
   model: string;
   customer_id: string;
@@ -292,6 +293,7 @@ export interface JobOrder {
     plate_number: string;
     model: string;
     vehicle_type: string;
+    vehicle_class?: string;
   };
   branches?: Branch;
   job_order_items?: JobOrderItem[];

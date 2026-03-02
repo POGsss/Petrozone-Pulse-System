@@ -22,6 +22,8 @@ const VALID_VEHICLE_TYPES = [
   "other",
 ];
 
+const VALID_VEHICLE_CLASSES = ["light", "heavy", "extra_heavy"];
+
 /**
  * GET /api/vehicles
  * Get vehicles with filtering and pagination
@@ -169,6 +171,7 @@ router.post(
       const {
         plate_number,
         vehicle_type,
+        vehicle_class,
         orcr,
         model,
         customer_id,
@@ -191,6 +194,14 @@ router.post(
       if (!vehicle_type || !VALID_VEHICLE_TYPES.includes(vehicle_type)) {
         res.status(400).json({
           error: `Vehicle type must be one of: ${VALID_VEHICLE_TYPES.join(", ")}`,
+        });
+        return;
+      }
+
+      // Validation: vehicle_class (optional, defaults to 'light')
+      if (vehicle_class && !VALID_VEHICLE_CLASSES.includes(vehicle_class)) {
+        res.status(400).json({
+          error: `Vehicle class must be one of: ${VALID_VEHICLE_CLASSES.join(", ")}`,
         });
         return;
       }
@@ -273,6 +284,7 @@ router.post(
         .insert({
           plate_number: plate_number.trim().toUpperCase(),
           vehicle_type,
+          vehicle_class: vehicle_class || "light",
           orcr: orcr.trim(),
           model: model.trim(),
           customer_id,
@@ -329,6 +341,7 @@ router.put(
       const {
         plate_number,
         vehicle_type,
+        vehicle_class,
         orcr,
         model,
         customer_id,
@@ -399,6 +412,16 @@ router.put(
           return;
         }
         updateData.vehicle_type = vehicle_type;
+      }
+
+      if (vehicle_class !== undefined) {
+        if (!VALID_VEHICLE_CLASSES.includes(vehicle_class)) {
+          res.status(400).json({
+            error: `Vehicle class must be one of: ${VALID_VEHICLE_CLASSES.join(", ")}`,
+          });
+          return;
+        }
+        updateData.vehicle_class = vehicle_class;
       }
 
       if (orcr !== undefined) {

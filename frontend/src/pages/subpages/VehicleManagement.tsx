@@ -39,6 +39,16 @@ const VEHICLE_TYPE_OPTIONS = [
   { value: "other", label: "Other" },
 ];
 
+const VEHICLE_CLASS_OPTIONS = [
+  { value: "light", label: "Light" },
+  { value: "heavy", label: "Heavy" },
+  { value: "extra_heavy", label: "Extra Heavy" },
+];
+
+function vehicleClassLabel(vc: string): string {
+  return VEHICLE_CLASS_OPTIONS.find((o) => o.value === vc)?.label || vc;
+}
+
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-US", {
     year: "numeric",
@@ -79,6 +89,7 @@ export function VehicleManagement() {
   const [addForm, setAddForm] = useState({
     plate_number: "",
     vehicle_type: "sedan",
+    vehicle_class: "light" as string,
     orcr: "",
     model: "",
     customer_id: "",
@@ -102,6 +113,7 @@ export function VehicleManagement() {
   const [editForm, setEditForm] = useState({
     plate_number: "",
     vehicle_type: "sedan",
+    vehicle_class: "light" as string,
     orcr: "",
     model: "",
     customer_id: "",
@@ -240,6 +252,7 @@ export function VehicleManagement() {
     setAddForm({
       plate_number: "",
       vehicle_type: "sedan",
+      vehicle_class: "light",
       orcr: "",
       model: "",
       customer_id: "",
@@ -291,6 +304,7 @@ export function VehicleManagement() {
       await vehiclesApi.create({
         plate_number: addForm.plate_number.trim(),
         vehicle_type: addForm.vehicle_type,
+        vehicle_class: addForm.vehicle_class,
         orcr: addForm.orcr.trim(),
         model: addForm.model.trim(),
         customer_id: addForm.customer_id,
@@ -324,6 +338,7 @@ export function VehicleManagement() {
     setEditForm({
       plate_number: vehicle.plate_number,
       vehicle_type: vehicle.vehicle_type,
+      vehicle_class: vehicle.vehicle_class || "light",
       orcr: vehicle.orcr,
       model: vehicle.model,
       customer_id: vehicle.customer_id,
@@ -372,6 +387,7 @@ export function VehicleManagement() {
       await vehiclesApi.update(selectedVehicle.id, {
         plate_number: editForm.plate_number.trim(),
         vehicle_type: editForm.vehicle_type,
+        vehicle_class: editForm.vehicle_class,
         orcr: editForm.orcr.trim(),
         model: editForm.model.trim(),
         customer_id: editForm.customer_id,
@@ -518,7 +534,7 @@ export function VehicleManagement() {
 
             {/* Vehicle details */}
             <div className="space-y-1 text-sm text-neutral-900 mb-3">
-              <p className="text-neutral-900">{vehicleTypeLabel(vehicle.vehicle_type)}</p>
+              <p className="text-neutral-900">{vehicleTypeLabel(vehicle.vehicle_type)} · {vehicleClassLabel(vehicle.vehicle_class || "light")}</p>
               <p className="text-neutral-900">{vehicle.model}</p>
               <p className="text-neutral-900">{vehicle.orcr}</p>
               {vehicle.color && <p className="text-neutral-900">{vehicle.color}{vehicle.year ? ` · ${vehicle.year}` : ""}</p>}
@@ -617,6 +633,13 @@ export function VehicleManagement() {
                 setAddForm((prev) => ({ ...prev, vehicle_type: v }))
               }
               options={VEHICLE_TYPE_OPTIONS}
+            />
+            <ModalSelect
+              value={addForm.vehicle_class}
+              onChange={(v) =>
+                setAddForm((prev) => ({ ...prev, vehicle_class: v }))
+              }
+              options={VEHICLE_CLASS_OPTIONS}
             />
             <ModalInput
               type="text"
@@ -733,6 +756,12 @@ export function VehicleManagement() {
                 value={viewVehicle.vehicle_type}
                 onChange={() => { }}
                 options={VEHICLE_TYPE_OPTIONS}
+                disabled
+              />
+              <ModalSelect
+                value={viewVehicle.vehicle_class || "light"}
+                onChange={() => { }}
+                options={VEHICLE_CLASS_OPTIONS}
                 disabled
               />
               <ModalInput
@@ -870,6 +899,13 @@ export function VehicleManagement() {
                 setEditForm((prev) => ({ ...prev, vehicle_type: v }))
               }
               options={VEHICLE_TYPE_OPTIONS}
+            />
+            <ModalSelect
+              value={editForm.vehicle_class}
+              onChange={(v) =>
+                setEditForm((prev) => ({ ...prev, vehicle_class: v }))
+              }
+              options={VEHICLE_CLASS_OPTIONS}
             />
             <ModalInput
               type="text"

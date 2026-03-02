@@ -462,6 +462,35 @@ export function JobOrderManagement() {
   function handleCustomerChange(newCustomerId: string) {
     setAddCustomerId(newCustomerId);
     setAddVehicleId("");
+    setAddVehicleClass("light");
+  }
+
+  // When vehicle changes, auto-set vehicle class from selected vehicle
+  function handleVehicleChange(newVehicleId: string) {
+    setAddVehicleId(newVehicleId);
+    if (newVehicleId) {
+      const selectedVehicle = vehicles.find((v) => v.id === newVehicleId);
+      if (selectedVehicle?.vehicle_class) {
+        const newClass = selectedVehicle.vehicle_class as VehicleClass;
+        setAddVehicleClass(newClass);
+        // Recalculate prices for existing draft items based on new vehicle class
+        if (draftItems.length > 0) {
+          setDraftItems((prev) =>
+            prev.map((item) => {
+              const priceKey = `${newClass}_price` as "light_price" | "heavy_price" | "extra_heavy_price";
+              const newLaborPrice = item.resolved_pricing ? (item.resolved_pricing[priceKey] || 0) : 0;
+              const newLineTotal = (newLaborPrice + item.inventory_cost) * item.quantity;
+              return { ...item, labor_price: newLaborPrice, line_total: newLineTotal };
+            })
+          );
+          showToast.info("Prices updated for the vehicle class.");
+        }
+      } else {
+        setAddVehicleClass("light");
+      }
+    } else {
+      setAddVehicleClass("light");
+    }
   }
 
   // Add a catalog item to draft
@@ -1458,34 +1487,17 @@ export function JobOrderManagement() {
             />
             <ModalSelect
               value={addVehicleId}
-              onChange={setAddVehicleId}
+              onChange={handleVehicleChange}
               placeholder={loadingLookups ? "Loading vehicles..." : "Select Vehicle *"}
               options={vehicleOptions}
               disabled={loadingLookups || !addCustomerId}
             />
-            <ModalSelect
-              value={addVehicleClass}
-              onChange={(v) => {
-                const newClass = v as VehicleClass;
-                setAddVehicleClass(newClass);
-                // Recalculate prices for existing draft items based on new vehicle class
-                if (draftItems.length > 0) {
-                  setDraftItems((prev) =>
-                    prev.map((item) => {
-                      const priceKey = `${newClass}_price` as "light_price" | "heavy_price" | "extra_heavy_price";
-                      const newLaborPrice = item.resolved_pricing ? (item.resolved_pricing[priceKey] || 0) : 0;
-                      const newLineTotal = (newLaborPrice + item.inventory_cost) * item.quantity;
-                      return { ...item, labor_price: newLaborPrice, line_total: newLineTotal };
-                    })
-                  );
-                  showToast.info("Prices updated for the new vehicle class.");
-                }
-              }}
-              options={[
-                { value: "light", label: "Light Vehicle" },
-                { value: "heavy", label: "Heavy Vehicle" },
-                { value: "extra_heavy", label: "Extra Heavy Vehicle" },
-              ]}
+            <ModalInput
+              type="text"
+              value={addVehicleClass === "light" ? "Light Vehicle" : addVehicleClass === "heavy" ? "Heavy Vehicle" : addVehicleClass === "extra_heavy" ? "Extra Heavy Vehicle" : "Light Vehicle"}
+              onChange={() => {}}
+              placeholder="Vehicle Class"
+              disabled
             />
             <textarea
               value={addNotes}

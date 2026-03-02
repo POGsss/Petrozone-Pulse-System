@@ -419,6 +419,7 @@ export const vehiclesApi = {
   create: async (data: {
     plate_number: string;
     vehicle_type: string;
+    vehicle_class?: string;
     orcr: string;
     model: string;
     customer_id: string;
@@ -441,6 +442,7 @@ export const vehiclesApi = {
     data: {
       plate_number?: string;
       vehicle_type?: string;
+      vehicle_class?: string;
       orcr?: string;
       model?: string;
       customer_id?: string;
