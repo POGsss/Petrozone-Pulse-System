@@ -627,7 +627,7 @@ export function NotificationManagement() {
             </thead>
             <tbody>
               {paginatedNotifications.map((n) => (
-                <tr key={n.id} onClick={() => openViewModal(n)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer">
+                <tr key={n.id} onClick={() => openViewModal(n)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer last:border-b-0">
                   <td className="py-3 px-4 whitespace-nowrap">
                     <span className="font-medium text-neutral-900">{n.title}</span>
                   </td>

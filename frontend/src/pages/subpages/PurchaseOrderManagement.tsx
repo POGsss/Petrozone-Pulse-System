@@ -937,7 +937,7 @@ export function PurchaseOrderManagement() {
                 const showDots = dropdownActions.length > 0;
 
                 return (
-                  <tr key={order.id} onClick={() => openViewModal(order)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer">
+                  <tr key={order.id} onClick={() => openViewModal(order)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer last:border-b-0">
                     <td className="py-3 px-4 whitespace-nowrap">
                       <span className="font-medium text-neutral-900">{order.po_number}</span>
                     </td>

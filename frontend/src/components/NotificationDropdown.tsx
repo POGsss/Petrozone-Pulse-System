@@ -185,7 +185,7 @@ export function NotificationDropdown({ onViewAll }: NotificationDropdownProps) {
                           {notif.message}
                         </p>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[10px] text-neutral-500">
+                          <span className="text-[10px] text-primary-900">
                             {formatTime(receipt.delivered_at)}
                           </span>
                           {notif.notification_type === "system" && (

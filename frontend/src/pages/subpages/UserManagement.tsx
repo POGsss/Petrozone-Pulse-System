@@ -706,7 +706,7 @@ export function UserManagement() {
             </thead>
             <tbody>
               {paginatedUsers.map((user) => (
-                <tr key={user.id} onClick={() => openViewModal(user)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer">
+                <tr key={user.id} onClick={() => openViewModal(user)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer last:border-b-0">
                   <td className="py-3 px-4 whitespace-nowrap">
                     <span className="font-medium text-neutral-900">{user.full_name}</span>
                   </td>

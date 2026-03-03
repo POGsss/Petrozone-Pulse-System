@@ -793,7 +793,7 @@ export function InventoryManagement() {
             </thead>
             <tbody>
               {paginatedItems.map((item) => (
-                <tr key={item.id} onClick={() => openViewModal(item)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer">
+                <tr key={item.id} onClick={() => openViewModal(item)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer last:border-b-0">
                   <td className="py-3 px-4 whitespace-nowrap">
                     <span className="font-medium text-neutral-900">{item.item_name}</span>
                   </td>

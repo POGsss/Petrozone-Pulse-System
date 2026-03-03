@@ -543,7 +543,7 @@ export function PricingManagement() {
                 <tr
                   key={item.id}
                   onClick={() => openViewModal(item)}
-                  className="border-b border-neutral-100 hover:bg-neutral-100 transition-colors cursor-pointer"
+                  className="border-b border-neutral-100 hover:bg-neutral-100 transition-colors cursor-pointer last:border-b-0"
                 >
                   <td className="py-3 px-4 text-sm text-neutral-900">
                     <span className="font-medium">{item.catalog_items?.name || "Unknown"}</span>

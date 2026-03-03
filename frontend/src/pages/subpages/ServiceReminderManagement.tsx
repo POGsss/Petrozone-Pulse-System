@@ -15,8 +15,6 @@ import {
   LuBan,
   LuMail,
   LuMessageSquare,
-  LuCheck,
-  LuX,
 } from "react-icons/lu";
 import { showToast } from "../../lib/toast";
 import { serviceRemindersApi, customersApi, vehiclesApi, branchesApi } from "../../lib/api";
@@ -70,11 +68,10 @@ export function ServiceReminderManagement() {
   const [form, setForm] = useState({
     customer_id: "",
     vehicle_id: "",
-    service_type: "",
+    service_type: "", // Used as "Subject" in UI
     scheduled_at: "",
     delivery_method: "email" as string,
     message_template: "",
-    branch_id: "",
     status: "draft" as string,
   });
 
@@ -165,7 +162,6 @@ export function ServiceReminderManagement() {
       scheduled_at: "",
       delivery_method: "email",
       message_template: "",
-      branch_id: user?.branches?.[0]?.branch_id || "",
       status: "draft",
     });
     setFormError(null);
@@ -185,7 +181,6 @@ export function ServiceReminderManagement() {
       scheduled_at: r.scheduled_at ? new Date(r.scheduled_at).toISOString().slice(0, 16) : "",
       delivery_method: r.delivery_method,
       message_template: r.message_template,
-      branch_id: r.branch_id,
       status: r.status,
     });
     setFormError(null);
@@ -218,10 +213,14 @@ export function ServiceReminderManagement() {
 
     if (!form.customer_id) { setFormError("Customer is required"); return; }
     if (!form.vehicle_id) { setFormError("Vehicle is required"); return; }
-    if (!form.service_type.trim()) { setFormError("Service type is required"); return; }
+    if (!form.service_type.trim()) { setFormError("Subject is required"); return; }
     if (!form.scheduled_at) { setFormError("Scheduled date is required"); return; }
-    if (!form.message_template.trim()) { setFormError("Message template is required"); return; }
-    if (!form.branch_id) { setFormError("Branch is required"); return; }
+    if (!form.message_template.trim()) { setFormError("Message is required"); return; }
+
+    // Auto-derive branch from selected customer
+    const selectedCustomer = customers.find((c) => c.id === form.customer_id);
+    const branchId = selectedCustomer?.branch_id || user?.branches?.[0]?.branch_id || "";
+    if (!branchId) { setFormError("Could not determine branch"); return; }
 
     try {
       setSaving(true);
@@ -232,7 +231,7 @@ export function ServiceReminderManagement() {
         scheduled_at: new Date(form.scheduled_at).toISOString(),
         delivery_method: form.delivery_method,
         message_template: form.message_template.trim(),
-        branch_id: form.branch_id,
+        branch_id: branchId,
         status: form.status,
       });
       showToast.success("Service reminder created");
@@ -324,11 +323,11 @@ export function ServiceReminderManagement() {
   }
 
   const statusConfig: Record<string, { label: string; className: string }> = {
-    draft: { label: "Draft", className: "bg-neutral-100 text-neutral-600" },
-    scheduled: { label: "Scheduled", className: "bg-blue-50 text-blue-700" },
-    sent: { label: "Sent", className: "bg-positive-50 text-positive" },
-    failed: { label: "Failed", className: "bg-negative-50 text-negative" },
-    cancelled: { label: "Cancelled", className: "bg-neutral-100 text-neutral-500" },
+    draft: { label: "Draft", className: "bg-neutral-100 text-neutral-950" },
+    scheduled: { label: "Scheduled", className: "bg-positive-100 text-blue-950" },
+    sent: { label: "Sent", className: "bg-positive-50 text-positive-950" },
+    failed: { label: "Failed", className: "bg-negative-50 text-negative-950" },
+    cancelled: { label: "Cancelled", className: "bg-negative-100 text-negative-950" },
   };
 
   // Form fields JSX (reused for create & edit)
@@ -349,39 +348,38 @@ export function ServiceReminderManagement() {
         />
       </ModalSection>
 
-      <ModalSection title="Service Details">
+      <ModalSection title="Message Details">
         <ModalInput
           value={form.service_type}
           onChange={(v) => setForm({ ...form, service_type: v })}
-          placeholder="Service Type *"
+          placeholder="Subject *"
           required
-        />
-        <ModalInput
-          type="date"
-          value={form.scheduled_at}
-          onChange={(v) => setForm({ ...form, scheduled_at: v })}
-          placeholder="Scheduled Date *"
-          required
-        />
-        <ModalSelect
-          value={form.delivery_method}
-          onChange={(v) => setForm({ ...form, delivery_method: v })}
-          options={[
-            { value: "email", label: "Email" },
-            { value: "sms", label: "SMS" },
-          ]}
-          placeholder="Delivery Method *"
         />
         <textarea
           value={form.message_template}
           onChange={(e) => setForm({ ...form, message_template: e.target.value })}
-          placeholder="Message Template *"
+          placeholder="Message *"
           rows={3}
           className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
         />
-      </ModalSection>
-
-      <ModalSection title="Configuration">
+        <div className="grid grid-cols-2 gap-4">
+          <ModalSelect
+            value={form.delivery_method}
+            onChange={(v) => setForm({ ...form, delivery_method: v })}
+            options={[
+              { value: "email", label: "Email" },
+              { value: "sms", label: "SMS" },
+            ]}
+            placeholder="Reminder Type *"
+          />
+          <ModalInput
+            type="date"
+            value={form.scheduled_at}
+            onChange={(v) => setForm({ ...form, scheduled_at: v })}
+            placeholder="Scheduled Date *"
+            required
+          />
+        </div>
         <ModalSelect
           value={form.status}
           onChange={(v) => setForm({ ...form, status: v })}
@@ -390,12 +388,6 @@ export function ServiceReminderManagement() {
             { value: "scheduled", label: "Scheduled" },
           ]}
           placeholder="Status"
-        />
-        <ModalSelect
-          value={form.branch_id}
-          onChange={(v) => setForm({ ...form, branch_id: v })}
-          options={branches.map((b) => ({ value: b.id, label: b.name }))}
-          placeholder="Select Branch *"
         />
       </ModalSection>
     </>
@@ -443,7 +435,7 @@ export function ServiceReminderManagement() {
       </div>
 
       {/* Summary Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div className="bg-white border border-neutral-200 rounded-xl p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-primary-100 rounded-lg">
@@ -457,8 +449,8 @@ export function ServiceReminderManagement() {
         </div>
         <div className="bg-white border border-neutral-200 rounded-xl p-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-neutral-200 rounded-lg">
-              <LuPencil className="w-5 h-5 text-neutral-600" />
+            <div className="p-2 bg-positive-200 rounded-lg">
+              <LuPencil className="w-5 h-5 text-positive-950" />
             </div>
             <div>
               <p className="text-sm text-neutral-900">Draft</p>
@@ -468,34 +460,12 @@ export function ServiceReminderManagement() {
         </div>
         <div className="bg-white border border-neutral-200 rounded-xl p-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <LuClock className="w-5 h-5 text-primary" />
+            <div className="p-2 bg-negative-100 rounded-lg">
+              <LuClock className="w-5 h-5 text-negative-950" />
             </div>
             <div>
               <p className="text-sm text-neutral-900">Scheduled</p>
               <p className="text-2xl font-bold text-neutral-950">{stats.scheduled}</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white border border-neutral-200 rounded-xl p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <LuCheck className="w-5 h-5 text-positive" />
-            </div>
-            <div>
-              <p className="text-sm text-neutral-900">Sent</p>
-              <p className="text-2xl font-bold text-neutral-950">{stats.sent}</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white border border-neutral-200 rounded-xl p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-negative-100 rounded-lg">
-              <LuX className="w-5 h-5 text-negative" />
-            </div>
-            <div>
-              <p className="text-sm text-neutral-900">Failed</p>
-              <p className="text-2xl font-bold text-neutral-950">{stats.failed}</p>
             </div>
           </div>
         </div>
@@ -683,7 +653,7 @@ export function ServiceReminderManagement() {
             <thead>
               <tr className="border-b border-neutral-200 bg-neutral-100">
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Customer</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Service</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Subject</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Scheduled</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Method</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Status</th>
@@ -694,7 +664,7 @@ export function ServiceReminderManagement() {
               {paginatedReminders.map((r) => {
                 const sc = statusConfig[r.status] || statusConfig.draft;
                 return (
-                  <tr key={r.id} onClick={() => openViewModal(r)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer">
+                  <tr key={r.id} onClick={() => openViewModal(r)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer last:border-b-0">
                     <td className="py-3 px-4 whitespace-nowrap">
                       <span className="font-medium text-neutral-900">{r.customers?.full_name || "—"}</span>
                     </td>
@@ -862,26 +832,12 @@ export function ServiceReminderManagement() {
               />
             </ModalSection>
 
-            <ModalSection title="Service Details">
+            <ModalSection title="Message Details">
               <ModalInput
                 type="text"
                 value={selectedReminder.service_type}
                 onChange={() => {}}
-                placeholder="Service Type"
-                disabled
-              />
-              <ModalInput
-                type="text"
-                value={new Date(selectedReminder.scheduled_at).toLocaleString()}
-                onChange={() => {}}
-                placeholder="Scheduled At"
-                disabled
-              />
-              <ModalInput
-                type="text"
-                value={selectedReminder.delivery_method.toUpperCase()}
-                onChange={() => {}}
-                placeholder="Delivery Method"
+                placeholder="Subject"
                 disabled
               />
               <textarea
@@ -889,12 +845,25 @@ export function ServiceReminderManagement() {
                 readOnly
                 disabled
                 rows={3}
-                placeholder="Message Template"
+                placeholder="Message"
                 className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none transition-all resize-none"
               />
-            </ModalSection>
-
-            <ModalSection title="Status & Details">
+              <div className="grid grid-cols-2 gap-4">
+                <ModalInput
+                  type="text"
+                  value={selectedReminder.delivery_method.toUpperCase()}
+                  onChange={() => {}}
+                  placeholder="Reminder Type"
+                  disabled
+                />
+                <ModalInput
+                  type="text"
+                  value={new Date(selectedReminder.scheduled_at).toLocaleString()}
+                  onChange={() => {}}
+                  placeholder="Scheduled At"
+                  disabled
+                />
+              </div>
               <ModalSelect
                 value={selectedReminder.status}
                 onChange={() => {}}
@@ -907,6 +876,9 @@ export function ServiceReminderManagement() {
                 ]}
                 disabled
               />
+            </ModalSection>
+
+            <ModalSection title="Additional Details">
               <ModalInput
                 type="text"
                 value={selectedReminder.branches?.name || "—"}
