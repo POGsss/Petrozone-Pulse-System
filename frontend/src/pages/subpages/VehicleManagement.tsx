@@ -542,32 +542,34 @@ export function VehicleManagement() {
             </div>
 
             {/* Actions */}
-            <div className={`flex items-center justify-end ${canUpdate || canDelete ? "gap-4 pt-3 border-t border-neutral-200" : ""}`}>
-              {canUpdate && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openEditModal(vehicle);
-                  }}
-                  className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-                >
-                  <LuPencil className="w-4 h-4" />
-                  Edit
-                </button>
-              )}
-              {canDelete && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openDeleteConfirmModal(vehicle);
-                  }}
-                  className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                >
-                  <LuTrash2 className="w-4 h-4" />
-                  Delete
-                </button>
-              )}
-            </div>
+            {(canUpdate || canDelete) && (
+              <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
+                {canUpdate && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openEditModal(vehicle);
+                    }}
+                    className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
+                  >
+                    <LuPencil className="w-4 h-4" />
+                    Edit
+                  </button>
+                )}
+                {canDelete && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openDeleteConfirmModal(vehicle);
+                    }}
+                    className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
+                  >
+                    <LuTrash2 className="w-4 h-4" />
+                    Delete
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ))}
 

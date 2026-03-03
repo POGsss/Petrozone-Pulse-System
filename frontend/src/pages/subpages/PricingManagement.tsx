@@ -492,26 +492,28 @@ export function PricingManagement() {
                 </div>
 
                 {/* Actions */}
-                <div className={`flex items-center justify-end ${canUpdate || canDelete ? "gap-4 pt-3 border-t border-neutral-200" : ""}`}>
-                  {canUpdate && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openEditModal(item); }}
-                      className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-                    >
-                      <LuPencil className="w-4 h-4" />
-                      Edit
-                    </button>
-                  )}
-                  {canDelete && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openDeleteModal(item); }}
-                      className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                    >
-                      <LuTrash2 className="w-4 h-4" />
-                      Delete
-                    </button>
-                  )}
-                </div>
+                {(canUpdate || canDelete) && (
+                  <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
+                    {canUpdate && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openEditModal(item); }}
+                        className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
+                      >
+                        <LuPencil className="w-4 h-4" />
+                        Edit
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openDeleteModal(item); }}
+                        className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
+                      >
+                        <LuTrash2 className="w-4 h-4" />
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
 
@@ -524,7 +526,7 @@ export function PricingManagement() {
         </div>
 
         {/* Desktop Table View */}
-        <div className="hidden md:block overflow-x-auto">
+        <div className="hidden md:block">
           <table className="w-full">
             <thead>
               <tr className="border-b border-neutral-200 bg-neutral-100">

@@ -709,62 +709,72 @@ export function InventoryManagement() {
                 </div>
 
                 {/* Actions */}
-                <div className={`flex items-center justify-end ${canUpdate || canDelete ? "gap-4 pt-3 border-t border-neutral-200" : ""}`}>
-                  {canUpdate && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openEditModal(item); }}
-                      className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-                    >
-                      <LuPencil className="w-4 h-4" />
-                      Edit
-                    </button>
-                  )}
-                  {canDelete && item.status === "active" && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openDeleteConfirmModal(item); }}
-                      className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                    >
-                      <LuTrash2 className="w-4 h-4" />
-                      Delete
-                    </button>
-                  )}
-                  {/* More actions dropdown */}
-                  <div className="relative" ref={openDropdownId === `card-${item.id}` ? dropdownRef : undefined}>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${item.id}` ? null : `card-${item.id}`); }}
-                      className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
-                      title="More actions"
-                    >
-                      <LuEllipsisVertical className="w-4 h-4" /> More
-                    </button>
-                    {openDropdownId === `card-${item.id}` && (
-                      <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                {(() => {
+                  const canEditThis = canUpdate;
+                  const canDeleteThis = canDelete && item.status === "active";
+                  const showDots = true; // always show for Movement History
+                  const hasActions = canEditThis || canDeleteThis || showDots;
+                  return hasActions ? (
+                    <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
+                      {canEditThis && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); closeDropdown(); setShowMovementsModal(true); setMovementsItem(item); setMovements([]); setMovementsLoading(true); inventoryApi.getMovements(item.id, { limit: 100 }).then((res) => { setMovements(res.data); }).catch(() => { }).finally(() => { setMovementsLoading(false); }); }}
-                          className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                          onClick={(e) => { e.stopPropagation(); openEditModal(item); }}
+                          className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
                         >
-                          <LuHistory className="w-4 h-4" /> Movement History
+                          <LuPencil className="w-4 h-4" />
+                          Edit
                         </button>
-                        {canStockIn && item.status === "active" && (
+                      )}
+                      {canDeleteThis && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openDeleteConfirmModal(item); }}
+                          className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
+                        >
+                          <LuTrash2 className="w-4 h-4" />
+                          Delete
+                        </button>
+                      )}
+                      {/* More actions dropdown */}
+                      {showDots && (
+                        <div className="relative" ref={openDropdownId === `card-${item.id}` ? dropdownRef : undefined}>
                           <button
-                            onClick={(e) => { e.stopPropagation(); closeDropdown(); openStockInModal(item); }}
-                            className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                            onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${item.id}` ? null : `card-${item.id}`); }}
+                            className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+                            title="More actions"
                           >
-                            <LuCircleArrowUp className="w-4 h-4" /> Stock In
+                            <LuEllipsisVertical className="w-4 h-4" /> More
                           </button>
-                        )}
-                        {canAdjust && item.status === "active" && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); closeDropdown(); openAdjustModal(item); }}
-                            className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                          >
-                            <LuCircleArrowDown className="w-4 h-4" /> Adjust Stock
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                          {openDropdownId === `card-${item.id}` && (
+                            <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); closeDropdown(); setShowMovementsModal(true); setMovementsItem(item); setMovements([]); setMovementsLoading(true); inventoryApi.getMovements(item.id, { limit: 100 }).then((res) => { setMovements(res.data); }).catch(() => { }).finally(() => { setMovementsLoading(false); }); }}
+                                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                              >
+                                <LuHistory className="w-4 h-4" /> Movement History
+                              </button>
+                              {canStockIn && item.status === "active" && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); closeDropdown(); openStockInModal(item); }}
+                                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                >
+                                  <LuCircleArrowUp className="w-4 h-4" /> Stock In
+                                </button>
+                              )}
+                              {canAdjust && item.status === "active" && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); closeDropdown(); openAdjustModal(item); }}
+                                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                >
+                                  <LuCircleArrowDown className="w-4 h-4" /> Adjust Stock
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ) : null;
+                })()}
               </div>
             ))}
 
@@ -792,7 +802,11 @@ export function InventoryManagement() {
               </tr>
             </thead>
             <tbody>
-              {paginatedItems.map((item) => (
+              {paginatedItems.map((item) => {
+                const canEditThis = canUpdate;
+                const canDeleteThis = canDelete && item.status === "active";
+                const showDots = true; // always show for Movement History
+                return (
                 <tr key={item.id} onClick={() => openViewModal(item)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer last:border-b-0">
                   <td className="py-3 px-4 whitespace-nowrap">
                     <span className="font-medium text-neutral-900">{item.item_name}</span>
@@ -822,7 +836,7 @@ export function InventoryManagement() {
                   </td>
                   <td className="py-3 px-4 whitespace-nowrap">
                     <div className="flex items-center justify-center gap-2">
-                      {canUpdate && (
+                      {canEditThis && (
                         <button
                           onClick={(e) => { e.stopPropagation(); openEditModal(item); }}
                           className="p-2 text-primary-950 hover:text-primary-900 hover:bg-primary-50 rounded-lg transition-colors"
@@ -831,7 +845,7 @@ export function InventoryManagement() {
                           <LuPencil className="w-4 h-4" />
                         </button>
                       )}
-                      {canDelete && item.status === "active" && (
+                      {canDeleteThis && (
                         <button
                           onClick={(e) => { e.stopPropagation(); openDeleteConfirmModal(item); }}
                           className="p-2 text-negative-950 hover:text-negative-900 hover:bg-negative-50 rounded-lg transition-colors"
@@ -841,45 +855,48 @@ export function InventoryManagement() {
                         </button>
                       )}
                       {/* More actions dropdown */}
-                      <div className="relative" ref={openDropdownId === `table-${item.id}` ? dropdownRef : undefined}>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `table-${item.id}` ? null : `table-${item.id}`); }}
-                          className="p-2 text-neutral-950 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"
-                          title="More actions"
-                        >
-                          <LuEllipsisVertical className="w-4 h-4" />
-                        </button>
-                        {openDropdownId === `table-${item.id}` && (
-                          <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); closeDropdown(); setShowMovementsModal(true); setMovementsItem(item); setMovements([]); setMovementsLoading(true); inventoryApi.getMovements(item.id, { limit: 100 }).then((res) => { setMovements(res.data); }).catch(() => { }).finally(() => { setMovementsLoading(false); }); }}
-                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                            >
-                              <LuHistory className="w-4 h-4" /> Movement History
-                            </button>
-                            {canStockIn && item.status === "active" && (
+                      {showDots && (
+                        <div className="relative" ref={openDropdownId === `table-${item.id}` ? dropdownRef : undefined}>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `table-${item.id}` ? null : `table-${item.id}`); }}
+                            className="p-2 text-neutral-950 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"
+                            title="More actions"
+                          >
+                            <LuEllipsisVertical className="w-4 h-4" />
+                          </button>
+                          {openDropdownId === `table-${item.id}` && (
+                            <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
                               <button
-                                onClick={(e) => { e.stopPropagation(); closeDropdown(); openStockInModal(item); }}
+                                onClick={(e) => { e.stopPropagation(); closeDropdown(); setShowMovementsModal(true); setMovementsItem(item); setMovements([]); setMovementsLoading(true); inventoryApi.getMovements(item.id, { limit: 100 }).then((res) => { setMovements(res.data); }).catch(() => { }).finally(() => { setMovementsLoading(false); }); }}
                                 className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
                               >
-                                <LuCircleArrowUp className="w-4 h-4" /> Stock In
+                                <LuHistory className="w-4 h-4" /> Movement History
                               </button>
-                            )}
-                            {canAdjust && item.status === "active" && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); closeDropdown(); openAdjustModal(item); }}
-                                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                              >
-                                <LuCircleArrowDown className="w-4 h-4" /> Adjust Stock
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                              {canStockIn && item.status === "active" && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); closeDropdown(); openStockInModal(item); }}
+                                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                >
+                                  <LuCircleArrowUp className="w-4 h-4" /> Stock In
+                                </button>
+                              )}
+                              {canAdjust && item.status === "active" && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); closeDropdown(); openAdjustModal(item); }}
+                                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                >
+                                  <LuCircleArrowDown className="w-4 h-4" /> Adjust Stock
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
 

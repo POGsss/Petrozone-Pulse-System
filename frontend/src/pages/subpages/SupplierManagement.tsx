@@ -561,52 +561,62 @@ export function SupplierManagement() {
               {supplier.address && <p className="text-neutral-900">{supplier.address}</p>}
             </div>
 
-            <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
-              {canWrite && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openEditModal(supplier);
-                  }}
-                  className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-                >
-                  <LuPencil className="w-4 h-4" />
-                  Edit
-                </button>
-              )}
-              {canWrite && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openDeleteConfirm(supplier);
-                  }}
-                  className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                >
-                  <LuTrash2 className="w-4 h-4" />
-                  Delete
-                </button>
-              )}
-              {/* More actions dropdown */}
-              <div className="relative" ref={openDropdownId === `card-${supplier.id}` ? dropdownRef : undefined}>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${supplier.id}` ? null : `card-${supplier.id}`); }}
-                  className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
-                  title="More actions"
-                >
-                  <LuEllipsisVertical className="w-4 h-4" /> More
-                </button>
-                {openDropdownId === `card-${supplier.id}` && (
-                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+            {(() => {
+              const canEditThis = canWrite;
+              const canDeleteThis = canWrite;
+              const showDots = true; // always show for Manage Products
+              const hasActions = canEditThis || canDeleteThis || showDots;
+              return hasActions ? (
+                <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
+                  {canEditThis && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); closeDropdown(); openManageProductsModal(supplier); }}
-                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEditModal(supplier);
+                      }}
+                      className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
                     >
-                      <LuPackage className="w-4 h-4" /> Manage Products
+                      <LuPencil className="w-4 h-4" />
+                      Edit
                     </button>
-                  </div>
-                )}
-              </div>
-            </div>
+                  )}
+                  {canDeleteThis && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openDeleteConfirm(supplier);
+                      }}
+                      className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
+                    >
+                      <LuTrash2 className="w-4 h-4" />
+                      Delete
+                    </button>
+                  )}
+                  {/* More actions dropdown */}
+                  {showDots && (
+                    <div className="relative" ref={openDropdownId === `card-${supplier.id}` ? dropdownRef : undefined}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${supplier.id}` ? null : `card-${supplier.id}`); }}
+                        className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+                        title="More actions"
+                      >
+                        <LuEllipsisVertical className="w-4 h-4" /> More
+                      </button>
+                      {openDropdownId === `card-${supplier.id}` && (
+                        <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); closeDropdown(); openManageProductsModal(supplier); }}
+                            className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                          >
+                            <LuPackage className="w-4 h-4" /> Manage Products
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : null;
+            })()}
           </div>
         ))}
 

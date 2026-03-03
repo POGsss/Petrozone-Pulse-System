@@ -579,27 +579,34 @@ export function NotificationManagement() {
                   </div>
                 </div>
                 <div className="space-y-1 text-sm text-neutral-900 mb-3">
+                  <p className="text-neutral-900">{new Date(n.created_at).toLocaleDateString()}</p>
                   <p className="text-neutral-900 line-clamp-2">{n.message}</p>
-                  <p className="text-xs text-neutral-500">{new Date(n.created_at).toLocaleDateString()}</p>
                 </div>
-                <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
-                  {canEdit && n.notification_type === "manual" && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openEditModal(n); }}
-                      className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-                    >
-                      <LuPencil className="w-4 h-4" /> Edit
-                    </button>
-                  )}
-                  {canDelete && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openDeleteModal(n); }}
-                      className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                    >
-                      <LuTrash2 className="w-4 h-4" /> Delete
-                    </button>
-                  )}
-                </div>
+                {(() => {
+                  const canEditThis = canEdit && n.notification_type === "manual";
+                  const canDeleteThis = canDelete;
+                  const hasActions = canEditThis || canDeleteThis;
+                  return hasActions ? (
+                    <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
+                      {canEditThis && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openEditModal(n); }}
+                          className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
+                        >
+                          <LuPencil className="w-4 h-4" /> Edit
+                        </button>
+                      )}
+                      {canDeleteThis && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openDeleteModal(n); }}
+                          className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
+                        >
+                          <LuTrash2 className="w-4 h-4" /> Delete
+                        </button>
+                      )}
+                    </div>
+                  ) : null;
+                })()}
               </div>
             ))}
             {paginatedNotifications.length === 0 && (
@@ -613,7 +620,7 @@ export function NotificationManagement() {
         </div>
 
         {/* Desktop Table View */}
-        <div className="hidden md:block overflow-x-auto">
+        <div className="hidden md:block">
           <table className="w-full">
             <thead>
               <tr className="border-b border-neutral-200 bg-neutral-100">
@@ -656,17 +663,21 @@ export function NotificationManagement() {
                     </span>
                   </td>
                   <td className="py-3 px-4 whitespace-nowrap">
-                    <div className="flex items-center justify-center gap-2">
-                      {canEdit && n.notification_type === "manual" ? (
-                        <>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); openEditModal(n); }}
-                            className="p-2 text-primary-950 hover:text-primary-900 hover:bg-primary-50 rounded-lg transition-colors"
-                            title="Edit notification"
-                          >
-                            <LuPencil className="w-4 h-4" />
-                          </button>
-                          {canDelete && (
+                    {(() => {
+                      const canEditThis = canEdit && n.notification_type === "manual";
+                      const canDeleteThis = canDelete;
+                      return (
+                        <div className="flex items-center justify-center gap-2">
+                          {canEditThis && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openEditModal(n); }}
+                              className="p-2 text-primary-950 hover:text-primary-900 hover:bg-primary-50 rounded-lg transition-colors"
+                              title="Edit notification"
+                            >
+                              <LuPencil className="w-4 h-4" />
+                            </button>
+                          )}
+                          {canDeleteThis && (
                             <button
                               onClick={(e) => { e.stopPropagation(); openDeleteModal(n); }}
                               className="p-2 text-negative-950 hover:text-negative-900 hover:bg-negative-50 rounded-lg transition-colors"
@@ -675,17 +686,18 @@ export function NotificationManagement() {
                               <LuTrash2 className="w-4 h-4" />
                             </button>
                           )}
-                        </>
-                      ) : (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openViewModal(n); }}
-                          className="p-2 text-positive-950 hover:text-positive-900 rounded-lg transition-colors"
-                          title="View notification"
-                        >
-                          <LuEye className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
+                          {!canEditThis && !canDeleteThis && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openViewModal(n); }}
+                              className="p-2 text-positive-950 hover:text-positive-900 rounded-lg transition-colors"
+                              title="View notification"
+                            >
+                              <LuEye className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </td>
                 </tr>
               ))}

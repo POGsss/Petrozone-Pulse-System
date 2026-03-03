@@ -838,6 +838,9 @@ export function PurchaseOrderManagement() {
             {paginatedItems.map((order) => {
               const dropdownActions = getDropdownActions(order);
               const showDots = dropdownActions.length > 0;
+              const canEditThis = canUpdate && ["draft", "submitted"].includes(order.status);
+              const canDeleteThis = canDelete && order.status !== "received";
+              const hasActions = canEditThis || canDeleteThis || showDots;
 
               return (
                 <div
@@ -870,41 +873,43 @@ export function PurchaseOrderManagement() {
                     <p className="text-neutral-900">{formatDate(order.created_at)}</p>
                   </div>
 
-                  <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
-                    {canUpdate && ["draft", "submitted"].includes(order.status) && (
-                      <button onClick={(e) => { e.stopPropagation(); openEditModal(order); }} className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"><LuPencil className="w-4 h-4" /> Edit</button>
-                    )}
-                    {canDelete && order.status !== "received" && (
-                      <button onClick={(e) => { e.stopPropagation(); openDeleteModal(order); }} className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"><LuTrash2 className="w-4 h-4" /> Delete</button>
-                    )}
-                    {showDots && (
-                      <div className="relative" ref={openDropdownId === `card-${order.id}` ? dropdownRef : undefined}>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${order.id}` ? null : `card-${order.id}`); }}
-                          className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
-                          title="More actions"
-                        >
-                          <LuEllipsisVertical className="w-4 h-4" /> More
-                        </button>
-                        {openDropdownId === `card-${order.id}` && (
-                          <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg border border-neutral-200 py-2 z-50">
-                            {order.status === "draft" && (
-                              <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openSubmitConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuSend className="w-4 h-4" /> Submit PO</button>
-                            )}
-                            {order.status === "submitted" && canApprove && (
-                              <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openApproveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBadgeCheck className="w-4 h-4" /> Approve PO</button>
-                            )}
-                            {order.status === "approved" && (
-                              <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openReceiveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuPackageCheck className="w-4 h-4" /> Receive &amp; Stock In</button>
-                            )}
-                            {["draft", "submitted"].includes(order.status) && (
-                              <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBan className="w-4 h-4" /> Cancel PO</button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  {hasActions && (
+                    <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
+                      {canEditThis && (
+                        <button onClick={(e) => { e.stopPropagation(); openEditModal(order); }} className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"><LuPencil className="w-4 h-4" /> Edit</button>
+                      )}
+                      {canDeleteThis && (
+                        <button onClick={(e) => { e.stopPropagation(); openDeleteModal(order); }} className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"><LuTrash2 className="w-4 h-4" /> Delete</button>
+                      )}
+                      {showDots && (
+                        <div className="relative" ref={openDropdownId === `card-${order.id}` ? dropdownRef : undefined}>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${order.id}` ? null : `card-${order.id}`); }}
+                            className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+                            title="More actions"
+                          >
+                            <LuEllipsisVertical className="w-4 h-4" /> More
+                          </button>
+                          {openDropdownId === `card-${order.id}` && (
+                            <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                              {order.status === "draft" && (
+                                <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openSubmitConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuSend className="w-4 h-4" /> Submit PO</button>
+                              )}
+                              {order.status === "submitted" && canApprove && (
+                                <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openApproveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBadgeCheck className="w-4 h-4" /> Approve PO</button>
+                              )}
+                              {order.status === "approved" && (
+                                <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openReceiveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuPackageCheck className="w-4 h-4" /> Receive &amp; Stock In</button>
+                              )}
+                              {["draft", "submitted"].includes(order.status) && (
+                                <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBan className="w-4 h-4" /> Cancel PO</button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}

@@ -372,6 +372,7 @@ export function BranchManagement() {
               {branch.email && <p className="text-neutral-900">{branch.email}</p>}
             </div>
 
+            {/* Actions */}
             <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
               <button
                 onClick={(e) => {

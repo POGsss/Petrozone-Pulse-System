@@ -1308,121 +1308,131 @@ export function JobOrderManagement() {
             </div>
 
             {/* Actions */}
-            <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
-              {canUpdate && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); openEditModal(order); }}
-                  className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-                >
-                  <LuPencil className="w-4 h-4" />
-                  Edit
-                </button>
-              )}
-              {canDelete && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); openDeleteConfirmModal(order); }}
-                  className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                >
-                  <LuTrash2 className="w-4 h-4" />
-                  Delete
-                </button>
-              )}
-              {/* More actions dropdown */}
-              <div className="relative" ref={openDropdownId === `card-${order.id}` ? dropdownRef : undefined}>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${order.id}` ? null : `card-${order.id}`); }}
-                  className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
-                  title="More actions"
-                >
-                  <LuEllipsisVertical className="w-4 h-4" /> More
-                </button>
-                {openDropdownId === `card-${order.id}` && (
-                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+            {(() => {
+              const canEditThis = canUpdate;
+              const canDeleteThis = canDelete;
+              const showDots = true; // always show for Job Order History
+              const hasActions = canEditThis || canDeleteThis || showDots;
+              return hasActions ? (
+                <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
+                  {canEditThis && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); closeDropdown(); openHistoryFromCard(order); }}
-                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                      onClick={(e) => { e.stopPropagation(); openEditModal(order); }}
+                      className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
                     >
-                      <LuHistory className="w-4 h-4" /> Job Order History
+                      <LuPencil className="w-4 h-4" />
+                      Edit
                     </button>
-                    {canApproval && (order.status === "draft" || order.status === "pending_approval") && (
+                  )}
+                  {canDeleteThis && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openDeleteConfirmModal(order); }}
+                      className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
+                    >
+                      <LuTrash2 className="w-4 h-4" />
+                      Delete
+                    </button>
+                  )}
+                  {/* More actions dropdown */}
+                  {showDots && (
+                    <div className="relative" ref={openDropdownId === `card-${order.id}` ? dropdownRef : undefined}>
                       <button
-                        onClick={(e) => { e.stopPropagation(); closeDropdown(); openApprovalModal(order); }}
-                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                        onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${order.id}` ? null : `card-${order.id}`); }}
+                        className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+                        title="More actions"
                       >
-                        <LuSend className="w-4 h-4" /> Customer Approval
+                        <LuEllipsisVertical className="w-4 h-4" /> More
                       </button>
-                    )}
-                    {canApproval && (order.status === "draft" || order.status === "pending_approval") && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelConfirmModal(order); }}
-                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                      >
-                        <LuBan className="w-4 h-4" /> Cancel Job Order
-                      </button>
-                    )}
-                    {canStartWork && order.status === "approved" && (
-                      <button
-                        onClick={async (e) => {
-                          e.stopPropagation(); closeDropdown();
-                          try {
-                            await jobOrdersApi.startWork(order.id);
-                            showToast.success("Work started — status changed to In Progress");
-                            fetchData();
-                          } catch (err) {
-                            showToast.error(err instanceof Error ? err.message : "Failed to start work");
-                          }
-                        }}
-                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                      >
-                        <LuPlay className="w-4 h-4" /> Start Work
-                      </button>
-                    )}
-                    {canMarkReady && order.status === "in_progress" && (
-                      <button
-                        onClick={async (e) => {
-                          e.stopPropagation(); closeDropdown();
-                          try {
-                            await jobOrdersApi.markReady(order.id);
-                            showToast.success("Marked ready for release");
-                            fetchData();
-                          } catch (err) {
-                            showToast.error(err instanceof Error ? err.message : "Failed to mark ready");
-                          }
-                        }}
-                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                      >
-                        <LuPackageCheck className="w-4 h-4" /> Mark Ready
-                      </button>
-                    )}
-                    {canComplete && order.status === "ready_for_release" && (
-                      <button
-                        onClick={async (e) => {
-                          e.stopPropagation(); closeDropdown();
-                          try {
-                            await jobOrdersApi.complete(order.id);
-                            showToast.success("Job order completed");
-                            fetchData();
-                          } catch (err) {
-                            showToast.error(err instanceof Error ? err.message : "Failed to complete");
-                          }
-                        }}
-                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                      >
-                        <LuCircleCheck className="w-4 h-4" /> Complete
-                      </button>
-                    )}
-                    {canRepair && order.status === "draft" && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); closeDropdown(); openRepairActionModal(order); }}
-                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                      >
-                        <LuWrench className="w-4 h-4" /> Manage Repairs
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+                      {openDropdownId === `card-${order.id}` && (
+                        <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); closeDropdown(); openHistoryFromCard(order); }}
+                            className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                          >
+                            <LuHistory className="w-4 h-4" /> Job Order History
+                          </button>
+                          {canApproval && (order.status === "draft" || order.status === "pending_approval") && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); closeDropdown(); openApprovalModal(order); }}
+                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                            >
+                              <LuSend className="w-4 h-4" /> Customer Approval
+                            </button>
+                          )}
+                          {canApproval && (order.status === "draft" || order.status === "pending_approval") && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelConfirmModal(order); }}
+                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                            >
+                              <LuBan className="w-4 h-4" /> Cancel Job Order
+                            </button>
+                          )}
+                          {canStartWork && order.status === "approved" && (
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation(); closeDropdown();
+                                try {
+                                  await jobOrdersApi.startWork(order.id);
+                                  showToast.success("Work started — status changed to In Progress");
+                                  fetchData();
+                                } catch (err) {
+                                  showToast.error(err instanceof Error ? err.message : "Failed to start work");
+                                }
+                              }}
+                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                            >
+                              <LuPlay className="w-4 h-4" /> Start Work
+                            </button>
+                          )}
+                          {canMarkReady && order.status === "in_progress" && (
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation(); closeDropdown();
+                                try {
+                                  await jobOrdersApi.markReady(order.id);
+                                  showToast.success("Marked ready for release");
+                                  fetchData();
+                                } catch (err) {
+                                  showToast.error(err instanceof Error ? err.message : "Failed to mark ready");
+                                }
+                              }}
+                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                            >
+                              <LuPackageCheck className="w-4 h-4" /> Mark Ready
+                            </button>
+                          )}
+                          {canComplete && order.status === "ready_for_release" && (
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation(); closeDropdown();
+                                try {
+                                  await jobOrdersApi.complete(order.id);
+                                  showToast.success("Job order completed");
+                                  fetchData();
+                                } catch (err) {
+                                  showToast.error(err instanceof Error ? err.message : "Failed to complete");
+                                }
+                              }}
+                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                            >
+                              <LuCircleCheck className="w-4 h-4" /> Complete
+                            </button>
+                          )}
+                          {canRepair && order.status === "draft" && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); closeDropdown(); openRepairActionModal(order); }}
+                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                            >
+                              <LuWrench className="w-4 h-4" /> Manage Repairs
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : null;
+            })()}
           </div>
         ))}
 

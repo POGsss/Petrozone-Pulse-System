@@ -452,7 +452,7 @@ export function ServiceReminderManagement() {
       </div>
 
       {/* Summary Stats Cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white border border-neutral-200 rounded-xl p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-primary-100 rounded-lg">
@@ -596,6 +596,12 @@ export function ServiceReminderManagement() {
           <div className="grid grid-cols-1 gap-4">
             {paginatedReminders.map((r) => {
               const sc = statusConfig[r.status] || statusConfig.draft;
+              const canEditThis = canEdit && ["draft", "scheduled", "failed"].includes(r.status);
+              const canDeleteThis = canDelete && ["draft", "scheduled", "failed"].includes(r.status);
+              const canSendThis = canSend && ["draft", "scheduled", "failed"].includes(r.status);
+              const canCancelThis = canEdit && ["draft", "scheduled"].includes(r.status);
+              const showDots = canSendThis || canCancelThis || true; // always show for View Details
+              const hasActions = canEditThis || canDeleteThis || showDots;
               return (
                 <div
                   key={r.id}
@@ -610,7 +616,7 @@ export function ServiceReminderManagement() {
                       <div>
                         <h4 className="font-semibold text-neutral-950">{r.customers?.full_name || "—"}</h4>
                         <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
-                          {r.vehicles?.plate_number || "—"}
+                          {r.branches?.name || "—"}
                         </span>
                       </div>
                     </div>
@@ -620,65 +626,68 @@ export function ServiceReminderManagement() {
                   </div>
                   <div className="space-y-1 text-sm text-neutral-900 mb-3">
                     <p>{r.service_type}</p>
-                    <p className="text-xs text-neutral-500">
-                      {new Date(r.scheduled_at).toLocaleString()} &middot;{" "}
-                      {r.delivery_method === "email" ? "Email" : "SMS"}
-                    </p>
+                    <p className="text-neutral-900">{r.vehicles?.plate_number || "—"}</p>
+                    <p className="text-neutral-900">{r.delivery_method === "email" ? "Email" : "SMS"}</p>
+                    <p className="text-neutral-900">{new Date(r.scheduled_at).toLocaleString()}</p>
                   </div>
-                  <div className={`flex items-center justify-end ${canEdit || canDelete ? "gap-4 pt-3 border-t border-neutral-200" : ""}`}>
-                    {canEdit && ["draft", "scheduled", "failed"].includes(r.status) && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openEditModal(r); }}
-                        className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-                      >
-                        <LuPencil className="w-4 h-4" /> Edit
-                      </button>
-                    )}
-                    {canDelete && ["draft", "scheduled", "failed"].includes(r.status) && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openDeleteModal(r); }}
-                        className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                      >
-                        <LuTrash2 className="w-4 h-4" /> Delete
-                      </button>
-                    )}
-                    {/* More actions dropdown */}
-                    <div className="relative" ref={openDropdownId === `card-${r.id}` ? dropdownRef : undefined}>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${r.id}` ? null : `card-${r.id}`); }}
-                        className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
-                        title="More actions"
-                      >
-                        <LuEllipsisVertical className="w-4 h-4" /> More
-                      </button>
-                      {openDropdownId === `card-${r.id}` && (
-                        <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                  {hasActions && (
+                    <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
+                      {canEditThis && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openEditModal(r); }}
+                          className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
+                        >
+                          <LuPencil className="w-4 h-4" /> Edit
+                        </button>
+                      )}
+                      {canDeleteThis && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openDeleteModal(r); }}
+                          className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
+                        >
+                          <LuTrash2 className="w-4 h-4" /> Delete
+                        </button>
+                      )}
+                      {/* More actions dropdown */}
+                      {showDots && (
+                        <div className="relative" ref={openDropdownId === `card-${r.id}` ? dropdownRef : undefined}>
                           <button
-                            onClick={(e) => { e.stopPropagation(); closeDropdown(); openViewModal(r); }}
-                            className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                            onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${r.id}` ? null : `card-${r.id}`); }}
+                            className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+                            title="More actions"
                           >
-                            <LuEye className="w-4 h-4" /> View Details
+                            <LuEllipsisVertical className="w-4 h-4" /> More
                           </button>
-                          {canSend && ["draft", "scheduled", "failed"].includes(r.status) && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); closeDropdown(); openSendModal(r); }}
-                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                            >
-                              <LuSend className="w-4 h-4" /> Send Reminder
-                            </button>
-                          )}
-                          {canEdit && ["draft", "scheduled"].includes(r.status) && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelModal(r); }}
-                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                            >
-                              <LuBan className="w-4 h-4" /> Cancel Reminder
-                            </button>
+                          {openDropdownId === `card-${r.id}` && (
+                            <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); closeDropdown(); openViewModal(r); }}
+                                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                              >
+                                <LuEye className="w-4 h-4" /> View Details
+                              </button>
+                              {canSendThis && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); closeDropdown(); openSendModal(r); }}
+                                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                >
+                                  <LuSend className="w-4 h-4" /> Send Reminder
+                                </button>
+                              )}
+                              {canCancelThis && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelModal(r); }}
+                                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                >
+                                  <LuBan className="w-4 h-4" /> Cancel Reminder
+                                </button>
+                              )}
+                            </div>
                           )}
                         </div>
                       )}
                     </div>
-                  </div>
+                  )}
                 </div>
               );
             })}
@@ -708,6 +717,11 @@ export function ServiceReminderManagement() {
             <tbody>
               {paginatedReminders.map((r) => {
                 const sc = statusConfig[r.status] || statusConfig.draft;
+                const canEditThis = canEdit && ["draft", "scheduled", "failed"].includes(r.status);
+                const canDeleteThis = canDelete && ["draft", "scheduled", "failed"].includes(r.status);
+                const canSendThis = canSend && ["draft", "scheduled", "failed"].includes(r.status);
+                const canCancelThis = canEdit && ["draft", "scheduled"].includes(r.status);
+                const showDots = canSendThis || canCancelThis || true; // always show for View Details
                 return (
                   <tr key={r.id} onClick={() => openViewModal(r)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer last:border-b-0">
                     <td className="py-3 px-4 whitespace-nowrap">
@@ -734,7 +748,7 @@ export function ServiceReminderManagement() {
                     </td>
                     <td className="py-3 px-4 whitespace-nowrap">
                       <div className="flex items-center justify-center gap-2">
-                        {canEdit && ["draft", "scheduled", "failed"].includes(r.status) && (
+                        {canEditThis && (
                           <button
                             onClick={(e) => { e.stopPropagation(); openEditModal(r); }}
                             className="p-2 text-primary-950 hover:text-primary-900 hover:bg-primary-50 rounded-lg transition-colors"
@@ -743,7 +757,7 @@ export function ServiceReminderManagement() {
                             <LuPencil className="w-4 h-4" />
                           </button>
                         )}
-                        {canDelete && ["draft", "scheduled", "failed"].includes(r.status) && (
+                        {canDeleteThis && (
                           <button
                             onClick={(e) => { e.stopPropagation(); openDeleteModal(r); }}
                             className="p-2 text-negative-950 hover:text-negative-900 hover:bg-negative-50 rounded-lg transition-colors"
@@ -753,41 +767,43 @@ export function ServiceReminderManagement() {
                           </button>
                         )}
                         {/* More actions dropdown */}
-                        <div className="relative" ref={openDropdownId === `table-${r.id}` ? dropdownRef : undefined}>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `table-${r.id}` ? null : `table-${r.id}`); }}
-                            className="p-2 text-neutral-950 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"
-                            title="More actions"
-                          >
-                            <LuEllipsisVertical className="w-4 h-4" />
-                          </button>
-                          {openDropdownId === `table-${r.id}` && (
-                            <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); closeDropdown(); openViewModal(r); }}
-                                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                              >
-                                <LuEye className="w-4 h-4" /> View Details
-                              </button>
-                              {canSend && ["draft", "scheduled", "failed"].includes(r.status) && (
+                        {showDots && (
+                          <div className="relative" ref={openDropdownId === `table-${r.id}` ? dropdownRef : undefined}>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `table-${r.id}` ? null : `table-${r.id}`); }}
+                              className="p-2 text-neutral-950 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"
+                              title="More actions"
+                            >
+                              <LuEllipsisVertical className="w-4 h-4" />
+                            </button>
+                            {openDropdownId === `table-${r.id}` && (
+                              <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
                                 <button
-                                  onClick={(e) => { e.stopPropagation(); closeDropdown(); openSendModal(r); }}
+                                  onClick={(e) => { e.stopPropagation(); closeDropdown(); openViewModal(r); }}
                                   className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
                                 >
-                                  <LuSend className="w-4 h-4" /> Send Reminder
+                                  <LuEye className="w-4 h-4" /> View Details
                                 </button>
-                              )}
-                              {canEdit && ["draft", "scheduled"].includes(r.status) && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelModal(r); }}
-                                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                                >
-                                  <LuBan className="w-4 h-4" /> Cancel Reminder
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                                {canSendThis && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); closeDropdown(); openSendModal(r); }}
+                                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                  >
+                                    <LuSend className="w-4 h-4" /> Send Reminder
+                                  </button>
+                                )}
+                                {canCancelThis && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelModal(r); }}
+                                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                  >
+                                    <LuBan className="w-4 h-4" /> Cancel Reminder
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </td>
                   </tr>

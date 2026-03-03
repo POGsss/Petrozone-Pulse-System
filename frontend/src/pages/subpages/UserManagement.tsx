@@ -658,26 +658,24 @@ export function UserManagement() {
                 </div>
 
                 {/* Actions */}
-                <div className={`flex items-center justify-end ${canEditUser(user) ? "gap-4 pt-3 border-t border-neutral-200" : ""}`}>
-                  {canEditUser(user) && (
-                    <>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openEditModal(user); }}
-                        className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-                      >
-                        <LuPencil className="w-4 h-4" />
-                        Edit
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openDeleteModal(user); }}
-                        className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                      >
-                        <LuTrash2 className="w-4 h-4" />
-                        Delete
-                      </button>
-                    </>
-                  )}
-                </div>
+                {canEditUser(user) && (
+                  <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openEditModal(user); }}
+                      className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
+                    >
+                      <LuPencil className="w-4 h-4" />
+                      Edit
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openDeleteModal(user); }}
+                      className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
+                    >
+                      <LuTrash2 className="w-4 h-4" />
+                      Delete
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
 
@@ -692,7 +690,7 @@ export function UserManagement() {
         </div>
 
         {/* Desktop Table View */}
-        <div className="hidden md:block overflow-x-auto">
+        <div className="hidden md:block">
           <table className="w-full">
             <thead>
               <tr className="border-b border-neutral-200 bg-neutral-100">
