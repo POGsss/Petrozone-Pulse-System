@@ -22,6 +22,8 @@ import inventoryRoutes from "./routes/inventory.routes.js";
 import purchaseOrderRoutes from "./routes/purchaseorders.routes.js";
 import supplierRoutes from "./routes/suppliers.routes.js";
 import supplierProductRoutes from "./routes/supplierproducts.routes.js";
+import notificationRoutes from "./routes/notifications.routes.js";
+import serviceReminderRoutes from "./routes/servicereminders.routes.js";
 
 const app = express();
 
@@ -71,6 +73,8 @@ app.use("/api/inventory", inventoryRoutes);
 app.use("/api/purchase-orders", purchaseOrderRoutes);
 app.use("/api/suppliers", supplierRoutes);
 app.use("/api/supplier-products", supplierProductRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/service-reminders", serviceReminderRoutes);
 
 // 404 handler
 app.use((_req, res) => {

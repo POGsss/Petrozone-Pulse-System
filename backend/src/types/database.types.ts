@@ -244,6 +244,184 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          id: string
+          title: string
+          message: string
+          target_type: string
+          target_value: string
+          status: string
+          notification_type: string
+          reference_type: string | null
+          reference_id: string | null
+          branch_id: string
+          created_by: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          title: string
+          message: string
+          target_type: string
+          target_value: string
+          status?: string
+          notification_type?: string
+          reference_type?: string | null
+          reference_id?: string | null
+          branch_id: string
+          created_by: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          title?: string
+          message?: string
+          target_type?: string
+          target_value?: string
+          status?: string
+          notification_type?: string
+          reference_type?: string | null
+          reference_id?: string | null
+          branch_id?: string
+          created_by?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_receipts: {
+        Row: {
+          id: string
+          notification_id: string
+          user_id: string
+          is_read: boolean
+          read_at: string | null
+          delivered_at: string
+        }
+        Insert: {
+          id?: string
+          notification_id: string
+          user_id: string
+          is_read?: boolean
+          read_at?: string | null
+          delivered_at?: string
+        }
+        Update: {
+          id?: string
+          notification_id?: string
+          user_id?: string
+          is_read?: boolean
+          read_at?: string | null
+          delivered_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_receipts_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: false
+            referencedRelation: "notifications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_receipts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_reminders: {
+        Row: {
+          id: string
+          customer_id: string
+          vehicle_id: string
+          service_type: string
+          scheduled_at: string
+          delivery_method: string
+          message_template: string
+          status: string
+          sent_at: string | null
+          failure_reason: string | null
+          branch_id: string
+          created_by: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          customer_id: string
+          vehicle_id: string
+          service_type: string
+          scheduled_at: string
+          delivery_method?: string
+          message_template: string
+          status?: string
+          sent_at?: string | null
+          failure_reason?: string | null
+          branch_id: string
+          created_by: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          customer_id?: string
+          vehicle_id?: string
+          service_type?: string
+          scheduled_at?: string
+          delivery_method?: string
+          message_template?: string
+          status?: string
+          sent_at?: string | null
+          failure_reason?: string | null
+          branch_id?: string
+          created_by?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_reminders_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_reminders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_reminders_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       job_order_items: {
         Row: {
           catalog_item_id: string

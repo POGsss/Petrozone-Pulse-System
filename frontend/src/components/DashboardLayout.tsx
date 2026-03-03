@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useAuth } from "../auth";
 import { useTheme } from "../lib/ThemeContext";
+import { NotificationDropdown } from "./NotificationDropdown";
 import {
   LuLayoutDashboard,
   LuBell,
@@ -22,6 +23,7 @@ import {
   LuShoppingCart,
   LuCar,
   LuTruck,
+  LuClock,
 } from "react-icons/lu";
 
 // Navigation item type
@@ -40,6 +42,7 @@ interface DashboardLayoutProps {
   onNavChange: (id: string) => void;
   title?: string;
   description?: string;
+  onNotificationsClick?: () => void;
 }
 
 export function DashboardLayout({ 
@@ -48,7 +51,8 @@ export function DashboardLayout({
   activeNavId, 
   onNavChange,
   title = "Dashboard",
-  description
+  description,
+  onNotificationsClick
 }: DashboardLayoutProps) {
   const { user, logout } = useAuth();
   const { settings } = useTheme();
@@ -56,6 +60,22 @@ export function DashboardLayout({
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(settings.sidebarCollapsed);
+  const branchDropdownRef = useRef<HTMLDivElement>(null);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (branchDropdownRef.current && !branchDropdownRef.current.contains(event.target as Node)) {
+        setBranchDropdownOpen(false);
+      }
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
+        setProfileDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
   
   const primaryBranch = user?.branches?.find(b => b.is_primary) || user?.branches?.[0];
   const branchName = primaryBranch?.branches?.name || "All Branches";
@@ -163,7 +183,7 @@ export function DashboardLayout({
             </div>
 
             <div className="w-auto sm:w-80 flex items-center justify-end gap-2 lg:gap-4">
-              <div className="relative">
+              <div className="relative" ref={branchDropdownRef}>
                 <button
                   onClick={() => setBranchDropdownOpen(!branchDropdownOpen)}
                   className="flex items-center gap-2 px-3 lg:px-4 py-2 bg-neutral-100 rounded-lg text-sm font-medium text-neutral-900 hover:text-neutral-950 hover:bg-neutral-200 transition-colors"
@@ -190,12 +210,9 @@ export function DashboardLayout({
                 )}
               </div>
 
-              <button className="relative p-2 text-neutral-900 hover:text-neutral transition-colors">
-                <LuBell className="w-5 h-5" />
-                <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full"></span>
-              </button>
+              <NotificationDropdown onViewAll={onNotificationsClick} />
 
-              <div className="relative">
+              <div className="relative" ref={profileDropdownRef}>
                 <button
                   onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
                   className="w-10 h-10 bg-gradient-to-br from-primary-900 to-primary rounded-full flex items-center justify-center text-white font-medium hover:ring-2 hover:ring-primary-200 transition-all"
@@ -252,4 +269,6 @@ export const NavIcons = {
   Vehicle: () => <LuCar className="w-5 h-5" />,
   Catalog: () => <LuPackage className="w-5 h-5" />,
   Supplier: () => <LuTruck className="w-5 h-5" />,
+  Notification: () => <LuBell className="w-5 h-5" />,
+  Reminder: () => <LuClock className="w-5 h-5" />,
 };

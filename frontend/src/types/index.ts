@@ -457,3 +457,69 @@ export interface PurchaseOrder {
   branches?: Branch;
   purchase_order_items?: PurchaseOrderItem[];
 }
+
+// ─── Notification types ───
+export type NotificationTargetType = "role" | "user" | "branch";
+export type NotificationType = "manual" | "system";
+export type NotificationStatus = "active" | "inactive";
+
+export interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  target_type: NotificationTargetType;
+  target_value: string;
+  status: NotificationStatus;
+  notification_type: NotificationType;
+  reference_type: string | null;
+  reference_id: string | null;
+  branch_id: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  branches?: Branch;
+}
+
+export interface NotificationReceipt {
+  id: string;
+  notification_id: string;
+  user_id: string;
+  is_read: boolean;
+  read_at: string | null;
+  delivered_at: string;
+  notifications?: Notification;
+}
+
+// ─── Service Reminder types ───
+export type ReminderStatus = "draft" | "scheduled" | "sent" | "failed" | "cancelled";
+export type DeliveryMethod = "email" | "sms";
+
+export interface ServiceReminder {
+  id: string;
+  customer_id: string;
+  vehicle_id: string;
+  service_type: string;
+  scheduled_at: string;
+  delivery_method: DeliveryMethod;
+  message_template: string;
+  status: ReminderStatus;
+  sent_at: string | null;
+  failure_reason: string | null;
+  branch_id: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  customers?: {
+    id: string;
+    full_name: string;
+    contact_number: string | null;
+    email: string | null;
+  };
+  vehicles?: {
+    id: string;
+    plate_number: string;
+    model: string;
+    vehicle_type: string;
+  };
+  branches?: Branch;
+}

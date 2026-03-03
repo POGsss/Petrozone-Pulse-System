@@ -4,6 +4,7 @@ import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
 import { logFailedAction, fixAuditLogUser } from "../lib/auditLogger.js";
 import { deductStockForJobOrder, restoreStockForJobOrder } from "./inventory.routes.js";
+import { createJobOrderNotification } from "./notifications.routes.js";
 
 const router = Router();
 
@@ -895,6 +896,9 @@ router.patch(
         console.error("Audit log error:", auditErr);
       }
 
+      // System notification for status change
+      await createJobOrderNotification(existing.order_number, orderId, existing.branch_id, "draft", "pending_approval", req.user!.id);
+
       res.json(updated);
     } catch (error) {
       console.error("Request approval error:", error);
@@ -1075,6 +1079,9 @@ router.patch(
         console.error("Audit log error:", auditErr);
       }
 
+      // System notification for status change
+      await createJobOrderNotification(existing.order_number, orderId, existing.branch_id, "pending_approval", decision, req.user!.id);
+
       res.json(updated);
     } catch (error) {
       console.error("Record approval error:", error);
@@ -1216,6 +1223,9 @@ router.patch(
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);
       }
+
+      // System notification for cancellation
+      await createJobOrderNotification(existing.order_number, orderId, existing.branch_id, existing.status, "cancelled", req.user!.id);
 
       res.json(updated);
     } catch (error) {
@@ -1888,6 +1898,9 @@ router.patch(
         console.error("Audit log error:", auditErr);
       }
 
+      // System notification for work started
+      await createJobOrderNotification(existing.order_number, orderId, existing.branch_id, "approved", "in_progress", req.user!.id);
+
       res.json(updated);
     } catch (error) {
       console.error("Start work error:", error);
@@ -1999,6 +2012,9 @@ router.patch(
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);
       }
+
+      // System notification for ready for release
+      await createJobOrderNotification(existing.order_number, orderId, existing.branch_id, "in_progress", "ready_for_release", req.user!.id);
 
       res.json(updated);
     } catch (error) {
@@ -2124,6 +2140,9 @@ router.patch(
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);
       }
+
+      // System notification for completion
+      await createJobOrderNotification(existing.order_number, orderId, existing.branch_id, "ready_for_release", "completed", req.user!.id);
 
       res.json(updated);
     } catch (error) {

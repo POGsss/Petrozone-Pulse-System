@@ -40,6 +40,7 @@ Functional Requirements:
 - Must support read/unread status per user.
 - Must store delivery timestamp.
 - Must allow soft delete.
+- Only the creator of announcement can hard delete.
 
 Notification Fields:
 - title (required)
@@ -150,6 +151,6 @@ Tasks:
 4. Implement scheduler (Supabase Edge Function or cron simulation).
 5. Integrate email provider (mock allowed).
 6. Validate contact data before sending.
-7. Build Service Reminder Management page.
+7. Build Service Reminder Management page (Table style same as user management layout).
 8. Add sidebar item under Customer section.
 9. Audit log all actions.

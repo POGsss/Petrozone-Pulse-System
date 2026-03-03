@@ -18,6 +18,8 @@ import { InventoryManagement } from "./subpages/InventoryManagement";
 import { PurchaseOrderManagement } from "./subpages/PurchaseOrderManagement";
 import { SupplierManagement } from "./subpages/SupplierManagement";
 import { SystemSettings } from "./subpages/SystemSettings";
+import { NotificationManagement } from "./subpages/NotificationManagement";
+import { ServiceReminderManagement } from "./subpages/ServiceReminderManagement";
 
 // Page content data
 const pageData: Record<string, { title: string; description: string }> = {
@@ -76,6 +78,14 @@ const pageData: Record<string, { title: string; description: string }> = {
   profile: {
     title: "Profile Settings",
     description: "Manage your account and change your password.",
+  },
+  notifications: {
+    title: "Notifications",
+    description: "Manage system notifications and alerts.",
+  },
+  "service-reminders": {
+    title: "Service Reminders",
+    description: "Manage and send service reminders to customers.",
   },
 };
 
@@ -137,6 +147,11 @@ function getNavItemsForRole(roles: string[]): NavItem[] {
     items.push({ id: "suppliers", label: "Suppliers", icon: <NavIcons.Supplier /> });
   }
 
+  // Service Reminders: POC, JS, R (UC65-UC69)
+  if (hasAnyRole("POC", "JS", "R")) {
+    items.push({ id: "service-reminders", label: "Service Reminders", icon: <NavIcons.Reminder /> });
+  }
+
   // Audit Logs: HM, POC (US18)
   if (hasAnyRole("HM", "POC")) {
     items.push({ id: "audit", label: "Audit Logs", icon: <NavIcons.Audit /> });
@@ -179,6 +194,8 @@ export function DashboardPage() {
   const canViewInventory = hasAnyRole("HM", "POC", "JS");
   const canViewPurchaseOrders = hasAnyRole("HM", "POC", "JS", "R");
   const canViewSuppliers = hasAnyRole("HM", "POC", "JS");
+  const canViewNotifications = hasAnyRole("HM", "POC", "JS", "R", "T");
+  const canViewServiceReminders = hasAnyRole("POC", "JS", "R");
   const canAccessSettings = userRoles.includes("HM");
 
   // Get page data
@@ -189,6 +206,7 @@ export function DashboardPage() {
       navItems={navItems}
       activeNavId={activeNav}
       onNavChange={setActiveNav}
+      onNotificationsClick={() => setActiveNav("notifications")}
       title={currentPage.title}
       description={currentPage.description}
     >
@@ -264,8 +282,18 @@ export function DashboardPage() {
           <PricingManagement />
       )}
 
+      {/* Notifications - All roles (UC61-UC64) */}
+      {activeNav === "notifications" && canViewNotifications && (
+          <NotificationManagement />
+      )}
+
+      {/* Service Reminders - POC, JS, R (UC65-UC69) */}
+      {activeNav === "service-reminders" && canViewServiceReminders && (
+          <ServiceReminderManagement />
+      )}
+
       {/* Empty state for upcoming pages (Settings) */}
-      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && activeNav !== "vehicles" && activeNav !== "catalog" && activeNav !== "inventory" && activeNav !== "purchase-orders" && activeNav !== "suppliers" && activeNav !== "job-orders" && activeNav !== "pricing" && (
+      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && activeNav !== "vehicles" && activeNav !== "catalog" && activeNav !== "inventory" && activeNav !== "purchase-orders" && activeNav !== "suppliers" && activeNav !== "job-orders" && activeNav !== "pricing" && activeNav !== "notifications" && activeNav !== "service-reminders" && (
         <div className="bg-white rounded-xl p-6 border border-neutral-100">
           <p className="text-neutral-900">This feature is coming in the next phase.</p>
         </div>

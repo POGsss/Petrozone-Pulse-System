@@ -1,0 +1,1069 @@
+import { useState, useEffect, useMemo } from "react";
+import {
+  LuPlus,
+  LuCircleAlert,
+  LuRefreshCw,
+  LuSearch,
+  LuPencil,
+  LuTrash2,
+  LuSend,
+  LuClock,
+  LuChevronLeft,
+  LuChevronRight,
+  LuFilter,
+  LuEye,
+  LuBan,
+  LuMail,
+  LuMessageSquare,
+  LuCheck,
+  LuX,
+} from "react-icons/lu";
+import { showToast } from "../../lib/toast";
+import { serviceRemindersApi, customersApi, vehiclesApi, branchesApi } from "../../lib/api";
+import {
+  Modal,
+  ModalSection,
+  ModalInput,
+  ModalSelect,
+  ModalButtons,
+  ModalError,
+} from "../../components";
+import { useAuth } from "../../auth";
+import type { Branch, Customer, Vehicle, ServiceReminder } from "../../types";
+
+const ITEMS_PER_PAGE = 10;
+
+export function ServiceReminderManagement() {
+  const { user } = useAuth();
+  const [reminders, setReminders] = useState<ServiceReminder[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [filteredVehicles, setFilteredVehicles] = useState<Vehicle[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [totalCount, setTotalCount] = useState(0);
+
+  // Search, filters & pagination
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterMethod, setFilterMethod] = useState<string>("all");
+  const [filterBranch, setFilterBranch] = useState<string>("all");
+  const [showFilters, setShowFilters] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Modal states
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const [selectedReminder, setSelectedReminder] = useState<ServiceReminder | null>(null);
+
+  // Form state
+  const [form, setForm] = useState({
+    customer_id: "",
+    vehicle_id: "",
+    service_type: "",
+    scheduled_at: "",
+    delivery_method: "email" as string,
+    message_template: "",
+    branch_id: "",
+    status: "draft" as string,
+  });
+
+  const userRoles = user?.roles || [];
+  const canCreate = userRoles.some((r) => ["POC", "JS", "R"].includes(r));
+  const canEdit = canCreate;
+  const canDelete = canCreate;
+  const canSend = canCreate;
+
+  // Stats
+  const stats = useMemo(() => {
+    return {
+      total: totalCount,
+      draft: reminders.filter((r) => r.status === "draft").length,
+      scheduled: reminders.filter((r) => r.status === "scheduled").length,
+      sent: reminders.filter((r) => r.status === "sent").length,
+      failed: reminders.filter((r) => r.status === "failed").length,
+    };
+  }, [reminders, totalCount]);
+
+  // Filtered
+  const filteredReminders = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return reminders.filter((r) => {
+      const matchSearch =
+        !q ||
+        r.service_type.toLowerCase().includes(q) ||
+        r.message_template.toLowerCase().includes(q) ||
+        r.customers?.full_name?.toLowerCase().includes(q) ||
+        r.vehicles?.plate_number?.toLowerCase().includes(q);
+      const matchStatus = filterStatus === "all" || r.status === filterStatus;
+      const matchMethod = filterMethod === "all" || r.delivery_method === filterMethod;
+      const matchBranch = filterBranch === "all" || r.branch_id === filterBranch;
+      return matchSearch && matchStatus && matchMethod && matchBranch;
+    });
+  }, [reminders, searchQuery, filterStatus, filterMethod, filterBranch]);
+
+  const totalPages = Math.ceil(filteredReminders.length / ITEMS_PER_PAGE);
+  const paginatedReminders = filteredReminders.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterStatus, filterMethod, filterBranch]);
+
+  // Filter vehicles when customer changes in form
+  useEffect(() => {
+    if (form.customer_id) {
+      setFilteredVehicles(vehicles.filter((v) => v.customer_id === form.customer_id));
+    } else {
+      setFilteredVehicles([]);
+    }
+  }, [form.customer_id, vehicles]);
+
+  async function fetchData() {
+    try {
+      setLoading(true);
+      setError(null);
+      const [reminderData, branchData, customerData, vehicleData] = await Promise.all([
+        serviceRemindersApi.getAll({ limit: 500 }),
+        branchesApi.getAll(),
+        customersApi.getAll({ limit: 500 }),
+        vehiclesApi.getAll({ limit: 500 }),
+      ]);
+      setReminders(reminderData.data || []);
+      setTotalCount(reminderData.pagination?.total || 0);
+      setBranches(branchData);
+      setCustomers(customerData.data || []);
+      setVehicles(vehicleData.data || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch data");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function resetForm() {
+    setForm({
+      customer_id: "",
+      vehicle_id: "",
+      service_type: "",
+      scheduled_at: "",
+      delivery_method: "email",
+      message_template: "",
+      branch_id: user?.branches?.[0]?.branch_id || "",
+      status: "draft",
+    });
+    setFormError(null);
+  }
+
+  function openAddModal() {
+    resetForm();
+    setShowAddModal(true);
+  }
+
+  function openEditModal(r: ServiceReminder) {
+    setSelectedReminder(r);
+    setForm({
+      customer_id: r.customer_id,
+      vehicle_id: r.vehicle_id,
+      service_type: r.service_type,
+      scheduled_at: r.scheduled_at ? new Date(r.scheduled_at).toISOString().slice(0, 16) : "",
+      delivery_method: r.delivery_method,
+      message_template: r.message_template,
+      branch_id: r.branch_id,
+      status: r.status,
+    });
+    setFormError(null);
+    setShowEditModal(true);
+  }
+
+  function openViewModal(r: ServiceReminder) {
+    setSelectedReminder(r);
+    setShowViewModal(true);
+  }
+
+  function openDeleteModal(r: ServiceReminder) {
+    setSelectedReminder(r);
+    setShowDeleteModal(true);
+  }
+
+  function openSendModal(r: ServiceReminder) {
+    setSelectedReminder(r);
+    setShowSendModal(true);
+  }
+
+  function openCancelModal(r: ServiceReminder) {
+    setSelectedReminder(r);
+    setShowCancelModal(true);
+  }
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setFormError(null);
+
+    if (!form.customer_id) { setFormError("Customer is required"); return; }
+    if (!form.vehicle_id) { setFormError("Vehicle is required"); return; }
+    if (!form.service_type.trim()) { setFormError("Service type is required"); return; }
+    if (!form.scheduled_at) { setFormError("Scheduled date is required"); return; }
+    if (!form.message_template.trim()) { setFormError("Message template is required"); return; }
+    if (!form.branch_id) { setFormError("Branch is required"); return; }
+
+    try {
+      setSaving(true);
+      await serviceRemindersApi.create({
+        customer_id: form.customer_id,
+        vehicle_id: form.vehicle_id,
+        service_type: form.service_type.trim(),
+        scheduled_at: new Date(form.scheduled_at).toISOString(),
+        delivery_method: form.delivery_method,
+        message_template: form.message_template.trim(),
+        branch_id: form.branch_id,
+        status: form.status,
+      });
+      showToast.success("Service reminder created");
+      setShowAddModal(false);
+      fetchData();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to create reminder");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleUpdate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedReminder) return;
+    setFormError(null);
+
+    try {
+      setSaving(true);
+      await serviceRemindersApi.update(selectedReminder.id, {
+        customer_id: form.customer_id,
+        vehicle_id: form.vehicle_id,
+        service_type: form.service_type.trim(),
+        scheduled_at: new Date(form.scheduled_at).toISOString(),
+        delivery_method: form.delivery_method,
+        message_template: form.message_template.trim(),
+        status: form.status,
+      });
+      showToast.success("Service reminder updated");
+      setShowEditModal(false);
+      fetchData();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to update reminder");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!selectedReminder) return;
+    try {
+      setDeleting(true);
+      await serviceRemindersApi.delete(selectedReminder.id);
+      showToast.success("Service reminder deleted");
+      setShowDeleteModal(false);
+      fetchData();
+    } catch (err) {
+      showToast.error(err instanceof Error ? err.message : "Failed to delete");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function handleSend() {
+    if (!selectedReminder) return;
+    try {
+      setSending(true);
+      await serviceRemindersApi.send(selectedReminder.id);
+      showToast.success("Reminder sent successfully");
+      setShowSendModal(false);
+      fetchData();
+    } catch (err) {
+      showToast.error(err instanceof Error ? err.message : "Failed to send reminder");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function handleCancel() {
+    if (!selectedReminder) return;
+    try {
+      setSending(true);
+      await serviceRemindersApi.cancel(selectedReminder.id);
+      showToast.success("Reminder cancelled");
+      setShowCancelModal(false);
+      fetchData();
+    } catch (err) {
+      showToast.error(err instanceof Error ? err.message : "Failed to cancel");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function handleResetFilters() {
+    setSearchQuery("");
+    setFilterStatus("all");
+    setFilterMethod("all");
+    setFilterBranch("all");
+  }
+
+  const statusConfig: Record<string, { label: string; className: string }> = {
+    draft: { label: "Draft", className: "bg-neutral-100 text-neutral-600" },
+    scheduled: { label: "Scheduled", className: "bg-blue-50 text-blue-700" },
+    sent: { label: "Sent", className: "bg-positive-50 text-positive" },
+    failed: { label: "Failed", className: "bg-negative-50 text-negative" },
+    cancelled: { label: "Cancelled", className: "bg-neutral-100 text-neutral-500" },
+  };
+
+  // Form fields JSX (reused for create & edit)
+  const formFields = (
+    <>
+      <ModalSection title="Customer & Vehicle">
+        <ModalSelect
+          value={form.customer_id}
+          onChange={(v) => setForm({ ...form, customer_id: v, vehicle_id: "" })}
+          options={customers.map((c) => ({ value: c.id, label: `${c.full_name}${c.contact_number ? ` (${c.contact_number})` : ""}` }))}
+          placeholder="Select Customer *"
+        />
+        <ModalSelect
+          value={form.vehicle_id}
+          onChange={(v) => setForm({ ...form, vehicle_id: v })}
+          options={filteredVehicles.map((v) => ({ value: v.id, label: `${v.plate_number} – ${v.model}` }))}
+          placeholder={form.customer_id ? "Select Vehicle *" : "Select a customer first"}
+        />
+      </ModalSection>
+
+      <ModalSection title="Service Details">
+        <ModalInput
+          value={form.service_type}
+          onChange={(v) => setForm({ ...form, service_type: v })}
+          placeholder="Service Type *"
+          required
+        />
+        <ModalInput
+          type="date"
+          value={form.scheduled_at}
+          onChange={(v) => setForm({ ...form, scheduled_at: v })}
+          placeholder="Scheduled Date *"
+          required
+        />
+        <ModalSelect
+          value={form.delivery_method}
+          onChange={(v) => setForm({ ...form, delivery_method: v })}
+          options={[
+            { value: "email", label: "Email" },
+            { value: "sms", label: "SMS" },
+          ]}
+          placeholder="Delivery Method *"
+        />
+        <textarea
+          value={form.message_template}
+          onChange={(e) => setForm({ ...form, message_template: e.target.value })}
+          placeholder="Message Template *"
+          rows={3}
+          className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
+        />
+      </ModalSection>
+
+      <ModalSection title="Configuration">
+        <ModalSelect
+          value={form.status}
+          onChange={(v) => setForm({ ...form, status: v })}
+          options={[
+            { value: "draft", label: "Draft" },
+            { value: "scheduled", label: "Scheduled" },
+          ]}
+          placeholder="Status"
+        />
+        <ModalSelect
+          value={form.branch_id}
+          onChange={(v) => setForm({ ...form, branch_id: v })}
+          options={branches.map((b) => ({ value: b.id, label: b.name }))}
+          placeholder="Select Branch *"
+        />
+      </ModalSection>
+    </>
+  );
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <LuRefreshCw className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-negative-200 border border-negative rounded-lg p-4 flex items-center gap-3">
+        <LuCircleAlert className="w-5 h-5 text-negative-950 shrink-0" />
+        <div>
+          <p className="text-sm text-negative-950">{error}</p>
+          <button onClick={fetchData} className="text-sm text-negative-900 hover:underline mt-1">
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header with title and add button */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 justify-between bg-white rounded-xl p-4 border border-neutral-200">
+        <div>
+          <h3 className="text-lg font-semibold text-neutral-950">Service Reminders</h3>
+          <p className="text-sm text-neutral-900">Summary of service reminders</p>
+        </div>
+        {canCreate && (
+          <button
+            onClick={openAddModal}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
+          >
+            <LuPlus className="w-4 h-4" />
+            Create Reminder
+          </button>
+        )}
+      </div>
+
+      {/* Summary Stats Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+        <div className="bg-white border border-neutral-200 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary-100 rounded-lg">
+              <LuClock className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm text-neutral-900">Total</p>
+              <p className="text-2xl font-bold text-neutral-950">{stats.total}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white border border-neutral-200 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-neutral-200 rounded-lg">
+              <LuPencil className="w-5 h-5 text-neutral-600" />
+            </div>
+            <div>
+              <p className="text-sm text-neutral-900">Draft</p>
+              <p className="text-2xl font-bold text-neutral-950">{stats.draft}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white border border-neutral-200 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary-100 rounded-lg">
+              <LuClock className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm text-neutral-900">Scheduled</p>
+              <p className="text-2xl font-bold text-neutral-950">{stats.scheduled}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white border border-neutral-200 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary-100 rounded-lg">
+              <LuCheck className="w-5 h-5 text-positive" />
+            </div>
+            <div>
+              <p className="text-sm text-neutral-900">Sent</p>
+              <p className="text-2xl font-bold text-neutral-950">{stats.sent}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white border border-neutral-200 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-negative-100 rounded-lg">
+              <LuX className="w-5 h-5 text-negative" />
+            </div>
+            <div>
+              <p className="text-sm text-neutral-900">Failed</p>
+              <p className="text-2xl font-bold text-neutral-950">{stats.failed}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Table Section */}
+      <div className="bg-white border border-neutral-200 rounded-xl">
+        {/* Table Header with Search and Filters */}
+        <div className="p-4 border-b border-neutral-200 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="relative flex-1 max-w-md">
+              <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-900" />
+              <input
+                type="text"
+                placeholder="Search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-4 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-primary w-full sm:w-64"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={filterStatus}
+                onChange={(e) => {
+                  setFilterStatus(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="appearance-none px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+              >
+                <option value="all">All Status</option>
+                <option value="draft">Draft</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="sent">Sent</option>
+                <option value="failed">Failed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm font-medium transition-colors ${
+                  showFilters ? "border-primary bg-primary-100 text-primary" : "border-neutral-200 text-neutral-950 hover:bg-neutral-100"
+                }`}
+              >
+                <LuFilter className="w-4 h-4" />
+                <span className="hidden sm:inline">Filters</span>
+              </button>
+              <button
+                onClick={fetchData}
+                disabled={loading}
+                className="p-2 border border-neutral-200 rounded-lg text-neutral-950 hover:bg-neutral-100 disabled:opacity-100"
+                title="Refresh"
+              >
+                <LuRefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Advanced Filters */}
+          {showFilters && (
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1">
+                <label className="block text-xs text-neutral-900 mb-1">Delivery Method</label>
+                <select
+                  value={filterMethod}
+                  onChange={(e) => {
+                    setFilterMethod(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                >
+                  <option value="all">All Methods</option>
+                  <option value="email">Email</option>
+                  <option value="sms">SMS</option>
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-neutral-900 mb-1">Branch</label>
+                <select
+                  value={filterBranch}
+                  onChange={(e) => {
+                    setFilterBranch(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                >
+                  <option value="all">All Branches</option>
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-end gap-2">
+                <button
+                  onClick={fetchData}
+                  className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-950 transition-colors"
+                >
+                  Apply
+                </button>
+                <button
+                  onClick={handleResetFilters}
+                  className="px-4 py-2 border border-neutral-200 rounded-lg text-sm font-medium text-neutral-950 hover:bg-neutral-100 transition-colors"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Mobile Card View */}
+        <div className="md:hidden p-4">
+          <div className="grid grid-cols-1 gap-4">
+            {paginatedReminders.map((r) => {
+              const sc = statusConfig[r.status] || statusConfig.draft;
+              return (
+                <div
+                  key={r.id}
+                  onClick={() => openViewModal(r)}
+                  className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-100 transition-colors"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-primary-100 rounded-lg">
+                        <LuClock className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-neutral-950">{r.customers?.full_name || "—"}</h4>
+                        <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
+                          {r.vehicles?.plate_number || "—"}
+                        </span>
+                      </div>
+                    </div>
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${sc.className}`}>
+                      {sc.label}
+                    </span>
+                  </div>
+                  <div className="space-y-1 text-sm text-neutral-900 mb-3">
+                    <p>{r.service_type}</p>
+                    <p className="text-xs text-neutral-500">
+                      {new Date(r.scheduled_at).toLocaleString()} &middot;{" "}
+                      {r.delivery_method === "email" ? "Email" : "SMS"}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
+                    {canSend && ["draft", "scheduled", "failed"].includes(r.status) && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openSendModal(r); }}
+                        className="flex items-center gap-1 text-sm text-positive hover:text-positive-900"
+                      >
+                        <LuSend className="w-4 h-4" /> Send
+                      </button>
+                    )}
+                    {canEdit && ["draft", "scheduled", "failed"].includes(r.status) && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openEditModal(r); }}
+                        className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
+                      >
+                        <LuPencil className="w-4 h-4" /> Edit
+                      </button>
+                    )}
+                    {canDelete && ["draft", "scheduled", "failed"].includes(r.status) && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openDeleteModal(r); }}
+                        className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
+                      >
+                        <LuTrash2 className="w-4 h-4" /> Delete
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            {paginatedReminders.length === 0 && (
+              <div className="col-span-full text-center py-12 text-neutral-900">
+                {searchQuery || filterStatus !== "all" || filterMethod !== "all" || filterBranch !== "all"
+                  ? "No reminders match your filters."
+                  : "No reminders found. Click \"Create Reminder\" to create one."}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-neutral-200 bg-neutral-100">
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Customer</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Service</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Scheduled</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Method</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Status</th>
+                <th className="text-center py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedReminders.map((r) => {
+                const sc = statusConfig[r.status] || statusConfig.draft;
+                return (
+                  <tr key={r.id} onClick={() => openViewModal(r)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer">
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <span className="font-medium text-neutral-900">{r.customers?.full_name || "—"}</span>
+                    </td>
+                    <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap">{r.service_type}</td>
+                    <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap">
+                      {new Date(r.scheduled_at).toLocaleString()}
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <span className="flex items-center gap-1 text-sm text-neutral-900">
+                        {r.delivery_method === "email" ? (
+                          <LuMail className="w-3.5 h-3.5" />
+                        ) : (
+                          <LuMessageSquare className="w-3.5 h-3.5" />
+                        )}
+                        {r.delivery_method.toUpperCase()}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${sc.className}`}>
+                        {sc.label}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-2">
+                        {canSend && ["draft", "scheduled", "failed"].includes(r.status) && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openSendModal(r); }}
+                            className="p-2 text-positive-950 hover:text-positive-900 hover:bg-positive-50 rounded-lg transition-colors"
+                            title="Send"
+                          >
+                            <LuSend className="w-4 h-4" />
+                          </button>
+                        )}
+                        {canEdit && ["draft", "scheduled", "failed"].includes(r.status) && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openEditModal(r); }}
+                            className="p-2 text-primary-950 hover:text-primary-900 hover:bg-primary-50 rounded-lg transition-colors"
+                            title="Edit"
+                          >
+                            <LuPencil className="w-4 h-4" />
+                          </button>
+                        )}
+                        {canEdit && ["draft", "scheduled"].includes(r.status) && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openCancelModal(r); }}
+                            className="p-2 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"
+                            title="Cancel"
+                          >
+                            <LuBan className="w-4 h-4" />
+                          </button>
+                        )}
+                        {canDelete && ["draft", "scheduled", "failed"].includes(r.status) && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openDeleteModal(r); }}
+                            className="p-2 text-negative-950 hover:text-negative-900 hover:bg-negative-50 rounded-lg transition-colors"
+                            title="Delete"
+                          >
+                            <LuTrash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        {!canEdit && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openViewModal(r); }}
+                            className="p-2 text-positive-950 hover:text-positive-900 rounded-lg transition-colors"
+                            title="View"
+                          >
+                            <LuEye className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          {paginatedReminders.length === 0 && (
+            <div className="text-center py-12 text-neutral-900">
+              {searchQuery || filterStatus !== "all" || filterMethod !== "all" || filterBranch !== "all"
+                ? "No reminders match your filters."
+                : "No reminders found. Click \"Create Reminder\" to create one."}
+            </div>
+          )}
+        </div>
+
+        {/* Pagination */}
+        {filteredReminders.length > ITEMS_PER_PAGE && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4">
+            <p className="text-sm text-neutral-900">
+              {(currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredReminders.length)} of {filteredReminders.length} reminders
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-2 border border-neutral-200 rounded-lg text-neutral-900 hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <LuChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm text-neutral-900 px-2">
+                {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 border border-neutral-200 rounded-lg text-neutral-900 hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <LuChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Create Modal */}
+      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Create Service Reminder" maxWidth="lg">
+        <form onSubmit={handleCreate}>
+          {formFields}
+          <ModalError message={formError} />
+          <ModalButtons
+            onCancel={() => setShowAddModal(false)}
+            submitText={saving ? "Creating..." : "Create Reminder"}
+            loading={saving}
+          />
+        </form>
+      </Modal>
+
+      {/* Edit Modal */}
+      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Edit Service Reminder" maxWidth="lg">
+        <form onSubmit={handleUpdate}>
+          {formFields}
+          <ModalError message={formError} />
+          <ModalButtons
+            onCancel={() => setShowEditModal(false)}
+            submitText={saving ? "Saving..." : "Save Changes"}
+            loading={saving}
+          />
+        </form>
+      </Modal>
+
+      {/* View Modal */}
+      <Modal
+        isOpen={showViewModal && !!selectedReminder}
+        onClose={() => setShowViewModal(false)}
+        title="Service Reminder Details"
+        maxWidth="lg"
+      >
+        {selectedReminder && (
+          <div>
+            <ModalSection title="Customer & Vehicle">
+              <ModalInput
+                type="text"
+                value={selectedReminder.customers?.full_name || "—"}
+                onChange={() => {}}
+                placeholder="Customer"
+                disabled
+              />
+              <ModalInput
+                type="text"
+                value={`${selectedReminder.vehicles?.plate_number || "—"} – ${selectedReminder.vehicles?.model || ""}`}
+                onChange={() => {}}
+                placeholder="Vehicle"
+                disabled
+              />
+            </ModalSection>
+
+            <ModalSection title="Service Details">
+              <ModalInput
+                type="text"
+                value={selectedReminder.service_type}
+                onChange={() => {}}
+                placeholder="Service Type"
+                disabled
+              />
+              <ModalInput
+                type="text"
+                value={new Date(selectedReminder.scheduled_at).toLocaleString()}
+                onChange={() => {}}
+                placeholder="Scheduled At"
+                disabled
+              />
+              <ModalInput
+                type="text"
+                value={selectedReminder.delivery_method.toUpperCase()}
+                onChange={() => {}}
+                placeholder="Delivery Method"
+                disabled
+              />
+              <textarea
+                value={selectedReminder.message_template}
+                readOnly
+                disabled
+                rows={3}
+                placeholder="Message Template"
+                className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none transition-all resize-none"
+              />
+            </ModalSection>
+
+            <ModalSection title="Status & Details">
+              <ModalSelect
+                value={selectedReminder.status}
+                onChange={() => {}}
+                options={[
+                  { value: "draft", label: "Draft" },
+                  { value: "scheduled", label: "Scheduled" },
+                  { value: "sent", label: "Sent" },
+                  { value: "failed", label: "Failed" },
+                  { value: "cancelled", label: "Cancelled" },
+                ]}
+                disabled
+              />
+              <ModalInput
+                type="text"
+                value={selectedReminder.branches?.name || "—"}
+                onChange={() => {}}
+                placeholder="Branch"
+                disabled
+              />
+              {selectedReminder.sent_at && (
+                <ModalInput
+                  type="text"
+                  value={new Date(selectedReminder.sent_at).toLocaleString()}
+                  onChange={() => {}}
+                  placeholder="Sent At"
+                  disabled
+                />
+              )}
+              {selectedReminder.failure_reason && (
+                <ModalInput
+                  type="text"
+                  value={selectedReminder.failure_reason}
+                  onChange={() => {}}
+                  placeholder="Failure Reason"
+                  disabled
+                />
+              )}
+              <ModalInput
+                type="text"
+                value={new Date(selectedReminder.created_at).toLocaleString()}
+                onChange={() => {}}
+                placeholder="Created At"
+                disabled
+              />
+            </ModalSection>
+          </div>
+        )}
+      </Modal>
+
+      {/* Send Confirmation Modal */}
+      <Modal
+        isOpen={showSendModal && !!selectedReminder}
+        onClose={() => setShowSendModal(false)}
+        title="Send Reminder"
+        maxWidth="sm"
+      >
+        {selectedReminder && (
+          <div>
+            <div className="bg-neutral-100 rounded-xl p-4 my-4">
+              <p className="text-neutral-900">
+                Send this reminder to <strong className="text-neutral-950">{selectedReminder.customers?.full_name}</strong> via{" "}
+                <strong className="text-neutral-950">{selectedReminder.delivery_method?.toUpperCase()}</strong>?
+              </p>
+              {selectedReminder.delivery_method === "email" && selectedReminder.customers?.email && (
+                <p className="text-xs text-neutral-500 mt-1">To: {selectedReminder.customers.email}</p>
+              )}
+              {selectedReminder.delivery_method === "sms" && selectedReminder.customers?.contact_number && (
+                <p className="text-xs text-neutral-500 mt-1">To: {selectedReminder.customers.contact_number}</p>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowSendModal(false)}
+                className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSend}
+                disabled={sending}
+                className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {sending ? "Sending..." : "Send Now"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Cancel Confirmation Modal */}
+      <Modal
+        isOpen={showCancelModal && !!selectedReminder}
+        onClose={() => setShowCancelModal(false)}
+        title="Cancel Reminder"
+        maxWidth="sm"
+      >
+        {selectedReminder && (
+          <div>
+            <div className="bg-neutral-100 rounded-xl p-4 my-4">
+              <p className="text-neutral-900">
+                Are you sure you want to cancel this reminder for <strong className="text-neutral-950">{selectedReminder.customers?.full_name}</strong>?
+              </p>
+            </div>
+            <p className="text-sm text-neutral-900 mb-2">
+              The reminder will be marked as cancelled and will not be sent.
+            </p>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowCancelModal(false)}
+                className="flex-1 px-4 py-3.5 border-2 border-negative text-negative rounded-xl font-semibold hover:bg-negative-200 transition-colors"
+              >
+                Go Back
+              </button>
+              <button
+                type="button"
+                onClick={handleCancel}
+                disabled={sending}
+                className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {sending ? "Cancelling..." : "Cancel Reminder"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={showDeleteModal && !!selectedReminder}
+        onClose={() => setShowDeleteModal(false)}
+        title="Delete Reminder"
+        maxWidth="sm"
+      >
+        {selectedReminder && (
+          <div>
+            <div className="bg-neutral-100 rounded-xl p-4 my-4">
+              <p className="text-neutral-900">
+                Are you sure you want to permanently delete this reminder for <strong className="text-neutral-950">{selectedReminder.customers?.full_name}</strong>?
+              </p>
+            </div>
+            <p className="text-sm text-neutral-900 mb-2">
+              This action cannot be undone. The reminder data will be permanently removed.
+            </p>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                className="flex-1 px-4 py-3.5 border-2 border-negative text-negative rounded-xl font-semibold hover:bg-negative-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {deleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}

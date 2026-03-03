@@ -1218,3 +1218,190 @@ export const supplierProductsApi = {
     });
   },
 };
+
+// ─── Notifications API ───
+export const notificationsApi = {
+  getAll: async (params?: {
+    branch_id?: string;
+    status?: string;
+    target_type?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) searchParams.append(key, String(value));
+      });
+    }
+    const query = searchParams.toString();
+    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").Notification>>(
+      `/api/notifications${query ? `?${query}` : ""}`
+    );
+  },
+
+  getMy: async (params?: {
+    is_read?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) searchParams.append(key, String(value));
+      });
+    }
+    const query = searchParams.toString();
+    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").NotificationReceipt>>(
+      `/api/notifications/my${query ? `?${query}` : ""}`
+    );
+  },
+
+  getUnreadCount: async () => {
+    return fetchWithAuth<{ unread_count: number }>("/api/notifications/unread-count");
+  },
+
+  getById: async (id: string) => {
+    return fetchWithAuth<import("../types").Notification>(`/api/notifications/${id}`);
+  },
+
+  create: async (data: {
+    title: string;
+    message: string;
+    target_type: string;
+    target_value: string;
+    branch_id: string;
+  }) => {
+    return fetchWithAuth<import("../types").Notification>("/api/notifications", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (
+    id: string,
+    data: {
+      title?: string;
+      message?: string;
+      target_type?: string;
+      target_value?: string;
+      status?: string;
+    }
+  ) => {
+    return fetchWithAuth<import("../types").Notification>(`/api/notifications/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: string, hard?: boolean) => {
+    return fetchWithAuth<{ message: string }>(
+      `/api/notifications/${id}${hard ? "?hard=true" : ""}`,
+      { method: "DELETE" }
+    );
+  },
+
+  markAsRead: async (id: string) => {
+    return fetchWithAuth<import("../types").NotificationReceipt>(
+      `/api/notifications/${id}/mark-read`,
+      { method: "POST" }
+    );
+  },
+
+  markAllAsRead: async () => {
+    return fetchWithAuth<{ message: string }>("/api/notifications/mark-all-read", {
+      method: "POST",
+    });
+  },
+};
+
+// ─── Service Reminders API ───
+export const serviceRemindersApi = {
+  getAll: async (params?: {
+    branch_id?: string;
+    customer_id?: string;
+    vehicle_id?: string;
+    status?: string;
+    delivery_method?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) searchParams.append(key, String(value));
+      });
+    }
+    const query = searchParams.toString();
+    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").ServiceReminder>>(
+      `/api/service-reminders${query ? `?${query}` : ""}`
+    );
+  },
+
+  getById: async (id: string) => {
+    return fetchWithAuth<import("../types").ServiceReminder>(`/api/service-reminders/${id}`);
+  },
+
+  create: async (data: {
+    customer_id: string;
+    vehicle_id: string;
+    service_type: string;
+    scheduled_at: string;
+    delivery_method?: string;
+    message_template: string;
+    branch_id: string;
+    status?: string;
+  }) => {
+    return fetchWithAuth<import("../types").ServiceReminder>("/api/service-reminders", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (
+    id: string,
+    data: {
+      customer_id?: string;
+      vehicle_id?: string;
+      service_type?: string;
+      scheduled_at?: string;
+      delivery_method?: string;
+      message_template?: string;
+      status?: string;
+    }
+  ) => {
+    return fetchWithAuth<import("../types").ServiceReminder>(`/api/service-reminders/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: string) => {
+    return fetchWithAuth<{ message: string }>(`/api/service-reminders/${id}`, {
+      method: "DELETE",
+    });
+  },
+
+  send: async (id: string) => {
+    return fetchWithAuth<{ message: string; data: import("../types").ServiceReminder }>(
+      `/api/service-reminders/${id}/send`,
+      { method: "POST" }
+    );
+  },
+
+  cancel: async (id: string) => {
+    return fetchWithAuth<{ message: string; data: import("../types").ServiceReminder }>(
+      `/api/service-reminders/${id}/cancel`,
+      { method: "POST" }
+    );
+  },
+
+  processScheduled: async () => {
+    return fetchWithAuth<{ message: string; processed: number; sent: number; failed: number }>(
+      "/api/service-reminders/process-scheduled",
+      { method: "POST" }
+    );
+  },
+};
