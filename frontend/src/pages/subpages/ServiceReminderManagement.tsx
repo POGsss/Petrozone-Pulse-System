@@ -660,12 +660,6 @@ export function ServiceReminderManagement() {
                           </button>
                           {openDropdownId === `card-${r.id}` && (
                             <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); closeDropdown(); openViewModal(r); }}
-                                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                              >
-                                <LuEye className="w-4 h-4" /> View Details
-                              </button>
                               {canSendThis && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); closeDropdown(); openSendModal(r); }}
@@ -1022,7 +1016,7 @@ export function ServiceReminderManagement() {
                 disabled={sending}
                 className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {sending ? "Sending..." : "Send Now"}
+                {sending ? "Sending..." : "Send"}
               </button>
             </div>
           </div>
@@ -1061,7 +1055,7 @@ export function ServiceReminderManagement() {
                 disabled={sending}
                 className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {sending ? "Cancelling..." : "Cancel Reminder"}
+                {sending ? "Cancelling..." : "Proceed"}
               </button>
             </div>
           </div>
