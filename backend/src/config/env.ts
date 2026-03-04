@@ -10,4 +10,17 @@ export function verifyEnv(): void {
   if (missing.length > 0) {
     throw new Error(`Missing required environment variables: ${missing.join(", ")}`);
   }
+
+  // Warn about optional email/SMS service env vars
+  const optionalEmail = ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS"];
+  const missingEmail = optionalEmail.filter((key) => !process.env[key]);
+  if (missingEmail.length > 0) {
+    console.warn(`⚠ Email service disabled — missing: ${missingEmail.join(", ")}`);
+  }
+
+  const optionalSms = ["SEMAPHORE_API_KEY"];
+  const missingSms = optionalSms.filter((key) => !process.env[key]);
+  if (missingSms.length > 0) {
+    console.warn(`⚠ SMS service disabled — missing: ${missingSms.join(", ")}`);
+  }
 }

@@ -3,6 +3,8 @@ import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
 import { logFailedAction, fixAuditLogUser } from "../lib/auditLogger.js";
+import { sendEmail } from "../lib/emailService.js";
+import { sendSms } from "../lib/smsService.js";
 
 const router = Router();
 
@@ -496,7 +498,7 @@ router.delete(
 
 /**
  * POST /api/service-reminders/:id/send
- * Send a service reminder (mock delivery)
+ * Send a service reminder (email/SMS delivery)
  * Roles: POC, JS, R
  */
 router.post(
@@ -571,10 +573,25 @@ router.post(
         return;
       }
 
-      // ─── Mock delivery ───
-      // In production, integrate with email/SMS provider here
-      const deliverySuccess = true; // Mock: always succeeds
+      // ─── Real delivery via email/SMS ───
+      let deliverySuccess = false;
+      let deliveryError = "";
       const now = new Date().toISOString();
+
+      if (reminder.delivery_method === "email") {
+        const result = await sendEmail({
+          to: customer.email,
+          subject: `Service Reminder – ${(reminder as any).vehicles?.plate_number || "Your Vehicle"}`,
+          text: reminder.message_template,
+          html: `<p>${reminder.message_template.replace(/\n/g, "<br>")}</p>`,
+        });
+        deliverySuccess = result.success;
+        deliveryError = result.error || "";
+      } else if (reminder.delivery_method === "sms") {
+        const result = await sendSms(customer.contact_number, reminder.message_template);
+        deliverySuccess = result.success;
+        deliveryError = result.error || "";
+      }
 
       if (deliverySuccess) {
         const { data: updated, error: updateError } = await supabaseAdmin
@@ -616,13 +633,13 @@ router.post(
 
         res.json({ message: "Reminder sent successfully", data: updated });
       } else {
-        // Mock failure path
+        // Real failure path
         await supabaseAdmin
           .from("service_reminders")
-          .update({ status: "failed", failure_reason: "Delivery service unavailable" })
+          .update({ status: "failed", failure_reason: deliveryError || "Delivery service unavailable" })
           .eq("id", reminderId);
 
-        res.status(500).json({ error: "Failed to deliver reminder" });
+        res.status(500).json({ error: deliveryError || "Failed to deliver reminder" });
       }
     } catch (error) {
       console.error("Send service reminder error:", error);
@@ -766,12 +783,36 @@ router.post(
         }
 
         if (canSend) {
-          // Mock delivery success
-          await supabaseAdmin
-            .from("service_reminders")
-            .update({ status: "sent", sent_at: now, failure_reason: null })
-            .eq("id", reminder.id);
-          sentCount++;
+          // Real delivery
+          let sent = false;
+          if (reminder.delivery_method === "email" && customer?.email) {
+            const result = await sendEmail({
+              to: customer.email,
+              subject: `Service Reminder – ${(reminder as any).vehicles?.plate_number || "Your Vehicle"}`,
+              text: reminder.message_template,
+              html: `<p>${reminder.message_template.replace(/\n/g, "<br>")}</p>`,
+            });
+            sent = result.success;
+            if (!result.success) failureReason = result.error || "Email delivery failed";
+          } else if (reminder.delivery_method === "sms" && customer?.contact_number) {
+            const result = await sendSms(customer.contact_number, reminder.message_template);
+            sent = result.success;
+            if (!result.success) failureReason = result.error || "SMS delivery failed";
+          }
+
+          if (sent) {
+            await supabaseAdmin
+              .from("service_reminders")
+              .update({ status: "sent", sent_at: now, failure_reason: null })
+              .eq("id", reminder.id);
+            sentCount++;
+          } else {
+            await supabaseAdmin
+              .from("service_reminders")
+              .update({ status: "failed", failure_reason: failureReason })
+              .eq("id", reminder.id);
+            failedCount++;
+          }
         } else {
           await supabaseAdmin
             .from("service_reminders")
