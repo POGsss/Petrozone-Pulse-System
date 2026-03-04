@@ -1,12 +1,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   LuPlus,
-  LuCircleAlert,
-  LuRefreshCw,
   LuPencil,
   LuTrash2,
-  LuChevronLeft,
-  LuChevronRight,
   LuEllipsisVertical,
   LuShoppingCart,
   LuSend,
@@ -15,8 +11,6 @@ import {
   LuBadgeCheck,
   LuClipboardList,
   LuX,
-  LuSearch,
-  LuFilter,
 } from "react-icons/lu";
 import { purchaseOrdersApi, branchesApi, suppliersApi, supplierProductsApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
@@ -28,7 +22,14 @@ import {
   ModalSelect,
   ModalButtons,
   ModalError,
+  PageHeader,
+  StatsCards,
+  TableSearchFilter,
+  Pagination,
+  ErrorAlert,
+  SkeletonLoader,
 } from "../../components";
+import type { StatCard } from "../../components";
 import type { PurchaseOrder, Branch, Supplier, SupplierProduct } from "../../types";
 
 const ITEMS_PER_PAGE = 10;
@@ -112,7 +113,6 @@ export function PurchaseOrderManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterBranch, setFilterBranch] = useState("all");
-  const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
   // Add modal
@@ -677,160 +677,69 @@ export function PurchaseOrderManagement() {
 
   // ─── Loading / Error ─────────────────────────────────────────────────
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <LuRefreshCw className="w-6 h-6 animate-spin text-primary" />
-      </div>
-    );
+    return <SkeletonLoader showHeader showStats statsCount={3} rows={5} />;
   }
 
   if (error) {
-    return (
-      <div className="bg-negative-200 border border-negative rounded-lg p-4 flex items-center gap-3">
-        <LuCircleAlert className="w-5 h-5 text-negative-950 shrink-0" />
-        <div>
-          <p className="text-sm text-negative-950">{error}</p>
-          <button onClick={fetchData} className="text-sm text-negative-900 hover:underline mt-1">Try again</button>
-        </div>
-      </div>
-    );
+    return <ErrorAlert message={error} onRetry={fetchData} />;
   }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 justify-between bg-white rounded-xl p-4 border border-neutral-200">
-        <div>
-          <h3 className="text-lg font-semibold text-neutral-950">Purchase Orders</h3>
-          <p className="text-sm text-neutral-900">Summary of purchase orders</p>
-        </div>
-        {canCreate && (
-          <button
-            onClick={openAddModal}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
-          >
-            <LuPlus className="w-4 h-4" />
-            Create Purchase Order
-          </button>
-        )}
-      </div>
+      <PageHeader
+        title="Purchase Orders"
+        subtitle="Summary of purchase orders"
+        buttonLabel="Create Purchase Order"
+        onAdd={openAddModal}
+        showButton={canCreate}
+      />
 
-      {/* Summary Stats Cards — 3 cards only */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white border border-neutral-200 rounded-xl p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <LuClipboardList className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-sm text-neutral-900">Total</p>
-              <p className="text-2xl font-bold text-neutral-950">{stats.total}</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white border border-neutral-200 rounded-xl p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <LuSend className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-sm text-neutral-900">Submitted</p>
-              <p className="text-2xl font-bold text-neutral-950">{stats.submitted}</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white border border-neutral-200 rounded-xl p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-positive-100 rounded-lg">
-              <LuPackageCheck className="w-5 h-5 text-positive" />
-            </div>
-            <div>
-              <p className="text-sm text-neutral-900">Received</p>
-              <p className="text-2xl font-bold text-neutral-950">{stats.received}</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Summary Stats Cards */}
+      <StatsCards
+        cards={[
+          { icon: LuClipboardList, iconBg: "bg-primary-100", iconColor: "text-primary", label: "Total", value: stats.total },
+          { icon: LuSend, iconBg: "bg-primary-100", iconColor: "text-primary", label: "Submitted", value: stats.submitted },
+          { icon: LuPackageCheck, iconBg: "bg-positive-100", iconColor: "text-positive", label: "Received", value: stats.received },
+        ] as StatCard[]}
+      />
 
       {/* Table Section */}
       <div className="bg-white border border-neutral-200 rounded-xl">
         {/* Table Header with Search and Filters */}
-        <div className="p-4 border-b border-neutral-200 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="relative flex-1 max-w-md">
-              <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-900" />
-              <input
-                type="text"
-                placeholder="Search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-4 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-primary w-full sm:w-64"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <select
-                value={filterStatus}
-                onChange={(e) => { setFilterStatus(e.target.value); setCurrentPage(1); }}
-                className="appearance-none px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-              >
-                <option value="all">All Status</option>
-                <option value="draft">Draft</option>
-                <option value="submitted">Submitted</option>
-                <option value="approved">Approved</option>
-                <option value="received">Received</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm font-medium transition-colors ${showFilters ? "border-primary bg-primary-100 text-primary" : "border-neutral-200 text-neutral-950 hover:bg-neutral-100"}`}
-              >
-                <LuFilter className="w-4 h-4" />
-                <span className="hidden sm:inline">Filters</span>
-              </button>
-              <button
-                onClick={fetchData}
-                disabled={loading}
-                className="p-2 border border-neutral-200 rounded-lg text-neutral-950 hover:bg-neutral-100 disabled:opacity-100"
-                title="Refresh"
-              >
-                <LuRefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-              </button>
-            </div>
-          </div>
-
-          {/* Advanced Filters */}
-          {showFilters && (
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1">
-                <label className="block text-xs text-neutral-900 mb-1">Branch</label>
-                <select
-                  value={filterBranch}
-                  onChange={(e) => { setFilterBranch(e.target.value); setCurrentPage(1); }}
-                  className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                >
-                  <option value="all">All Branches</option>
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex items-end gap-2">
-                <button
-                  onClick={fetchData}
-                  className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-950 transition-colors"
-                >
-                  Apply
-                </button>
-                <button
-                  onClick={handleResetFilters}
-                  className="px-4 py-2 border border-neutral-200 rounded-lg text-sm font-medium text-neutral-950 hover:bg-neutral-100 transition-colors"
-                >
-                  Reset
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        <TableSearchFilter
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          searchPlaceholder="Search"
+          primaryFilter={{
+            key: "status",
+            label: "Status",
+            value: filterStatus,
+            options: [
+              { value: "all", label: "All Status" },
+              { value: "draft", label: "Draft" },
+              { value: "submitted", label: "Submitted" },
+              { value: "approved", label: "Approved" },
+              { value: "received", label: "Received" },
+              { value: "cancelled", label: "Cancelled" },
+            ],
+            onChange: (v) => { setFilterStatus(v); setCurrentPage(1); },
+          }}
+          advancedFilters={[{
+            key: "branch",
+            label: "Branch",
+            value: filterBranch,
+            options: [
+              { value: "all", label: "All Branches" },
+              ...branches.map((b) => ({ value: b.id, label: b.name })),
+            ],
+            onChange: (v) => { setFilterBranch(v); setCurrentPage(1); },
+          }]}
+          onApply={fetchData}
+          onReset={handleResetFilters}
+          onRefresh={fetchData}
+          loading={loading}
+        />
 
         {/* Mobile Card View */}
         <div className="md:hidden p-4">
@@ -1027,32 +936,15 @@ export function PurchaseOrderManagement() {
         </div>
 
         {/* Pagination */}
-        {filteredCount > ITEMS_PER_PAGE && (
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4">
-            <p className="text-sm text-neutral-900">
-              {(currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredCount)} of {filteredCount} orders
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="p-2 border border-neutral-200 rounded-lg text-neutral-900 hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <LuChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="text-sm text-neutral-900 px-2">
-                {currentPage} of {totalPages}
-              </span>
-              <button
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="p-2 border border-neutral-200 rounded-lg text-neutral-900 hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <LuChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
+        <Pagination
+          variant="table"
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+          totalItems={filteredCount}
+          itemsPerPage={ITEMS_PER_PAGE}
+          entityName="orders"
+        />
       </div>
 
       {/* ═══════════════════ ADD MODAL ═══════════════════ */}

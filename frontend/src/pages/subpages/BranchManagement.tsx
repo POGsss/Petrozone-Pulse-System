@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
-import { LuPlus, LuCircleAlert, LuRefreshCw, LuPencil, LuTrash2, LuBuilding } from "react-icons/lu";
+import { LuPencil, LuTrash2, LuBuilding } from "react-icons/lu";
 import { branchesApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
-import { Modal, ModalSection, ModalInput, ModalButtons, ModalError, SearchFilter } from "../../components";
+import { Modal, ModalSection, ModalInput, ModalButtons, ModalError, SearchFilter, PageHeader, ErrorAlert, SkeletonLoader } from "../../components";
 import type { FilterGroup } from "../../components";
 import type { Branch } from "../../types";
 
@@ -277,46 +277,22 @@ export function BranchManagement() {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <LuRefreshCw className="w-6 h-6 animate-spin text-primary" />
-      </div>
-    );
+    return <SkeletonLoader showHeader rows={5} />;
   }
 
   if (error) {
-    return (
-      <div className="bg-negative-200 border border-negative rounded-lg p-4 flex items-center gap-3">
-        <LuCircleAlert className="w-5 h-5 text-negative-950 shrink-0" />
-        <div>
-          <p className="text-sm text-negative-950">{error}</p>
-          <button
-            onClick={fetchBranches}
-            className="text-sm text-negative-600 hover:underline mt-1"
-          >
-            Try again
-          </button>
-        </div>
-      </div>
-    );
+    return <ErrorAlert message={error} onRetry={fetchBranches} />;
   }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 justify-between bg-white rounded-xl p-4 border border-neutral-200">
-        <div>
-          <h3 className="text-lg font-semibold text-neutral-950">Branches</h3>
-          <p className="text-sm text-neutral-900">{branches.length} branches total</p>
-        </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
-        >
-          <LuPlus className="w-4 h-4" />
-          Add New Branch
-        </button>
-      </div>
+      <PageHeader
+        title="Branches"
+        subtitle={`${branches.length} branches total`}
+        buttonLabel="Add New Branch"
+        onAdd={() => setShowAddModal(true)}
+      />
 
       {/* Search & Filter bar */}
       {branches.length > 0 && (

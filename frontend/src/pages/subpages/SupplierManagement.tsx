@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { LuPlus, LuCircleAlert, LuRefreshCw, LuPencil, LuTrash2, LuTruck, LuPackage, LuEllipsisVertical, LuX, LuCheck } from "react-icons/lu";
+import { LuPlus, LuRefreshCw, LuPencil, LuTrash2, LuTruck, LuPackage, LuEllipsisVertical, LuX, LuCheck } from "react-icons/lu";
 import { useAuth } from "../../auth";
 import { suppliersApi, branchesApi, supplierProductsApi, inventoryApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
-import { Modal, ModalSection, ModalInput, ModalSelect, ModalButtons, ModalError, SearchFilter } from "../../components";
+import { Modal, ModalSection, ModalInput, ModalSelect, ModalButtons, ModalError, SearchFilter, PageHeader, ErrorAlert, SkeletonLoader } from "../../components";
 import type { FilterGroup } from "../../components";
 import type { Supplier, Branch, SupplierProduct, InventoryItem } from "../../types";
 
@@ -464,48 +464,23 @@ export function SupplierManagement() {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <LuRefreshCw className="w-6 h-6 animate-spin text-primary" />
-      </div>
-    );
+    return <SkeletonLoader showHeader rows={5} />;
   }
 
   if (error) {
-    return (
-      <div className="bg-negative-200 border border-negative rounded-lg p-4 flex items-center gap-3">
-        <LuCircleAlert className="w-5 h-5 text-negative-950 shrink-0" />
-        <div>
-          <p className="text-sm text-negative-950">{error}</p>
-          <button
-            onClick={fetchSuppliers}
-            className="text-sm text-negative-600 hover:underline mt-1"
-          >
-            Try again
-          </button>
-        </div>
-      </div>
-    );
+    return <ErrorAlert message={error} onRetry={fetchSuppliers} />;
   }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 justify-between bg-white rounded-xl p-4 border border-neutral-200">
-        <div>
-          <h3 className="text-lg font-semibold text-neutral-950">Suppliers</h3>
-          <p className="text-sm text-neutral-900">{suppliers.length} suppliers total</p>
-        </div>
-        {canWrite && (
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
-          >
-            <LuPlus className="w-4 h-4" />
-            Add New Supplier
-          </button>
-        )}
-      </div>
+      <PageHeader
+        title="Suppliers"
+        subtitle={`${suppliers.length} suppliers total`}
+        buttonLabel="Add New Supplier"
+        onAdd={() => setShowAddModal(true)}
+        showButton={canWrite}
+      />
 
       {/* Search & Filter bar */}
       {suppliers.length > 0 && (

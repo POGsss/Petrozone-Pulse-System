@@ -1,13 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
 import {
   LuPlus,
-  LuCircleAlert,
   LuRefreshCw,
   LuPencil,
   LuTrash2,
   LuPackage,
-  LuChevronLeft,
-  LuChevronRight,
   LuX,
 } from "react-icons/lu";
 import { catalogApi, inventoryApi } from "../../lib/api";
@@ -21,6 +18,10 @@ import {
   ModalButtons,
   ModalError,
   SearchFilter,
+  PageHeader,
+  Pagination,
+  ErrorAlert,
+  SkeletonLoader,
 } from "../../components";
 import type { FilterGroup } from "../../components";
 import type { CatalogItem, CatalogInventoryLink, InventoryItem } from "../../types";
@@ -375,48 +376,23 @@ export function CatalogManagement() {
   }, [editAvailInv, editInvLinks]);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <LuRefreshCw className="w-6 h-6 animate-spin text-primary" />
-      </div>
-    );
+    return <SkeletonLoader showHeader rows={5} />;
   }
 
   if (error && allItems.length === 0) {
-    return (
-      <div className="bg-negative-200 border border-negative rounded-lg p-4 flex items-center gap-3">
-        <LuCircleAlert className="w-5 h-5 text-negative-950 shrink-0" />
-        <div>
-          <p className="text-sm text-negative-950">{error}</p>
-          <button
-            onClick={fetchData}
-            className="text-sm text-negative-600 hover:underline mt-1"
-          >
-            Try again
-          </button>
-        </div>
-      </div>
-    );
+    return <ErrorAlert message={error} onRetry={fetchData} />;
   }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 justify-between bg-white rounded-xl p-4 border border-neutral-200">
-        <div>
-          <h3 className="text-lg font-semibold text-neutral-950">Catalog</h3>
-          <p className="text-sm text-neutral-900">{allItems.length} items total</p>
-        </div>
-        {canCreate && (
-          <button
-            onClick={openAddModal}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
-          >
-            <LuPlus className="w-4 h-4" />
-            Add New Catalog
-          </button>
-        )}
-      </div>
+      <PageHeader
+        title="Catalog"
+        subtitle={`${allItems.length} items total`}
+        buttonLabel="Add New Catalog"
+        onAdd={openAddModal}
+        showButton={canCreate}
+      />
 
       {/* Search & Filter bar */}
       {allItems.length > 0 && (
@@ -512,32 +488,12 @@ export function CatalogManagement() {
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white rounded-xl p-4 border border-neutral-200">
-          <p className="text-sm text-neutral-900">
-            Page {currentPage} of {totalPages}
-          </p>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="p-2 border border-neutral-200 rounded-lg text-neutral-900 hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <LuChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-sm text-neutral-900 px-2">
-              {currentPage} / {totalPages}
-            </span>
-            <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="p-2 border border-neutral-200 rounded-lg text-neutral-900 hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <LuChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+        variant="card"
+      />
 
       {/* Add Catalog Item Modal */}
       <Modal
