@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
+  LuPlus,
+  LuRefreshCw,
   LuTrash2,
   LuClipboardList,
   LuX,
@@ -1230,7 +1232,7 @@ export function JobOrderManagement() {
         title="Job Orders"
         subtitle={`${allOrders.length} orders total`}
         buttonLabel={canCreate ? "Create Job Order" : undefined}
-        onButtonClick={canCreate ? openAddModal : undefined}
+        onAdd={canCreate ? openAddModal : undefined}
       />
 
       {/* Search & Filter bar */}
