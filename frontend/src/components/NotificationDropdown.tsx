@@ -3,6 +3,7 @@ import { LuBell, LuCheck, LuCheckCheck, LuSettings } from "react-icons/lu";
 import { notificationsApi } from "../lib/api";
 import { showToast } from "../lib/toast";
 import { useAuth } from "../auth";
+import { Modal, ModalSection, ModalInput } from "./Modal";
 import type { NotificationReceipt } from "../types";
 
 interface NotificationDropdownProps {
@@ -18,6 +19,7 @@ export function NotificationDropdown({ onViewAll }: NotificationDropdownProps) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [viewReceipt, setViewReceipt] = useState<NotificationReceipt | null>(null);
 
   // Fetch unread count periodically
   const fetchUnreadCount = useCallback(async () => {
@@ -167,7 +169,13 @@ export function NotificationDropdown({ onViewAll }: NotificationDropdownProps) {
                 return (
                   <div
                     key={receipt.id}
-                    className={`px-4 py-3 border-b border-neutral-100 last:border-0 hover:bg-neutral-100 transition-colors ${
+                    onClick={() => {
+                      setViewReceipt(receipt);
+                      if (!receipt.is_read) {
+                        handleMarkAsRead(receipt.id, receipt.notification_id);
+                      }
+                    }}
+                    className={`px-4 py-3 border-b border-neutral-100 last:border-0 hover:bg-neutral-100 transition-colors cursor-pointer ${
                       !receipt.is_read ? "bg-primary-200" : ""
                     }`}
                   >
@@ -215,6 +223,34 @@ export function NotificationDropdown({ onViewAll }: NotificationDropdownProps) {
           </div>
         </div>
       )}
+
+      {/* View Notification Detail Modal */}
+      <Modal
+        isOpen={!!viewReceipt && !!viewReceipt.notifications}
+        onClose={() => setViewReceipt(null)}
+        title="Notification Details"
+      >
+        {viewReceipt?.notifications && (
+          <div>
+            <ModalSection
+              title="Basic Information">
+              <ModalInput
+                type="text"
+                value={viewReceipt.notifications.title}
+                onChange={() => {}}
+                placeholder="Title"
+                disabled
+              />
+              <textarea
+                value={viewReceipt.notifications.message}
+                readOnly
+                rows={4}
+                className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 text-sm resize-none focus:outline-none"
+              />
+            </ModalSection>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
