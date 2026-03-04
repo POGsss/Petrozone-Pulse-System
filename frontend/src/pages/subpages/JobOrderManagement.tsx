@@ -1218,7 +1218,7 @@ export function JobOrderManagement() {
   }
 
   if (loading) {
-    return <SkeletonLoader showHeader rows={5} />;
+    return <SkeletonLoader showHeader rows={6} variant="grid" />;
   }
 
   if (error && allOrders.length === 0) {

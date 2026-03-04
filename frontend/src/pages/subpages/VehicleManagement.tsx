@@ -441,7 +441,7 @@ export function VehicleManagement() {
   }
 
   if (loading) {
-    return <SkeletonLoader showHeader rows={5} />;
+    return <SkeletonLoader showHeader rows={6} variant="grid" />;
   }
 
   if (error && allVehicles.length === 0) {

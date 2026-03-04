@@ -1,5 +1,5 @@
 interface SkeletonLoaderProps {
-  /** Number of skeleton rows to show */
+  /** Number of skeleton rows/cards to show */
   rows?: number;
   /** Whether to show a header skeleton */
   showHeader?: boolean;
@@ -7,6 +7,8 @@ interface SkeletonLoaderProps {
   showStats?: boolean;
   /** Number of stat cards to simulate */
   statsCount?: number;
+  /** "table" renders table rows, "grid" renders card grid */
+  variant?: "table" | "grid";
 }
 
 export function SkeletonLoader({
@@ -14,6 +16,7 @@ export function SkeletonLoader({
   showHeader = true,
   showStats = false,
   statsCount = 3,
+  variant = "table",
 }: SkeletonLoaderProps) {
   const colsMap: Record<number, string> = {
     1: "sm:grid-cols-1",
@@ -46,7 +49,7 @@ export function SkeletonLoader({
               key={i}
               className="bg-white border border-neutral-200 rounded-xl p-4"
             >
-              <div className="flex items-center gap-3">
+              <div className="h-13 flex items-center gap-3">
                 <div className="w-9 h-9 bg-neutral-200 rounded-lg" />
                 <div className="space-y-1.5">
                   <div className="h-3.5 w-20 bg-neutral-100 rounded" />
@@ -58,27 +61,67 @@ export function SkeletonLoader({
         </div>
       )}
 
-      {/* Table / content skeleton */}
-      <div className="bg-white rounded-xl border border-neutral-200">
-        {/* Search bar skeleton */}
-        <div className="p-4 border-b border-neutral-200 flex items-center gap-4">
-          <div className="h-9 w-64 bg-neutral-100 rounded-lg" />
-          <div className="h-9 w-28 bg-neutral-100 rounded-lg" />
-          <div className="h-9 w-9 bg-neutral-100 rounded-lg" />
-        </div>
-        {/* Rows skeleton */}
-        <div className="divide-y divide-neutral-200">
-          {Array.from({ length: rows }).map((_, i) => (
-            <div key={i} className="p-4 flex items-center gap-4">
-              <div className="h-4 w-1/4 bg-neutral-100 rounded" />
-              <div className="h-4 w-1/5 bg-neutral-100 rounded" />
-              <div className="h-4 w-1/6 bg-neutral-100 rounded" />
-              <div className="h-4 w-1/6 bg-neutral-100 rounded" />
-              <div className="ml-auto h-8 w-20 bg-neutral-100 rounded-lg" />
+      {/* Content skeleton */}
+      {variant === "grid" ? (
+        <>
+          {/* Search bar skeleton for grid */}
+          <div className="flex flex-col justify-between bg-white p-4 rounded-xl sm:flex-row gap-4 border border-neutral-200">
+            <div className="h-10 w-64 bg-neutral-100 rounded-lg" />
+            <div className="h-10 w-24 bg-neutral-100 rounded-lg" />
+          </div>
+          {/* Card grid skeleton */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: rows }).map((_, i) => (
+              <div
+                key={i}
+                className="bg-white rounded-xl border border-neutral-200 p-4 space-y-3"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-neutral-200 rounded-lg" />
+                    <div className="space-y-1.5">
+                      <div className="h-4 w-28 bg-neutral-200 rounded" />
+                      <div className="h-3 w-20 bg-neutral-100 rounded" />
+                    </div>
+                  </div>
+                  <div className="h-5 w-16 bg-neutral-100 rounded-full" />
+                </div>
+                <div className="space-y-2 pt-2">
+                  <div className="h-3 w-full bg-neutral-100 rounded" />
+                  <div className="h-3 w-3/4 bg-neutral-100 rounded" />
+                </div>
+                <div className="flex items-center justify-between pt-2">
+                  <div className="h-3 w-24 bg-neutral-100 rounded" />
+                  <div className="h-8 w-20 bg-neutral-100 rounded-lg" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="bg-white rounded-xl border border-neutral-200">
+          {/* Search bar skeleton */}
+          <div className="p-4 border-b border-neutral-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+            <div className="h-9 w-full sm:w-64 bg-neutral-100 rounded-lg" />
+            <div className="flex items-center gap-2">
+                <div className="h-9 w-28 bg-neutral-100 rounded-lg" />
+                <div className="h-9 w-9 bg-neutral-100 rounded-lg" />
             </div>
-          ))}
+          </div>
+          {/* Rows skeleton */}
+          <div className="divide-y divide-neutral-200">
+            {Array.from({ length: rows }).map((_, i) => (
+              <div key={i} className="p-4 flex items-center gap-4">
+                <div className="h-4 w-1/4 bg-neutral-100 rounded" />
+                <div className="h-4 w-1/5 bg-neutral-100 rounded" />
+                <div className="h-4 w-1/6 bg-neutral-100 rounded" />
+                <div className="h-4 w-1/6 bg-neutral-100 rounded" />
+                <div className="ml-auto h-8 w-20 bg-neutral-100 rounded-lg" />
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
