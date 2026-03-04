@@ -4,7 +4,6 @@ import {
   LuTrash2,
   LuSend,
   LuClock,
-  LuEye,
   LuBan,
   LuMail,
   LuMessageSquare,
