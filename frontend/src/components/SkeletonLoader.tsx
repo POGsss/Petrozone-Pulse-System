@@ -62,7 +62,121 @@ export function SkeletonLoader({
       )}
 
       {/* Content skeleton */}
-      {variant === "grid" ? (
+      {variant === "dashboard" ? (
+        <>
+          {/* KPI Cards Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-36 bg-white rounded-xl p-4 border border-neutral-200">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-9 h-9 bg-neutral-200 rounded-lg" />
+                    <div className="h-4 w-16 bg-neutral-100 rounded" />
+                  </div>
+                  <div className="h-3 w-20 bg-neutral-100 rounded" />
+                </div>
+                <div className="h-7 w-28 bg-neutral-200 rounded" />
+                <div className="h-3 w-36 bg-neutral-100 rounded mt-2" />
+              </div>
+            ))}
+          </div>
+
+          {/* Second Row: Pie + Inventory + Recent Orders */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Pie Chart Skeleton */}
+            <div className="bg-white rounded-xl p-5 border border-neutral-200 lg:col-span-1">
+              <div className="h-4 w-40 bg-neutral-200 rounded mb-4" />
+              <div className="flex justify-center">
+                <div className="w-40 h-40 bg-neutral-100 rounded-full" />
+              </div>
+              <div className="flex flex-wrap gap-2 mt-6 justify-center">
+                {Array.from({ length: 7 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-1">
+                    <div className="w-2.5 h-2.5 bg-neutral-200 rounded-full" />
+                    <div className="h-3 w-12 bg-neutral-100 rounded" />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Inventory Cards Skeleton */}
+            <div className="flex flex-col gap-4 lg:col-span-1">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-28 bg-white rounded-xl p-4 border border-neutral-200">
+                  <div className="h-4 w-24 bg-neutral-200 rounded mb-3" />
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-neutral-100 rounded-lg" />
+                    <div className="h-7 w-12 bg-neutral-200 rounded" />
+                    <div className="ml-auto h-5 w-20 bg-neutral-100 rounded-full" />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Recent Orders Skeleton */}
+            <div className="bg-white rounded-xl p-5 border border-neutral-200 lg:col-span-1 lg:row-span-2">
+              <div className="h-4 w-28 bg-neutral-200 rounded mb-4" />
+              <div className="space-y-0">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="flex items-center justify-between py-3 border-b border-neutral-100 first:border-t">
+                    <div className="space-y-1.5">
+                      <div className="h-4 w-24 bg-neutral-200 rounded" />
+                      <div className="h-3 w-36 bg-neutral-100 rounded" />
+                    </div>
+                    <div className="text-right space-y-1.5">
+                      <div className="h-3 w-20 bg-neutral-100 rounded ml-auto" />
+                      <div className="h-5 w-16 bg-neutral-100 rounded-full ml-auto" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Top Services Chart Skeleton */}
+            <div className="bg-white rounded-xl p-5 border border-neutral-200 lg:col-span-2">
+              <div className="flex items-center justify-between mb-4">
+                <div className="h-4 w-24 bg-neutral-200 rounded" />
+                <div className="flex items-center gap-2">
+                  <div className="h-7 w-20 bg-neutral-100 rounded-lg" />
+                  <div className="h-3 w-20 bg-neutral-100 rounded" />
+                </div>
+              </div>
+              <div className="space-y-3">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <div className="h-3 w-16 bg-neutral-100 rounded" />
+                    <div className="h-6 bg-neutral-100 rounded" style={{ width: `${80 - i * 12}%` }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Third Row: Sales + Revenue Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="bg-white rounded-xl p-5 border border-neutral-200">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="h-4 w-28 bg-neutral-200 rounded" />
+                  <div className="flex items-center gap-2">
+                    <div className="h-7 w-20 bg-neutral-100 rounded-lg" />
+                    <div className="h-3 w-20 bg-neutral-100 rounded" />
+                  </div>
+                </div>
+                <div className="flex items-end gap-2 h-[300px] pt-8">
+                  {Array.from({ length: 8 }).map((_, j) => (
+                    <div
+                      key={j}
+                      className="flex-1 bg-neutral-100 rounded-t"
+                      style={{ height: `${30 + Math.sin(j * 0.8) * 40 + 30}%` }}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : variant === "grid" ? (
         <>
           {/* Search bar skeleton for grid */}
           <div className="flex flex-col justify-between bg-white p-4 rounded-xl sm:flex-row gap-4 border border-neutral-200">
