@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { LuSparkles, LuX, LuSend, LuLoader } from "react-icons/lu";
+import ReactMarkdown from "react-markdown";
 import { dashboardApi } from "../lib/api";
 
 interface ChatMessage {
@@ -118,7 +119,26 @@ export function DashboardChat({ context }: DashboardChatProps) {
                       : "bg-white text-neutral-950 border border-neutral-200 rounded-bl-sm"
                   }`}
                 >
-                  {msg.content}
+                  {msg.role === "assistant" ? (
+                    <ReactMarkdown
+                      components={{
+                        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                        em: ({ children }) => <em className="italic">{children}</em>,
+                        ul: ({ children }) => <ul className="list-disc ml-4 mb-2">{children}</ul>,
+                        ol: ({ children }) => <ol className="list-decimal ml-4 mb-2">{children}</ol>,
+                        li: ({ children }) => <li className="mb-0.5">{children}</li>,
+                        h1: ({ children }) => <h1 className="font-bold text-base mb-1">{children}</h1>,
+                        h2: ({ children }) => <h2 className="font-bold text-sm mb-1">{children}</h2>,
+                        h3: ({ children }) => <h3 className="font-semibold text-sm mb-1">{children}</h3>,
+                        code: ({ children }) => <code className="bg-neutral-200 dark:bg-neutral-700 px-1 rounded text-xs">{children}</code>,
+                      }}
+                    >
+                      {msg.content}
+                    </ReactMarkdown>
+                  ) : (
+                    msg.content
+                  )}
                 </div>
               </div>
             ))}

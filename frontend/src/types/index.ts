@@ -216,7 +216,7 @@ export interface ResolvedPricing {
 }
 
 // Job Order types
-export type JobOrderStatus = "draft" | "pending_approval" | "approved" | "in_progress" | "ready_for_release" | "completed" | "rejected" | "cancelled";
+export type JobOrderStatus = "draft" | "pending_approval" | "approved" | "in_progress" | "ready_for_release" | "pending_payment" | "completed" | "rejected" | "cancelled";
 
 export interface JobOrderItem {
   id: string;
@@ -276,6 +276,10 @@ export interface JobOrder {
   rejection_reason: string | null;
   cancelled_at: string | null;
   cancelled_by: string | null;
+  payment_method: string | null;
+  payment_notes: string | null;
+  payment_recorded_at: string | null;
+  payment_recorded_by: string | null;
   deleted_at: string | null;
   deleted_by: string | null;
   approval_status: string | null;

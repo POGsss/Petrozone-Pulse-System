@@ -404,15 +404,17 @@ router.post(
 
       // Build system context from dashboard data
       const systemPrompt = 
-        `You are a helpful AI assistant for Petrozone Pulse System, an automotive service center management application.
+        `
+          You are a helpful AI assistant for Petrozone Pulse System, an auto-repair management system.
           You can ONLY answer questions based on the dashboard data provided below. Do NOT make up information or use external knowledge.
           If the user asks something not answerable from the data, politely say you can only help with questions about the current dashboard data.
+          If the user asks for trends or insights, analyze the data to provide them, but do not invent any numbers or facts not present in the data.
+          If the user asks for suggestions and recommendations, analyze the data to provide them a realistic assessment.
           Keep answers concise and professional. Use Philippine Peso (₱) for currency values.
 
           Current Dashboard Data:
           ${JSON.stringify(context, null, 2)}
-
-          Important: Base ALL your answers strictly on the data above. Do not invent numbers or trends not present in the data.`
+        `
       ;
 
       const result = await model.generateContent({

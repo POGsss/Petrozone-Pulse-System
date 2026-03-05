@@ -15,6 +15,7 @@ import {
   LuPlay,
   LuPackageCheck,
   LuCircleCheck,
+  LuCreditCard,
 } from "react-icons/lu";
 import { jobOrdersApi, branchesApi, customersApi, vehiclesApi, catalogApi, pricingApi, thirdPartyRepairsApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
@@ -70,6 +71,7 @@ function getStatusLabel(status: string): string {
     approved: "Approved",
     in_progress: "In Progress",
     ready_for_release: "Ready",
+    pending_payment: "Payment",
     completed: "Completed",
     rejected: "Rejected",
     cancelled: "Cancelled",
@@ -84,6 +86,7 @@ function getStatusColors(status: string): string {
     approved: "bg-positive-100 text-positive-950",
     in_progress: "bg-neutral-100 text-neutral-950",
     ready_for_release: "bg-primary-100 text-primary-950",
+    pending_payment: "bg-secondary-100 text-secondary-950",
     completed: "bg-positive-100 text-positive-950",
     rejected: "bg-negative-100 text-negative-950",
     cancelled: "bg-negative-100 text-negative-950",
@@ -129,6 +132,7 @@ export function JobOrderManagement() {
   const canDelete = userRoles.some((r) => ["POC", "JS", "R"].includes(r));
   const canRepair = userRoles.some((r) => ["HM", "POC", "JS", "R", "T"].includes(r));
   const canApproval = userRoles.some((r) => ["R", "T"].includes(r));
+  const canPayment = userRoles.some((r) => ["R", "T"].includes(r));
   const canStartWork = userRoles.includes("T");
   const canMarkReady = userRoles.some((r) => ["T", "POC"].includes(r));
   const canComplete = userRoles.some((r) => ["HM", "POC"].includes(r));
@@ -237,6 +241,11 @@ export function JobOrderManagement() {
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [approvalOrder, setApprovalOrder] = useState<JobOrder | null>(null);
 
+  // Payment modal state
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentOrder, setPaymentOrder] = useState<JobOrder | null>(null);
+  const [processingPayment, setProcessingPayment] = useState(false);
+
   // Shared reason modal (for cancel & reject actions)
   const [showReasonModal, setShowReasonModal] = useState(false);
   const [reasonModalAction, setReasonModalAction] = useState<"cancel" | "reject">("cancel");
@@ -275,6 +284,7 @@ export function JobOrderManagement() {
           { value: "approved", label: "Approved" },
           { value: "in_progress", label: "In Progress" },
           { value: "ready_for_release", label: "Ready for Release" },
+          { value: "pending_payment", label: "Payment" },
           { value: "completed", label: "Completed" },
           { value: "rejected", label: "Rejected" },
           { value: "cancelled", label: "Cancelled" },
@@ -1057,6 +1067,12 @@ export function JobOrderManagement() {
     setShowApprovalModal(true);
   }
 
+  // --- Open Payment Modal from card/dropdown ---
+  function openPaymentModal(order: JobOrder) {
+    setPaymentOrder(order);
+    setShowPaymentModal(true);
+  }
+
   // --- Repair Action Modal (wrench button) ---
   async function openRepairActionModal(order: JobOrder) {
     setRepairActionOrder(order);
@@ -1379,7 +1395,15 @@ export function JobOrderManagement() {
                               <LuPackageCheck className="w-4 h-4" /> Mark Ready
                             </button>
                           )}
-                          {canComplete && order.status === "ready_for_release" && (
+                          {canPayment && order.status === "ready_for_release" && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); closeDropdown(); openPaymentModal(order); }}
+                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                            >
+                              <LuCreditCard className="w-4 h-4" /> Record Payment
+                            </button>
+                          )}
+                          {canComplete && order.status === "pending_payment" && (
                             <button
                               onClick={async (e) => {
                                 e.stopPropagation(); closeDropdown();
@@ -2446,6 +2470,56 @@ export function JobOrderManagement() {
                 </button>
               </div>
             )}
+          </div>
+        )}
+      </Modal>
+
+      {/* --- Payment Modal --- */}
+      <Modal
+        isOpen={showPaymentModal && !!paymentOrder}
+        onClose={() => setShowPaymentModal(false)}
+        title="Record Payment"
+        maxWidth="sm"
+      >
+        {paymentOrder && (
+          <div>
+            <div className="bg-neutral-100 rounded-xl p-4 my-4">
+              <p className="text-neutral-900">
+                Confirm payment for <strong className="text-neutral-950">{paymentOrder.order_number}</strong>? The total amount to be paid is <strong className="text-neutral-950">{new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(paymentOrder.total_amount)}</strong>
+              </p>
+            </div>
+            <p className="text-sm text-neutral-900 mb-2">This will mark the job order as payment received and change the status to Pending Payment.</p>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowPaymentModal(false)}
+                className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={processingPayment}
+                onClick={async () => {
+                  try {
+                    setProcessingPayment(true);
+                    await jobOrdersApi.recordPayment(paymentOrder.id);
+                    setShowPaymentModal(false);
+                    setPaymentOrder(null);
+                    showToast.success("Payment recorded — status changed to Pending Payment");
+                    fetchData();
+                  } catch (err) {
+                    showToast.error(err instanceof Error ? err.message : "Failed to record payment");
+                  } finally {
+                    setProcessingPayment(false);
+                  }
+                }}
+                className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {processingPayment ? "Processing..." : "Confirm"}
+              </button>
+            </div>
           </div>
         )}
       </Modal>

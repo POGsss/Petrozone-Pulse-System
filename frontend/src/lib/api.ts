@@ -731,6 +731,12 @@ export const jobOrdersApi = {
     });
   },
 
+  recordPayment: async (id: string) => {
+    return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/record-payment`, {
+      method: "PATCH",
+    });
+  },
+
   complete: async (id: string) => {
     return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/complete`, {
       method: "PATCH",

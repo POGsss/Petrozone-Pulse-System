@@ -2026,9 +2026,131 @@ router.patch(
 );
 
 /**
+ * PATCH /api/job-orders/:id/record-payment
+ * Transition: ready_for_release -> pending_payment
+ * Records payment details before job order can be completed.
+ * Same modal pattern as customer approval.
+ * Roles: R, T (same as approval)
+ */
+router.patch(
+  "/:id/record-payment",
+  requireRoles("R", "T"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const orderId = req.params.id as string;
+      // No form fields required — just a confirmation action
+
+      // Get existing order
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select("id, branch_id, order_number, status, start_time, total_amount")
+        .eq("id", orderId)
+        .eq("is_deleted", false)
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === "PGRST116") {
+          res.status(404).json({ error: "Job order not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError.message });
+        return;
+      }
+
+      // Branch access check
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(existing.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this job order's branch" });
+        return;
+      }
+
+      // Status check: must be ready_for_release
+      if (existing.status !== "ready_for_release") {
+        res.status(400).json({
+          error: `Cannot record payment for a job order with status "${existing.status}". Only ready-for-release orders can have payment recorded.`,
+        });
+        return;
+      }
+
+      // Update status and record payment timestamp
+      const { error: updateError } = await supabaseAdmin
+        .from("job_orders")
+        .update({
+          status: "pending_payment",
+          payment_recorded_at: new Date().toISOString(),
+          payment_recorded_by: req.user!.id,
+        })
+        .eq("id", orderId);
+
+      if (updateError) {
+        res.status(500).json({ error: updateError.message });
+        return;
+      }
+
+      // Fetch updated order
+      const { data: updated, error: refetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select(
+          `*,
+          customers(id, full_name, contact_number, email),
+          vehicles(id, plate_number, model, vehicle_type),
+          branches(id, name, code),
+          job_order_items(*, job_order_item_inventories(*))`
+        )
+        .eq("id", orderId)
+        .eq("is_deleted", false)
+        .single();
+
+      if (refetchError) {
+        res.status(500).json({ error: refetchError.message });
+        return;
+      }
+
+      // Audit logs
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "PAYMENT_RECORDED",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: orderId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { order_number: existing.order_number, total_amount: existing.total_amount },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "STATUS_CHANGED",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: orderId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { from: "ready_for_release", to: "pending_payment" },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      // System notification for payment recorded
+      await createJobOrderNotification(existing.order_number, orderId, existing.branch_id, "ready_for_release", "pending_payment", req.user!.id);
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Record payment error:", error);
+      await logFailedAction(req, "PAYMENT_RECORDED", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to record payment");
+      res.status(500).json({ error: "Failed to record payment for job order" });
+    }
+  }
+);
+/**
  * PATCH /api/job-orders/:id/complete
- * Transition: ready_for_release -> completed
+ * Transition: pending_payment -> completed
  * Sets completion_time. Timestamp coherence: completion_time >= start_time.
+ * Requires payment to be recorded first (pending_payment status).
  * Roles: HM, POC
  */
 router.patch(
@@ -2064,10 +2186,10 @@ router.patch(
         return;
       }
 
-      // Status check: must be ready_for_release
-      if (existing.status !== "ready_for_release") {
+      // Status check: must be pending_payment
+      if (existing.status !== "pending_payment") {
         res.status(400).json({
-          error: `Cannot complete a job order with status "${existing.status}". Only ready-for-release orders can be completed.`,
+          error: `Cannot complete a job order with status "${existing.status}". Only orders with payment recorded can be completed.`,
         });
         return;
       }
@@ -2135,14 +2257,14 @@ router.patch(
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
-          p_new_values: { from: "ready_for_release", to: "completed" },
+          p_new_values: { from: "pending_payment", to: "completed" },
         });
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);
       }
 
       // System notification for completion
-      await createJobOrderNotification(existing.order_number, orderId, existing.branch_id, "ready_for_release", "completed", req.user!.id);
+      await createJobOrderNotification(existing.order_number, orderId, existing.branch_id, "pending_payment", "completed", req.user!.id);
 
       res.json(updated);
     } catch (error) {

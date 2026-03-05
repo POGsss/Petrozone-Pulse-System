@@ -1441,7 +1441,7 @@ export type Database = {
       customer_status: "active" | "inactive"
       customer_type: "individual" | "company"
       inventory_item_status: "active" | "inactive"
-      job_order_status: "draft" | "pending_approval" | "approved" | "in_progress" | "ready_for_release" | "completed" | "rejected" | "cancelled"
+      job_order_status: "draft" | "pending_approval" | "approved" | "in_progress" | "ready_for_release" | "pending_payment" | "completed" | "rejected" | "cancelled"
       purchase_order_status: "draft" | "submitted" | "approved" | "received" | "cancelled"
       pricing_matrix_status: "active" | "inactive"
       pricing_type: "labor" | "packaging"
