@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
@@ -374,6 +375,69 @@ router.get(
     } catch (error) {
       console.error("Recent orders error:", error);
       res.status(500).json({ error: "Failed to fetch recent orders" });
+    }
+  }
+);
+
+// ─── POST /api/dashboard/chat ───
+// AI chatbot powered by Gemini — answers questions based on current dashboard data
+router.post(
+  "/chat",
+  requireRoles("HM", "POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        res.status(503).json({ error: "AI chat is not configured. Set GEMINI_API_KEY in environment." });
+        return;
+      }
+
+      const { message, context } = req.body;
+      if (!message || typeof message !== "string") {
+        res.status(400).json({ error: "Message is required" });
+        return;
+      }
+
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+      const model = genAI.getGenerativeModel({ model: modelName });
+
+      // Build system context from dashboard data
+      const systemPrompt = 
+        `You are a helpful AI assistant for Petrozone Pulse System, an automotive service center management application.
+          You can ONLY answer questions based on the dashboard data provided below. Do NOT make up information or use external knowledge.
+          If the user asks something not answerable from the data, politely say you can only help with questions about the current dashboard data.
+          Keep answers concise and professional. Use Philippine Peso (₱) for currency values.
+
+          Current Dashboard Data:
+          ${JSON.stringify(context, null, 2)}
+
+          Important: Base ALL your answers strictly on the data above. Do not invent numbers or trends not present in the data.`
+      ;
+
+      const result = await model.generateContent({
+        contents: [
+          { role: "user", parts: [{ text: systemPrompt + "\n\nUser question: " + message }] },
+        ],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 1024,
+        },
+      });
+
+      const response = result.response;
+      const text = response.text();
+
+      res.json({ reply: text });
+    } catch (error: any) {
+      console.error("Dashboard chat error:", error);
+      const statusCode = error.status || 500;
+      const errorMessage = error.message || "Failed to generate AI response";
+      if (statusCode === 429) {
+        res.status(429).json({ error: "AI rate limit reached. Please wait a moment and try again." });
+      } else {
+        res.status(statusCode).json({ error: errorMessage });
+      }
     }
   }
 );

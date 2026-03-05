@@ -84,12 +84,12 @@ export function SkeletonLoader({
           {/* Second Row: Pie + Inventory + Recent Orders */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* Pie Chart Skeleton */}
-            <div className="bg-white rounded-xl p-5 border border-neutral-200 lg:col-span-1">
-              <div className="h-4 w-40 bg-neutral-200 rounded mb-4" />
+            <div className="bg-white rounded-xl p-6 border border-neutral-200 lg:col-span-1">
+              <div className="h-4 w-40 bg-neutral-200 rounded mb-8" />
               <div className="flex justify-center">
                 <div className="w-40 h-40 bg-neutral-100 rounded-full" />
               </div>
-              <div className="flex flex-wrap gap-2 mt-6 justify-center">
+              <div className="flex flex-wrap gap-2 mt-8 justify-center">
                 {Array.from({ length: 7 }).map((_, i) => (
                   <div key={i} className="flex items-center gap-1">
                     <div className="w-2.5 h-2.5 bg-neutral-200 rounded-full" />

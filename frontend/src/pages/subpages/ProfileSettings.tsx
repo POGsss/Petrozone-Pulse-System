@@ -170,7 +170,7 @@ export function ProfileSettings() {
               type="text"
               value={profileForm.full_name}
               onChange={(e) => setProfileForm(prev => ({ ...prev, full_name: e.target.value }))}
-              className="w-full px-4 py-2.5 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full px-4 py-2.5 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:border focus:border-primary"
               placeholder="Enter your full name"
               required
             />
@@ -184,7 +184,7 @@ export function ProfileSettings() {
               type="email"
               value={profileForm.email}
               onChange={(e) => setProfileForm(prev => ({ ...prev, email: e.target.value }))}
-              className="w-full px-4 py-2.5 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full px-4 py-2.5 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:border focus:border-primary"
               placeholder="Enter your email"
             />
           </div>
@@ -201,7 +201,7 @@ export function ProfileSettings() {
                 const value = e.target.value.replace(/[^0-9+\-()\s]/g, "");
                 setProfileForm(prev => ({ ...prev, phone: value }));
               }}
-              className="w-full px-4 py-2.5 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full px-4 py-2.5 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:border focus:border-primary"
               placeholder="Enter your phone number (e.g., +63 912 345 6789)"
               required
               pattern="[0-9+\-()\s]{7,20}"
@@ -257,7 +257,7 @@ export function ProfileSettings() {
                 type={showCurrentPassword ? "text" : "password"}
                 value={passwordForm.currentPassword}
                 onChange={(e) => setPasswordForm(prev => ({ ...prev, currentPassword: e.target.value }))}
-                className="w-full px-4 py-2.5 pr-10 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="w-full px-4 py-2.5 pr-10 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:border focus:border-primary"
                 placeholder="Enter your current password"
               />
               <button
@@ -280,7 +280,7 @@ export function ProfileSettings() {
                 type={showNewPassword ? "text" : "password"}
                 value={passwordForm.newPassword}
                 onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))}
-                className="w-full px-4 py-2.5 pr-10 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="w-full px-4 py-2.5 pr-10 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:border focus:border-primary"
                 placeholder="Enter new password"
                 minLength={8}
               />
@@ -319,7 +319,7 @@ export function ProfileSettings() {
                 type={showConfirmPassword ? "text" : "password"}
                 value={passwordForm.confirmPassword}
                 onChange={(e) => setPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                className="w-full px-4 py-2.5 pr-10 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="w-full px-4 py-2.5 pr-10 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:border focus:border-primary"
                 placeholder="Confirm your new password"
               />
               <button

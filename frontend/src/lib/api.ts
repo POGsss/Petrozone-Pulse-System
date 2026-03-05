@@ -1473,4 +1473,11 @@ export const dashboardApi = {
       `/api/dashboard/recent-orders${q ? `?${q}` : ""}`
     );
   },
+
+  chat: async (message: string, context: Record<string, unknown>): Promise<{ reply: string }> => {
+    return fetchWithAuth<{ reply: string }>("/api/dashboard/chat", {
+      method: "POST",
+      body: JSON.stringify({ message, context }),
+    });
+  },
 };

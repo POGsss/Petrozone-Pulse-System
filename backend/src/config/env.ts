@@ -23,4 +23,10 @@ export function verifyEnv(): void {
   if (missingSms.length > 0) {
     console.warn(`⚠ SMS service disabled — missing: ${missingSms.join(", ")}`);
   }
+
+  const optionalAi = ["GEMINI_API_KEY"];
+  const missingAi = optionalAi.filter((key) => !process.env[key]);
+  if (missingAi.length > 0) {
+    console.warn(`⚠ AI chat disabled — missing: ${missingAi.join(", ")}`);
+  }
 }

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { dashboardApi, branchesApi } from "../../lib/api";
 import { useTheme } from "../../lib/ThemeContext";
 import { showToast } from "../../lib/toast";
-import { SkeletonLoader, ErrorAlert, PageHeader, KpiCard, ChartCard, DashboardCard, PeriodSelect } from "../../components";
+import { SkeletonLoader, ErrorAlert, PageHeader, KpiCard, ChartCard, DashboardCard, PeriodSelect, DashboardChat } from "../../components";
 import {
   LuDollarSign,
   LuClipboardList,
@@ -231,7 +231,40 @@ export function AnalyticsDashboard() {
     loadDashboard();
   }, [loadDashboard]);
 
-  if (loading && !summary) {
+  const selectedBranchName = selectedBranch === "all"
+    ? "All Branches"
+    : branches.find(b => b.id === selectedBranch)?.name || "Branch";
+
+  const selectedDateLabel = DATE_RANGES.find(r => r.value === dateRange)?.label || "Last 30 Days";
+
+  // Build AI chat context from current dashboard data
+  const chatContext = useMemo(() => ({
+    summary: {
+      total_sales: summary?.total_sales || 0,
+      completed_job_orders: summary?.completed_job_orders || 0,
+      active_job_orders: summary?.active_job_orders || 0,
+      total_job_orders: summary?.total_job_orders || 0,
+      customers: summary?.customers || 0,
+      low_stock_count: summary?.low_stock_count || 0,
+      total_inventory_items: summary?.total_inventory_items || 0,
+      out_of_stock_count: summary?.out_of_stock_count || 0,
+    },
+    filters: {
+      branch: selectedBranchName,
+      date_range: selectedDateLabel,
+    },
+    top_services: topServices.map(s => ({ name: s.name, revenue: s.revenue, orders: s.count })),
+    job_status_distribution: jobDistribution.map(j => ({ status: j.status, count: j.count })),
+    branch_revenue: branchRevenue.map(b => ({ branch: b.name, revenue: b.revenue })),
+    recent_orders: recentOrders.slice(0, 5).map(o => ({
+      customer: o.customers?.full_name || o.order_number,
+      amount: o.total_amount,
+      status: o.status,
+      date: o.created_at,
+    })),
+  }), [summary, topServices, jobDistribution, branchRevenue, recentOrders, selectedBranchName, selectedDateLabel]);
+
+    if (loading && !summary) {
     return <SkeletonLoader variant="dashboard" showHeader showStats={false} />;
   }
 
@@ -239,14 +272,11 @@ export function AnalyticsDashboard() {
     return <ErrorAlert message={error} onRetry={loadDashboard} />;
   }
 
-  const selectedBranchName = selectedBranch === "all"
-    ? "All Branches"
-    : branches.find(b => b.id === selectedBranch)?.name || "Branch";
-
-  const selectedDateLabel = DATE_RANGES.find(r => r.value === dateRange)?.label || "Last 30 Days";
-
   return (
     <div className="space-y-6">
+      {/* AI Chatbot */}
+      <DashboardChat context={chatContext} />
+      
       {/* ─── Filter Bar ─── */}
       <PageHeader
         title="Real-Time Dashboard"

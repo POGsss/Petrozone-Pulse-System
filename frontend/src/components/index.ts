@@ -16,3 +16,4 @@ export { DashboardCard } from "./DashboardCard";
 export { KpiCard } from "./KpiCard";
 export { ChartCard } from "./ChartCard";
 export { PeriodSelect } from "./PeriodSelect";
+export { DashboardChat } from "./DashboardChat";
