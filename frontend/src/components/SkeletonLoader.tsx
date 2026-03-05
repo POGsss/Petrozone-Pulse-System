@@ -7,8 +7,8 @@ interface SkeletonLoaderProps {
   showStats?: boolean;
   /** Number of stat cards to simulate */
   statsCount?: number;
-  /** "table" renders table rows, "grid" renders card grid */
-  variant?: "table" | "grid";
+  /** "table" renders table rows, "grid" renders card grid, "dashboard" renders analytics dashboard skeleton */
+  variant?: "table" | "grid" | "dashboard";
 }
 
 export function SkeletonLoader({

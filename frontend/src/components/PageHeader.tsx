@@ -7,6 +7,8 @@ interface PageHeaderProps {
   buttonLabel?: string;
   onAdd?: () => void;
   showButton?: boolean;
+  /** Optional custom actions rendered on the right side (replaces the add button when provided) */
+  actions?: ReactNode;
 }
 
 export function PageHeader({
@@ -15,6 +17,7 @@ export function PageHeader({
   buttonLabel,
   onAdd,
   showButton = true,
+  actions,
 }: PageHeaderProps) {
   return (
     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 justify-between bg-white rounded-xl p-4 border border-neutral-200">
@@ -26,14 +29,18 @@ export function PageHeader({
           subtitle
         )}
       </div>
-      {showButton && buttonLabel && onAdd && (
-        <button
-          onClick={onAdd}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
-        >
-          <LuPlus className="w-4 h-4" />
-          {buttonLabel}
-        </button>
+      {actions ? (
+        <div className="flex flex-wrap items-center gap-2">{actions}</div>
+      ) : (
+        showButton && buttonLabel && onAdd && (
+          <button
+            onClick={onAdd}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-950 transition-colors"
+          >
+            <LuPlus className="w-4 h-4" />
+            {buttonLabel}
+          </button>
+        )
       )}
     </div>
   );

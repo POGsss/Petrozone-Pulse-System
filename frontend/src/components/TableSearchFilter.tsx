@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LuSearch, LuFilter, LuRefreshCw } from "react-icons/lu";
+import { LuSearch, LuFilter, LuRefreshCw, LuChevronDown, LuCalendar } from "react-icons/lu";
 
 export interface TableFilter {
   key: string;
@@ -56,17 +56,20 @@ export function TableSearchFilter({
         <div className="flex items-center gap-2">
           {/* Primary filter */}
           {primaryFilter && (
-            <select
-              value={primaryFilter.value}
-              onChange={(e) => primaryFilter.onChange(e.target.value)}
-              className="appearance-none px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-            >
-              {primaryFilter.options?.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <select
+                value={primaryFilter.value}
+                onChange={(e) => primaryFilter.onChange(e.target.value)}
+                className="appearance-none pl-3 pr-8 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-primary cursor-pointer"
+              >
+                {primaryFilter.options?.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <LuChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none" />
+            </div>
           )}
           {/* Filter toggle */}
           {advancedFilters.length > 0 && (
@@ -107,24 +110,30 @@ export function TableSearchFilter({
                 {filter.label}
               </label>
               {filter.type === "date" ? (
-                <input
-                  type="date"
-                  value={filter.value}
-                  onChange={(e) => filter.onChange(e.target.value)}
-                  className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                />
+                <div className="relative">
+                  <input
+                    type="date"
+                    value={filter.value}
+                    onChange={(e) => filter.onChange(e.target.value)}
+                    className="w-full appearance-none pl-3 pr-8 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                  />
+                  <LuCalendar className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none" />
+                </div>
               ) : (
-                <select
-                  value={filter.value}
-                  onChange={(e) => filter.onChange(e.target.value)}
-                  className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                >
-                  {filter.options?.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <select
+                    value={filter.value}
+                    onChange={(e) => filter.onChange(e.target.value)}
+                    className="w-full appearance-none pl-3 pr-8 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary cursor-pointer"
+                  >
+                    {filter.options?.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <LuChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none" />
+                </div>
               )}
             </div>
           ))}

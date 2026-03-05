@@ -1405,3 +1405,72 @@ export const serviceRemindersApi = {
     );
   },
 };
+
+// ─── Dashboard / Analytics API ───
+export const dashboardApi = {
+  getSummary: async (params?: { branch_id?: string; date_from?: string; date_to?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.branch_id) qs.set("branch_id", params.branch_id);
+    if (params?.date_from) qs.set("date_from", params.date_from);
+    if (params?.date_to) qs.set("date_to", params.date_to);
+    const q = qs.toString();
+    return fetchWithAuth<import("../types").DashboardSummary>(
+      `/api/dashboard/summary${q ? `?${q}` : ""}`
+    );
+  },
+
+  getSalesOverTime: async (params?: { branch_id?: string; date_from?: string; date_to?: string; period?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.branch_id) qs.set("branch_id", params.branch_id);
+    if (params?.date_from) qs.set("date_from", params.date_from);
+    if (params?.date_to) qs.set("date_to", params.date_to);
+    if (params?.period) qs.set("period", params.period);
+    const q = qs.toString();
+    return fetchWithAuth<import("../types").SalesOverTimePoint[]>(
+      `/api/dashboard/sales-over-time${q ? `?${q}` : ""}`
+    );
+  },
+
+  getTopServices: async (params?: { branch_id?: string; date_from?: string; date_to?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.branch_id) qs.set("branch_id", params.branch_id);
+    if (params?.date_from) qs.set("date_from", params.date_from);
+    if (params?.date_to) qs.set("date_to", params.date_to);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const q = qs.toString();
+    return fetchWithAuth<import("../types").TopService[]>(
+      `/api/dashboard/top-services${q ? `?${q}` : ""}`
+    );
+  },
+
+  getJobStatusDistribution: async (params?: { branch_id?: string; date_from?: string; date_to?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.branch_id) qs.set("branch_id", params.branch_id);
+    if (params?.date_from) qs.set("date_from", params.date_from);
+    if (params?.date_to) qs.set("date_to", params.date_to);
+    const q = qs.toString();
+    return fetchWithAuth<import("../types").JobStatusDistribution[]>(
+      `/api/dashboard/job-status-distribution${q ? `?${q}` : ""}`
+    );
+  },
+
+  getRevenuePerBranch: async (params?: { date_from?: string; date_to?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.date_from) qs.set("date_from", params.date_from);
+    if (params?.date_to) qs.set("date_to", params.date_to);
+    const q = qs.toString();
+    return fetchWithAuth<import("../types").BranchRevenue[]>(
+      `/api/dashboard/revenue-per-branch${q ? `?${q}` : ""}`
+    );
+  },
+
+  getRecentOrders: async (params?: { branch_id?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.branch_id) qs.set("branch_id", params.branch_id);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const q = qs.toString();
+    return fetchWithAuth<import("../types").RecentOrder[]>(
+      `/api/dashboard/recent-orders${q ? `?${q}` : ""}`
+    );
+  },
+};

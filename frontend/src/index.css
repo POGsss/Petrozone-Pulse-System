@@ -108,6 +108,19 @@ html.dark .border-neutral-100 {
   border-color: #22222a !important;
 }
 
+/* Dark mode overrides for secondary color surfaces */
+html.dark .bg-secondary-200 {
+  background-color: #3d3224 !important;
+}
+
+html.dark .bg-secondary-100 {
+  background-color: #2e2820 !important;
+}
+
+html.dark .text-secondary-950 {
+  color: #ffcc91 !important;
+}
+
 html.dark .text-neutral-950 {
   color: #f4f4f4 !important;
 }

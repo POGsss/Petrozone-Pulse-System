@@ -56,7 +56,8 @@ Tasks:
 1. Create aggregated SQL views.
 2. Implement dashboard API endpoints.
 3. Implement subscription listeners.
-4. Build dashboard page with charts.
+4. Build dashboard page with charts (Replace the first page of the sidebar item).
+5. Copy the layout of the attached image but keep the styling of the cards same as the other pages, use available components or create one if none.
 5. Add filtering controls.
 6. Apply branch isolation rules.
 7. Optimize queries with indexes.

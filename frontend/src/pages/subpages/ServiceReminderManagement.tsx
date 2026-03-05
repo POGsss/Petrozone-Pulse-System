@@ -621,13 +621,8 @@ export function ServiceReminderManagement() {
                       {new Date(r.scheduled_at).toLocaleString()}
                     </td>
                     <td className="py-3 px-4 whitespace-nowrap">
-                      <span className="flex items-center gap-1 text-sm text-neutral-900">
-                        {r.delivery_method === "email" ? (
-                          <LuMail className="w-3.5 h-3.5" />
-                        ) : (
-                          <LuMessageSquare className="w-3.5 h-3.5" />
-                        )}
-                        {r.delivery_method.toUpperCase()}
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary`}>
+                        {r.delivery_method.toLocaleLowerCase() === "email" ? "Email" : "SMS"}
                       </span>
                     </td>
                     <td className="py-3 px-4 whitespace-nowrap">

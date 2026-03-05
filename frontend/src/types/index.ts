@@ -490,6 +490,52 @@ export interface NotificationReceipt {
   notifications?: Notification;
 }
 
+// ─── Dashboard / Analytics types ───
+export interface DashboardSummary {
+  total_sales: number;
+  completed_job_orders: number;
+  active_job_orders: number;
+  total_job_orders: number;
+  customers: number;
+  low_stock_count: number;
+  total_inventory_items: number;
+  active_inventory_items: number;
+  out_of_stock_count: number;
+}
+
+export interface SalesOverTimePoint {
+  date: string;
+  amount: number;
+}
+
+export interface TopService {
+  name: string;
+  revenue: number;
+  count: number;
+}
+
+export interface JobStatusDistribution {
+  status: string;
+  count: number;
+}
+
+export interface BranchRevenue {
+  branch_id: string;
+  name: string;
+  revenue: number;
+}
+
+export interface RecentOrder {
+  id: string;
+  order_number: string;
+  status: string;
+  total_amount: number;
+  created_at: string;
+  customers?: { id: string; full_name: string } | null;
+  vehicles?: { id: string; plate_number: string; model: string } | null;
+  job_order_items?: { catalog_item_name: string; quantity: number; line_total: number }[];
+}
+
 // ─── Service Reminder types ───
 export type ReminderStatus = "draft" | "scheduled" | "sent" | "failed" | "cancelled";
 export type DeliveryMethod = "email" | "sms";

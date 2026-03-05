@@ -20,6 +20,7 @@ import { SupplierManagement } from "./subpages/SupplierManagement";
 import { SystemSettings } from "./subpages/SystemSettings";
 import { NotificationManagement } from "./subpages/NotificationManagement";
 import { ServiceReminderManagement } from "./subpages/ServiceReminderManagement";
+import { AnalyticsDashboard } from "./subpages/AnalyticsDashboard";
 
 // Page content data
 const pageData: Record<string, { title: string; description: string }> = {
@@ -210,26 +211,9 @@ export function DashboardPage() {
       title={currentPage.title}
       description={currentPage.description}
     >
-      {/* Dashboard content */}
+      {/* Dashboard content — Real-Time Analytics */}
       {activeNav === "dashboard" && (
-        <div className="bg-white rounded-xl p-6 border border-neutral-100">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-sm text-neutral-950">Your roles:</span>
-            {userRoles.map((role) => (
-              <span
-                key={role}
-                className="px-3 py-1 bg-neutral-100 text-primary rounded-full text-xs font-medium"
-              >
-                {role === "HM" ? "Higher Management" : 
-                 role === "POC" ? "POC Supervisor" :
-                 role === "JS" ? "Junior Supervisor" :
-                 role === "R" ? "Receptionist" :
-                 role === "T" ? "Technician" : role}
-              </span>
-            ))}
-          </div>
-          <p className="text-neutral-900">Welcome to Petrozone Pulse System. Select a menu item to get started.</p>
-        </div>
+        <AnalyticsDashboard />
       )}
 
       {/* User Management - HM, POC, JS (US10-13) */}
