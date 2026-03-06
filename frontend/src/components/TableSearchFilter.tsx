@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { LuSearch, LuFilter, LuRefreshCw, LuChevronDown, LuCalendar } from "react-icons/lu";
 
 export interface TableFilter {
@@ -24,6 +25,8 @@ interface TableSearchFilterProps {
   onReset?: () => void;
   onRefresh?: () => void;
   loading?: boolean;
+  /** Extra buttons rendered after Refresh */
+  extraButtons?: ReactNode;
 }
 
 export function TableSearchFilter({
@@ -36,6 +39,7 @@ export function TableSearchFilter({
   onReset,
   onRefresh,
   loading = false,
+  extraButtons,
 }: TableSearchFilterProps) {
   const [showFilters, setShowFilters] = useState(false);
 
@@ -98,6 +102,7 @@ export function TableSearchFilter({
               />
             </button>
           )}
+          {extraButtons}
         </div>
       </div>
 

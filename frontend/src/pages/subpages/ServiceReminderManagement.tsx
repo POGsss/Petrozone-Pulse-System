@@ -81,6 +81,27 @@ export function ServiceReminderManagement() {
   const canEdit = canCreate;
   const canDelete = canCreate;
   const canSend = canCreate;
+  const isHM = userRoles.includes("HM");
+
+  // Batch process state
+  const [processingScheduled, setProcessingScheduled] = useState(false);
+  const [showProcessConfirm, setShowProcessConfirm] = useState(false);
+
+  async function handleProcessScheduled() {
+    try {
+      setProcessingScheduled(true);
+      setShowProcessConfirm(false);
+      const result = await serviceRemindersApi.processScheduled();
+      showToast.success(
+        `Processed ${result.processed} reminder${result.processed !== 1 ? "s" : ""}: ${result.sent} sent, ${result.failed} failed`
+      );
+      fetchData();
+    } catch (err) {
+      showToast.error(err instanceof Error ? err.message : "Failed to process scheduled reminders");
+    } finally {
+      setProcessingScheduled(false);
+    }
+  }
 
   // Actions overflow dropdown
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
@@ -486,6 +507,18 @@ export function ServiceReminderManagement() {
           onReset={handleResetFilters}
           onRefresh={fetchData}
           loading={loading}
+          extraButtons={
+            isHM ? (
+              <button
+                onClick={() => setShowProcessConfirm(true)}
+                disabled={processingScheduled}
+                className="p-2 border border-neutral-200 rounded-lg text-neutral-950 hover:bg-neutral-100 disabled:opacity-50"
+                title="Send all scheduled reminders that are due"
+              >
+                <LuSend className={`w-4 h-4 ${processingScheduled ? "animate-pulse" : ""}`} />
+              </button>
+            ) : undefined
+          }
         />
 
         {/* Mobile Card View */}
@@ -503,7 +536,7 @@ export function ServiceReminderManagement() {
               const canDeleteThis = canDelete && ["draft", "scheduled", "failed"].includes(r.status);
               const canSendThis = canSend && ["draft", "scheduled", "failed"].includes(r.status);
               const canCancelThis = canEdit && ["draft", "scheduled"].includes(r.status);
-              const showDots = canSendThis || canCancelThis || true;
+              const showDots = canSendThis || canCancelThis;
               const hasActions = canEditThis || canDeleteThis || showDots;
               return (
                 <MobileCard
@@ -948,6 +981,42 @@ export function ServiceReminderManagement() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Process Scheduled Confirmation Modal */}
+      <Modal
+        isOpen={showProcessConfirm}
+        onClose={() => setShowProcessConfirm(false)}
+        title="Send Scheduled Reminders"
+        maxWidth="sm"
+      >
+        <div>
+          <div className="bg-neutral-100 rounded-xl p-4 my-4">
+            <p className="text-neutral-900">
+              Send all scheduled reminders that are past their due date?
+            </p>
+          </div>
+          <p className="text-sm text-neutral-900 mb-2">
+            This will process all reminders with status <strong className="text-neutral-950">Scheduled</strong> where the scheduled date has passed, and deliver them via their configured method (email or SMS).
+          </p>
+          <div className="flex gap-3 mt-6">
+            <button
+              type="button"
+              onClick={() => setShowProcessConfirm(false)}
+              className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleProcessScheduled}
+              disabled={processingScheduled}
+              className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {processingScheduled ? "Sending..." : "Send All"}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );
