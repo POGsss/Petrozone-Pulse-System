@@ -1405,6 +1405,76 @@ export type Database = {
           },
         ]
       }
+      reports: {
+        Row: {
+          id: string
+          report_name: string
+          report_type: Database["public"]["Enums"]["report_type"]
+          filters: Json
+          generated_by: string
+          generated_at: string
+          branch_id: string | null
+          is_template: boolean
+          is_deleted: boolean
+          deleted_at: string | null
+          deleted_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          report_name: string
+          report_type: Database["public"]["Enums"]["report_type"]
+          filters?: Json
+          generated_by: string
+          generated_at?: string
+          branch_id?: string | null
+          is_template?: boolean
+          is_deleted?: boolean
+          deleted_at?: string | null
+          deleted_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          report_name?: string
+          report_type?: Database["public"]["Enums"]["report_type"]
+          filters?: Json
+          generated_by?: string
+          generated_at?: string
+          branch_id?: string | null
+          is_template?: boolean
+          is_deleted?: boolean
+          deleted_at?: string | null
+          deleted_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reports_generated_by_fkey"
+            columns: ["generated_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reports_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reports_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       inventory_on_hand: {
@@ -1512,6 +1582,7 @@ export type Database = {
       purchase_order_status: "draft" | "submitted" | "approved" | "received" | "cancelled"
       pricing_matrix_status: "active" | "inactive"
       pricing_type: "labor" | "packaging"
+      report_type: "sales" | "inventory" | "job_order" | "staff_performance"
       staff_metric_type: "jobs_completed" | "avg_completion_time" | "revenue_generated" | "on_time_completion_rate"
       stock_movement_type: "stock_in" | "stock_out" | "adjustment"
       stock_reference_type: "purchase_order" | "job_order" | "adjustment"

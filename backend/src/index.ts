@@ -26,6 +26,7 @@ import notificationRoutes from "./routes/notifications.routes.js";
 import serviceReminderRoutes from "./routes/servicereminders.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
 import staffPerformanceRoutes from "./routes/staffperformance.routes.js";
+import reportsRoutes from "./routes/reports.routes.js";
 
 const app = express();
 
@@ -79,6 +80,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/service-reminders", serviceReminderRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/staff-performance", staffPerformanceRoutes);
+app.use("/api/reports", reportsRoutes);
 
 // 404 handler
 app.use((_req, res) => {

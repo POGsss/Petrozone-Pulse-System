@@ -1518,3 +1518,94 @@ export const staffPerformanceApi = {
     return fetchWithAuth<import("../types").StaffPerformance>(`/api/staff-performance/${id}`);
   },
 };
+
+// Reports API
+export const reportsApi = {
+  getAll: async (params?: {
+    report_type?: string;
+    branch_id?: string;
+    is_template?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
+    const query = searchParams.toString();
+    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").Report>>(
+      `/api/reports${query ? `?${query}` : ""}`
+    );
+  },
+
+  getById: async (id: string) => {
+    return fetchWithAuth<{ data: import("../types").Report }>(`/api/reports/${id}`);
+  },
+
+  create: async (data: {
+    report_name: string;
+    report_type: import("../types").ReportType;
+    filters?: Record<string, string>;
+    branch_id?: string;
+    is_template?: boolean;
+  }) => {
+    return fetchWithAuth<{ data: import("../types").Report }>("/api/reports", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: string) => {
+    return fetchWithAuth<{ message: string }>(`/api/reports/${id}`, {
+      method: "DELETE",
+    });
+  },
+
+  generate: async (id: string) => {
+    return fetchWithAuth<{ data: import("../types").ReportData }>(`/api/reports/${id}/generate`, {
+      method: "POST",
+    });
+  },
+
+  generatePreview: async (data: {
+    report_type: import("../types").ReportType;
+    filters?: Record<string, string>;
+    branch_id?: string;
+  }) => {
+    return fetchWithAuth<{ data: import("../types").ReportData }>("/api/reports/generate-preview", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  exportReport: async (id: string, format: "csv" | "pdf") => {
+    const accessToken = getAccessToken();
+    const headers: Record<string, string> = {};
+    if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+
+    const response = await fetch(`${API_BASE_URL}/api/reports/${id}/export/${format}`, { headers });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: "Export failed" }));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const filenameMatch = disposition.match(/filename="?(.+?)"?$/);
+    const filename = filenameMatch ? filenameMatch[1] : `report.${format === "pdf" ? "txt" : format}`;
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+};

@@ -22,6 +22,7 @@ import { NotificationManagement } from "./subpages/NotificationManagement";
 import { ServiceReminderManagement } from "./subpages/ServiceReminderManagement";
 import { AnalyticsDashboard } from "./subpages/AnalyticsDashboard";
 import { StaffPerformanceAnalytics } from "./subpages/StaffPerformanceAnalytics";
+import { ReportsManagement } from "./subpages/ReportsManagement";
 
 // Page content data
 const pageData: Record<string, { title: string; description: string }> = {
@@ -93,6 +94,10 @@ const pageData: Record<string, { title: string; description: string }> = {
     title: "Staff Performance",
     description: "View and analyze staff performance metrics.",
   },
+  reports: {
+    title: "Reports",
+    description: "Generate, view, and export customizable reports.",
+  },
 };
 
 // Get navigation items based on user role
@@ -163,6 +168,11 @@ function getNavItemsForRole(roles: string[]): NavItem[] {
     items.push({ id: "service-reminders", label: "Service Reminders", icon: <NavIcons.Reminder /> });
   }
 
+  // Reports: HM, POC, JS, R (UC76-UC79)
+  if (hasAnyRole("HM", "POC", "JS", "R")) {
+    items.push({ id: "reports", label: "Reports", icon: <NavIcons.Reports /> });
+  }
+
   // Audit Logs: HM, POC (US18)
   if (hasAnyRole("HM", "POC")) {
     items.push({ id: "audit", label: "Audit Logs", icon: <NavIcons.Audit /> });
@@ -208,6 +218,7 @@ export function DashboardPage() {
   const canViewNotifications = hasAnyRole("HM", "POC", "JS", "R", "T");
   const canViewServiceReminders = hasAnyRole("POC", "JS", "R");
   const canViewStaffPerformance = hasAnyRole("HM", "POC", "JS", "R", "T");
+  const canViewReports = hasAnyRole("HM", "POC", "JS", "R");
   const canAccessSettings = userRoles.includes("HM");
 
   // Get page data
@@ -292,8 +303,13 @@ export function DashboardPage() {
           <StaffPerformanceAnalytics />
       )}
 
+      {/* Reports - HM, POC, JS, R (UC76-UC79) */}
+      {activeNav === "reports" && canViewReports && (
+          <ReportsManagement />
+      )}
+
       {/* Empty state for upcoming pages (Settings) */}
-      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && activeNav !== "vehicles" && activeNav !== "catalog" && activeNav !== "inventory" && activeNav !== "purchase-orders" && activeNav !== "suppliers" && activeNav !== "job-orders" && activeNav !== "pricing" && activeNav !== "notifications" && activeNav !== "service-reminders" && activeNav !== "staff-performance" && (
+      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && activeNav !== "vehicles" && activeNav !== "catalog" && activeNav !== "inventory" && activeNav !== "purchase-orders" && activeNav !== "suppliers" && activeNav !== "job-orders" && activeNav !== "pricing" && activeNav !== "notifications" && activeNav !== "service-reminders" && activeNav !== "staff-performance" && activeNav !== "reports" && (
         <div className="bg-white rounded-xl p-6 border border-neutral-100">
           <p className="text-neutral-900">This feature is coming in the next phase.</p>
         </div>

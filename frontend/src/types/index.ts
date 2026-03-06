@@ -601,3 +601,37 @@ export interface StaffPerformance {
     code: string;
   };
 }
+
+// ─── Reports types ───
+export type ReportType = "sales" | "inventory" | "job_order" | "staff_performance";
+
+export interface Report {
+  id: string;
+  report_name: string;
+  report_type: ReportType;
+  filters: Record<string, string>;
+  generated_by: string;
+  generated_at: string;
+  branch_id: string | null;
+  is_template: boolean;
+  is_deleted: boolean;
+  deleted_at: string | null;
+  deleted_by: string | null;
+  created_at: string;
+  updated_at: string;
+  user_profiles?: {
+    id: string;
+    full_name: string;
+    email: string;
+  };
+  branches?: {
+    id: string;
+    name: string;
+    code: string;
+  };
+}
+
+export interface ReportData {
+  rows: Record<string, unknown>[];
+  summary: Record<string, unknown>;
+}
