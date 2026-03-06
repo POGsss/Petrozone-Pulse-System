@@ -299,20 +299,6 @@ export function AnalyticsDashboard() {
               <LuChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none" />
             </div>
 
-            {/* Date range filter */}
-            <div className="relative">
-              <select
-                value={dateRange}
-                onChange={(e) => setDateRange(e.target.value)}
-                className="appearance-none pl-3 pr-8 py-2 text-sm border border-neutral-200 rounded-lg bg-white focus:outline-none focus:border-primary cursor-pointer"
-              >
-                {DATE_RANGES.map((r) => (
-                  <option key={r.value} value={r.value}>{r.label}</option>
-                ))}
-              </select>
-              <LuChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none" />
-            </div>
-
             {/* Refresh button */}
             <button
               onClick={loadDashboard}
@@ -458,7 +444,7 @@ export function AnalyticsDashboard() {
               <div className="flex-1">
                 <p className="text-2xl font-bold text-neutral-950">{summary?.low_stock_count || 0}</p>
               </div>
-              <span className="text-xs text-secondary-950 bg-secondary-100 px-2 py-1 rounded-full font-medium">At/Below Threshold</span>
+              <span className="text-xs text-secondary-950 bg-secondary-100 px-2 py-1 rounded-full font-medium">Near Threshold</span>
             </div>
           </DashboardCard>
 

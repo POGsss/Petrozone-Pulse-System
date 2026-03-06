@@ -104,7 +104,7 @@ Tasks:
 1. Create staff_performance table.
 2. Implement aggregation queries.
 3. Implement CRUD APIs.
-4. Build Staff Performance Table in the 4th row in the dashboard.
+4. Build Staff Performance Page in grid view and put it under the service reminder.
 5. Add filters and charts.
 6. Enforce RBAC.
 7. Audit log changes.
@@ -162,7 +162,7 @@ Tasks:
 2. Implement report generation service.
 3. Implement export endpoints.
 4. Generate PDF/CSV.
-5. Build Reports management page.
-6. Add Reports sidebar item.
+5. Build Reports management page make it grid style like the other pages (use available component).
+6. Add Reports sidebar item under service reminder.
 7. Enforce RBAC.
 8. Audit log all actions.

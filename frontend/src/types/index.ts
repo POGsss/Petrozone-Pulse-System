@@ -573,3 +573,31 @@ export interface ServiceReminder {
   };
   branches?: Branch;
 }
+
+// ─── Staff Performance types ───
+export type StaffMetricType = "jobs_completed" | "avg_completion_time" | "revenue_generated" | "on_time_completion_rate";
+
+export interface StaffPerformance {
+  id: string;
+  staff_id: string;
+  metric_type: StaffMetricType;
+  metric_value: number;
+  period_start: string;
+  period_end: string;
+  branch_id: string;
+  is_deleted: boolean;
+  deleted_at: string | null;
+  deleted_by: string | null;
+  created_at: string;
+  updated_at: string;
+  user_profiles?: {
+    id: string;
+    full_name: string;
+    email: string;
+  };
+  branches?: {
+    id: string;
+    name: string;
+    code: string;
+  };
+}

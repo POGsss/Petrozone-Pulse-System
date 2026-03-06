@@ -24,6 +24,7 @@ import {
   LuCar,
   LuTruck,
   LuClock,
+  LuActivity,
 } from "react-icons/lu";
 
 // Navigation item type
@@ -271,4 +272,5 @@ export const NavIcons = {
   Supplier: () => <LuTruck className="w-5 h-5" />,
   Notification: () => <LuBell className="w-5 h-5" />,
   Reminder: () => <LuClock className="w-5 h-5" />,
+  Performance: () => <LuActivity className="w-5 h-5" />,
 };

@@ -422,6 +422,73 @@ export type Database = {
           },
         ]
       }
+      staff_performance: {
+        Row: {
+          id: string
+          staff_id: string
+          metric_type: string
+          metric_value: number
+          period_start: string
+          period_end: string
+          branch_id: string
+          is_deleted: boolean
+          deleted_at: string | null
+          deleted_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          staff_id: string
+          metric_type: string
+          metric_value: number
+          period_start: string
+          period_end: string
+          branch_id: string
+          is_deleted?: boolean
+          deleted_at?: string | null
+          deleted_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          staff_id?: string
+          metric_type?: string
+          metric_value?: number
+          period_start?: string
+          period_end?: string
+          branch_id?: string
+          is_deleted?: boolean
+          deleted_at?: string | null
+          deleted_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_performance_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_performance_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_performance_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       job_order_items: {
         Row: {
           catalog_item_id: string
@@ -1445,6 +1512,7 @@ export type Database = {
       purchase_order_status: "draft" | "submitted" | "approved" | "received" | "cancelled"
       pricing_matrix_status: "active" | "inactive"
       pricing_type: "labor" | "packaging"
+      staff_metric_type: "jobs_completed" | "avg_completion_time" | "revenue_generated" | "on_time_completion_rate"
       stock_movement_type: "stock_in" | "stock_out" | "adjustment"
       stock_reference_type: "purchase_order" | "job_order" | "adjustment"
       supplier_product_status: "active" | "inactive"

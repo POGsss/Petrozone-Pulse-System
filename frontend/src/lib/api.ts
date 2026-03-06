@@ -1487,3 +1487,34 @@ export const dashboardApi = {
     });
   },
 };
+
+// Staff Performance API
+export const staffPerformanceApi = {
+  getAll: async (params?: {
+    staff_id?: string;
+    branch_id?: string;
+    metric_type?: string;
+    period_start?: string;
+    period_end?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
+    const query = searchParams.toString();
+    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").StaffPerformance>>(
+      `/api/staff-performance${query ? `?${query}` : ""}`
+    );
+  },
+
+  getById: async (id: string) => {
+    return fetchWithAuth<import("../types").StaffPerformance>(`/api/staff-performance/${id}`);
+  },
+};

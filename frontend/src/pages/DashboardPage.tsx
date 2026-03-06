@@ -21,6 +21,7 @@ import { SystemSettings } from "./subpages/SystemSettings";
 import { NotificationManagement } from "./subpages/NotificationManagement";
 import { ServiceReminderManagement } from "./subpages/ServiceReminderManagement";
 import { AnalyticsDashboard } from "./subpages/AnalyticsDashboard";
+import { StaffPerformanceAnalytics } from "./subpages/StaffPerformanceAnalytics";
 
 // Page content data
 const pageData: Record<string, { title: string; description: string }> = {
@@ -88,6 +89,10 @@ const pageData: Record<string, { title: string; description: string }> = {
     title: "Service Reminders",
     description: "Manage and send service reminders to customers.",
   },
+  "staff-performance": {
+    title: "Staff Performance",
+    description: "View and analyze staff performance metrics.",
+  },
 };
 
 // Get navigation items based on user role
@@ -103,6 +108,11 @@ function getNavItemsForRole(roles: string[]): NavItem[] {
   const items: NavItem[] = [
     { id: "dashboard", label: "Dashboard", icon: <NavIcons.Dashboard /> },
   ];
+
+  // Staff Performance: HM, POC, JS, R, T (view)
+  if (hasAnyRole("HM", "POC", "JS", "R", "T")) {
+    items.push({ id: "staff-performance", label: "Staff Performance", icon: <NavIcons.Performance /> });
+  }
 
   // User Management: HM, POC, JS (US10-13)
   if (hasAnyRole("HM", "POC", "JS")) {
@@ -197,6 +207,7 @@ export function DashboardPage() {
   const canViewSuppliers = hasAnyRole("HM", "POC", "JS");
   const canViewNotifications = hasAnyRole("HM", "POC", "JS", "R", "T");
   const canViewServiceReminders = hasAnyRole("POC", "JS", "R");
+  const canViewStaffPerformance = hasAnyRole("HM", "POC", "JS", "R", "T");
   const canAccessSettings = userRoles.includes("HM");
 
   // Get page data
@@ -276,8 +287,13 @@ export function DashboardPage() {
           <ServiceReminderManagement />
       )}
 
+      {/* Staff Performance - All roles can view */}
+      {activeNav === "staff-performance" && canViewStaffPerformance && (
+          <StaffPerformanceAnalytics />
+      )}
+
       {/* Empty state for upcoming pages (Settings) */}
-      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && activeNav !== "vehicles" && activeNav !== "catalog" && activeNav !== "inventory" && activeNav !== "purchase-orders" && activeNav !== "suppliers" && activeNav !== "job-orders" && activeNav !== "pricing" && activeNav !== "notifications" && activeNav !== "service-reminders" && (
+      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && activeNav !== "vehicles" && activeNav !== "catalog" && activeNav !== "inventory" && activeNav !== "purchase-orders" && activeNav !== "suppliers" && activeNav !== "job-orders" && activeNav !== "pricing" && activeNav !== "notifications" && activeNav !== "service-reminders" && activeNav !== "staff-performance" && (
         <div className="bg-white rounded-xl p-6 border border-neutral-100">
           <p className="text-neutral-900">This feature is coming in the next phase.</p>
         </div>

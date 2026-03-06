@@ -8,7 +8,7 @@ interface SkeletonLoaderProps {
   /** Number of stat cards to simulate */
   statsCount?: number;
   /** "table" renders table rows, "grid" renders card grid, "dashboard" renders analytics dashboard skeleton */
-  variant?: "table" | "grid" | "dashboard";
+  variant?: "table" | "grid" | "dashboard" | "staff-performance";
 }
 
 export function SkeletonLoader({
@@ -62,7 +62,84 @@ export function SkeletonLoader({
       )}
 
       {/* Content skeleton */}
-      {variant === "dashboard" ? (
+      {variant === "staff-performance" ? (
+        <>
+          {/* KPI Cards — 3-col brick: 1 + 2-span / 2-span + 1 */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="h-36 bg-white rounded-xl p-4 border border-neutral-200">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-9 h-9 bg-neutral-200 rounded-lg" />
+                <div className="h-4 w-20 bg-neutral-100 rounded" />
+              </div>
+              <div className="h-7 w-16 bg-neutral-200 rounded" />
+              <div className="h-3 w-28 bg-neutral-100 rounded mt-2" />
+            </div>
+            <div className="h-36 bg-white rounded-xl p-4 border border-neutral-200 lg:col-span-2">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-9 h-9 bg-neutral-200 rounded-lg" />
+                <div className="h-4 w-24 bg-neutral-100 rounded" />
+              </div>
+              <div className="h-7 w-28 bg-neutral-200 rounded" />
+              <div className="h-3 w-32 bg-neutral-100 rounded mt-2" />
+            </div>
+            <div className="h-36 bg-white rounded-xl p-4 border border-neutral-200 lg:col-span-2">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-9 h-9 bg-neutral-200 rounded-lg" />
+                <div className="h-4 w-32 bg-neutral-100 rounded" />
+              </div>
+              <div className="h-7 w-20 bg-neutral-200 rounded" />
+              <div className="h-3 w-36 bg-neutral-100 rounded mt-2" />
+            </div>
+            <div className="h-36 bg-white rounded-xl p-4 border border-neutral-200">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-9 h-9 bg-neutral-200 rounded-lg" />
+                <div className="h-4 w-24 bg-neutral-100 rounded" />
+              </div>
+              <div className="h-7 w-16 bg-neutral-200 rounded" />
+              <div className="h-3 w-32 bg-neutral-100 rounded mt-2" />
+            </div>
+          </div>
+
+          {/* Leaderboard (2-span) + Pie chart (1-span) */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="bg-white rounded-xl p-5 border border-neutral-200 lg:col-span-2">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 bg-neutral-200 rounded" />
+                  <div className="h-4 w-28 bg-neutral-200 rounded" />
+                </div>
+                <div className="h-7 w-32 bg-neutral-100 rounded-lg" />
+              </div>
+              <div className="space-y-3">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-neutral-50">
+                    <div className="w-8 h-8 bg-neutral-200 rounded-full" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-4 w-28 bg-neutral-200 rounded" />
+                      <div className="h-3 w-20 bg-neutral-100 rounded" />
+                    </div>
+                    <div className="h-4 w-16 bg-neutral-200 rounded" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="bg-white rounded-xl p-5 border border-neutral-200 lg:col-span-1">
+              <div className="h-4 w-36 bg-neutral-200 rounded mb-6" />
+              <div className="flex justify-center">
+                <div className="w-40 h-40 bg-neutral-100 rounded-full" />
+              </div>
+              <div className="flex flex-wrap gap-2 mt-4 justify-center">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-1">
+                    <div className="w-2.5 h-2.5 bg-neutral-200 rounded-full" />
+                    <div className="h-3 w-12 bg-neutral-100 rounded" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      ) : variant === "dashboard" ? (
         <>
           {/* KPI Cards Row */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
