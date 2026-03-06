@@ -22,6 +22,8 @@ import {
   Pagination,
   ErrorAlert,
   SkeletonLoader,
+  CardGrid,
+  GridCard,
 } from "../../components";
 import type { FilterGroup } from "../../components";
 import type { CatalogItem, CatalogInventoryLink, InventoryItem } from "../../types";
@@ -409,83 +411,49 @@ export function CatalogManagement() {
       )}
 
       {/* Catalog Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <CardGrid
+        isEmpty={paginatedItems.length === 0}
+        emptyMessage={
+          searchQuery
+            ? "No catalog items match your search."
+            : 'No catalog items found. Click "Add New Catalog" to create one.'
+        }
+      >
         {paginatedItems.map((item) => (
-          <div
+          <GridCard
             key={item.id}
             onClick={() => openViewModal(item)}
-            className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-100 transition-colors"
-          >
-            {/* Card header */}
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-primary-100 rounded-lg">
-                  <LuPackage className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <h4 className="font-semibold text-neutral-950">{item.name}</h4>
-                  <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
-                    GLOBAL
-                  </span>
-                </div>
-              </div>
-              <span
-                className={`px-2 py-1 rounded text-xs font-medium ${
-                  item.status === "active"
-                    ? "bg-positive-100 text-positive"
-                    : "bg-negative-100 text-negative"
-                }`}
-              >
-                {item.status === "active" ? "Active" : "Inactive"}
-              </span>
-            </div>
-
-            {/* Item details */}
-            <div className="space-y-1 text-sm text-neutral-900 mb-3">
-              <p className="text-xs">{inventoryCounts[item.id] ?? 0} inventory item{(inventoryCounts[item.id] ?? 0) !== 1 ? "s" : ""}</p>
-              {item.description && <p className="text-neutral-900 line-clamp-2">{item.description}</p>}
-            </div>
-
-            {/* Actions */}
-            {(canUpdate || canDelete) && (
-              <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
-                {canUpdate && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openEditModal(item);
-                    }}
-                    className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-                  >
-                    <LuPencil className="w-4 h-4" />
-                    Edit
-                  </button>
-                )}
-                {canDelete && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openDeleteConfirmModal(item);
-                    }}
-                    className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                  >
-                    <LuTrash2 className="w-4 h-4" />
-                    Delete
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+            icon={<LuPackage className="w-5 h-5 text-primary" />}
+            title={item.name}
+            subtitle="GLOBAL"
+            statusBadge={{
+              label: item.status === "active" ? "Active" : "Inactive",
+              className: item.status === "active"
+                ? "bg-positive-100 text-positive"
+                : "bg-negative-100 text-negative",
+            }}
+            details={
+              <>
+                <p className="text-xs">{inventoryCounts[item.id] ?? 0} inventory item{(inventoryCounts[item.id] ?? 0) !== 1 ? "s" : ""}</p>
+                {item.description && <p className="text-neutral-900 line-clamp-2">{item.description}</p>}
+              </>
+            }
+            actions={[
+              ...(canUpdate ? [{
+                label: "Edit",
+                icon: <LuPencil className="w-4 h-4" />,
+                onClick: (e: React.MouseEvent) => { e.stopPropagation(); openEditModal(item); },
+              }] : []),
+              ...(canDelete ? [{
+                label: "Delete",
+                icon: <LuTrash2 className="w-4 h-4" />,
+                onClick: (e: React.MouseEvent) => { e.stopPropagation(); openDeleteConfirmModal(item); },
+                className: "flex items-center gap-1 text-sm text-negative hover:text-negative-900",
+              }] : []),
+            ]}
+          />
         ))}
-
-        {paginatedItems.length === 0 && (
-          <div className="col-span-full text-center py-12 text-neutral-900">
-            {searchQuery
-              ? "No catalog items match your search."
-              : 'No catalog items found. Click "Add New Catalog" to create one.'}
-          </div>
-        )}
-      </div>
+      </CardGrid>
 
       {/* Pagination */}
       <Pagination

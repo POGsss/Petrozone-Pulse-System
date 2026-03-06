@@ -104,7 +104,7 @@ Tasks:
 1. Create staff_performance table.
 2. Implement aggregation queries.
 3. Implement CRUD APIs.
-4. Build Staff Performance page.
+4. Build Staff Performance Table in the 4th row in the dashboard.
 5. Add filters and charts.
 6. Enforce RBAC.
 7. Audit log changes.

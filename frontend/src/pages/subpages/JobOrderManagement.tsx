@@ -32,6 +32,8 @@ import {
   Pagination,
   ErrorAlert,
   SkeletonLoader,
+  CardGrid,
+  GridCard,
 } from "../../components";
 import type { FilterGroup } from "../../components";
 import type { JobOrder, JobOrderItem, JobOrderHistory, Branch, Customer, Vehicle, CatalogItem, CatalogInventoryLink, ResolvedPricing, ThirdPartyRepair, VehicleClass } from "../../types";
@@ -1266,186 +1268,159 @@ export function JobOrderManagement() {
       )}
 
       {/* Order Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <CardGrid
+        isEmpty={paginatedItems.length === 0}
+        emptyMessage={
+          searchQuery
+            ? "No job orders match your search."
+            : 'No job orders found. Click "Create Job Order" to create one.'
+        }
+      >
         {paginatedItems.map((order) => (
-          <div
+          <GridCard
             key={order.id}
             onClick={() => openViewModal(order)}
-            className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-100 transition-colors"
-          >
-            {/* Card header */}
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-primary-100 rounded-lg">
-                  <LuClipboardList className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <h4 className="font-semibold text-neutral-950">Job - {order.order_number}</h4>
-                  {order.branches && (
-                    <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
-                      {order.branches.code}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColors(order.status)}`}>
-                {getStatusLabel(order.status)}
-              </span>
-            </div>
-
-            {/* Order details */}
-            <div className="space-y-1 text-sm text-neutral-900 mb-3">
-              <p className="text-neutral-900">{formatPrice(order.total_amount + (order.third_party_repairs?.reduce((sum, r) => sum + r.cost, 0) || 0))}</p>
-              <p className="text-neutral-900">{order.vehicles ? `${order.vehicles.plate_number} ${order.vehicles.model}` : "—"}</p>
-              <p className="text-neutral-900">{order.customers?.full_name || "—"}</p>
-              <p className="text-neutral-900">{formatDate(order.created_at)}</p>
-            </div>
-
-            {/* Actions */}
-            {(() => {
-              const canEditThis = canUpdate;
-              const canDeleteThis = canDelete;
-              const showDots = true; // always show for Job Order History
-              const hasActions = canEditThis || canDeleteThis || showDots;
-              return hasActions ? (
-                <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
-                  {canEditThis && (
+            icon={<LuClipboardList className="w-5 h-5 text-primary" />}
+            title={`Job - ${order.order_number}`}
+            subtitle={
+              order.branches ? (
+                <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
+                  {order.branches.code}
+                </span>
+              ) : undefined
+            }
+            statusBadge={{
+              label: getStatusLabel(order.status),
+              className: getStatusColors(order.status),
+            }}
+            details={
+              <>
+                <p className="text-neutral-900">{formatPrice(order.total_amount + (order.third_party_repairs?.reduce((sum, r) => sum + r.cost, 0) || 0))}</p>
+                <p className="text-neutral-900">{order.vehicles ? `${order.vehicles.plate_number} ${order.vehicles.model}` : "—"}</p>
+                <p className="text-neutral-900">{order.customers?.full_name || "—"}</p>
+                <p className="text-neutral-900">{formatDate(order.created_at)}</p>
+              </>
+            }
+            actions={[
+              ...(canUpdate ? [{
+                label: "Edit",
+                icon: <LuPencil className="w-4 h-4" />,
+                onClick: (e: React.MouseEvent) => { e.stopPropagation(); openEditModal(order); },
+              }] : []),
+              ...(canDelete ? [{
+                label: "Delete",
+                icon: <LuTrash2 className="w-4 h-4" />,
+                onClick: (e: React.MouseEvent) => { e.stopPropagation(); openDeleteConfirmModal(order); },
+                className: "flex items-center gap-1 text-sm text-negative hover:text-negative-900",
+              }] : []),
+            ]}
+            extraActions={
+              <div className="relative" ref={openDropdownId === `card-${order.id}` ? dropdownRef : undefined}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${order.id}` ? null : `card-${order.id}`); }}
+                  className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+                  title="More actions"
+                >
+                  <LuEllipsisVertical className="w-4 h-4" /> More
+                </button>
+                {openDropdownId === `card-${order.id}` && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg border border-neutral-200 py-2 z-50">
                     <button
-                      onClick={(e) => { e.stopPropagation(); openEditModal(order); }}
-                      className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
+                      onClick={(e) => { e.stopPropagation(); closeDropdown(); openHistoryFromCard(order); }}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
                     >
-                      <LuPencil className="w-4 h-4" />
-                      Edit
+                      <LuHistory className="w-4 h-4" /> Job Order History
                     </button>
-                  )}
-                  {canDeleteThis && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openDeleteConfirmModal(order); }}
-                      className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                    >
-                      <LuTrash2 className="w-4 h-4" />
-                      Delete
-                    </button>
-                  )}
-                  {/* More actions dropdown */}
-                  {showDots && (
-                    <div className="relative" ref={openDropdownId === `card-${order.id}` ? dropdownRef : undefined}>
+                    {canApproval && (order.status === "draft" || order.status === "pending_approval") && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${order.id}` ? null : `card-${order.id}`); }}
-                        className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
-                        title="More actions"
+                        onClick={(e) => { e.stopPropagation(); closeDropdown(); openApprovalModal(order); }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
                       >
-                        <LuEllipsisVertical className="w-4 h-4" /> More
+                        <LuSend className="w-4 h-4" /> Customer Approval
                       </button>
-                      {openDropdownId === `card-${order.id}` && (
-                        <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg border border-neutral-200 py-2 z-50">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); closeDropdown(); openHistoryFromCard(order); }}
-                            className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                          >
-                            <LuHistory className="w-4 h-4" /> Job Order History
-                          </button>
-                          {canApproval && (order.status === "draft" || order.status === "pending_approval") && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); closeDropdown(); openApprovalModal(order); }}
-                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                            >
-                              <LuSend className="w-4 h-4" /> Customer Approval
-                            </button>
-                          )}
-                          {canApproval && (order.status === "draft" || order.status === "pending_approval") && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelConfirmModal(order); }}
-                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                            >
-                              <LuBan className="w-4 h-4" /> Cancel Job Order
-                            </button>
-                          )}
-                          {canStartWork && order.status === "approved" && (
-                            <button
-                              onClick={async (e) => {
-                                e.stopPropagation(); closeDropdown();
-                                try {
-                                  await jobOrdersApi.startWork(order.id);
-                                  showToast.success("Work started — status changed to In Progress");
-                                  fetchData();
-                                } catch (err) {
-                                  showToast.error(err instanceof Error ? err.message : "Failed to start work");
-                                }
-                              }}
-                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                            >
-                              <LuPlay className="w-4 h-4" /> Start Work
-                            </button>
-                          )}
-                          {canMarkReady && order.status === "in_progress" && (
-                            <button
-                              onClick={async (e) => {
-                                e.stopPropagation(); closeDropdown();
-                                try {
-                                  await jobOrdersApi.markReady(order.id);
-                                  showToast.success("Marked ready for release");
-                                  fetchData();
-                                } catch (err) {
-                                  showToast.error(err instanceof Error ? err.message : "Failed to mark ready");
-                                }
-                              }}
-                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                            >
-                              <LuPackageCheck className="w-4 h-4" /> Mark Ready
-                            </button>
-                          )}
-                          {canPayment && order.status === "ready_for_release" && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); closeDropdown(); openPaymentModal(order); }}
-                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                            >
-                              <LuCreditCard className="w-4 h-4" /> Record Payment
-                            </button>
-                          )}
-                          {canComplete && order.status === "pending_payment" && (
-                            <button
-                              onClick={async (e) => {
-                                e.stopPropagation(); closeDropdown();
-                                try {
-                                  await jobOrdersApi.complete(order.id);
-                                  showToast.success("Job order completed");
-                                  fetchData();
-                                } catch (err) {
-                                  showToast.error(err instanceof Error ? err.message : "Failed to complete");
-                                }
-                              }}
-                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                            >
-                              <LuCircleCheck className="w-4 h-4" /> Complete
-                            </button>
-                          )}
-                          {canRepair && order.status === "draft" && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); closeDropdown(); openRepairActionModal(order); }}
-                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                            >
-                              <LuWrench className="w-4 h-4" /> Manage Repairs
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ) : null;
-            })()}
-          </div>
+                    )}
+                    {canApproval && (order.status === "draft" || order.status === "pending_approval") && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelConfirmModal(order); }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                      >
+                        <LuBan className="w-4 h-4" /> Cancel Job Order
+                      </button>
+                    )}
+                    {canStartWork && order.status === "approved" && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation(); closeDropdown();
+                          try {
+                            await jobOrdersApi.startWork(order.id);
+                            showToast.success("Work started — status changed to In Progress");
+                            fetchData();
+                          } catch (err) {
+                            showToast.error(err instanceof Error ? err.message : "Failed to start work");
+                          }
+                        }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                      >
+                        <LuPlay className="w-4 h-4" /> Start Work
+                      </button>
+                    )}
+                    {canMarkReady && order.status === "in_progress" && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation(); closeDropdown();
+                          try {
+                            await jobOrdersApi.markReady(order.id);
+                            showToast.success("Marked ready for release");
+                            fetchData();
+                          } catch (err) {
+                            showToast.error(err instanceof Error ? err.message : "Failed to mark ready");
+                          }
+                        }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                      >
+                        <LuPackageCheck className="w-4 h-4" /> Mark Ready
+                      </button>
+                    )}
+                    {canPayment && order.status === "ready_for_release" && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); closeDropdown(); openPaymentModal(order); }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                      >
+                        <LuCreditCard className="w-4 h-4" /> Record Payment
+                      </button>
+                    )}
+                    {canComplete && order.status === "pending_payment" && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation(); closeDropdown();
+                          try {
+                            await jobOrdersApi.complete(order.id);
+                            showToast.success("Job order completed");
+                            fetchData();
+                          } catch (err) {
+                            showToast.error(err instanceof Error ? err.message : "Failed to complete");
+                          }
+                        }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                      >
+                        <LuCircleCheck className="w-4 h-4" /> Complete
+                      </button>
+                    )}
+                    {canRepair && order.status === "draft" && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); closeDropdown(); openRepairActionModal(order); }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                      >
+                        <LuWrench className="w-4 h-4" /> Manage Repairs
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            }
+          />
         ))}
-
-        {paginatedItems.length === 0 && (
-          <div className="col-span-full text-center py-12 text-neutral-900">
-            {searchQuery
-              ? "No job orders match your search."
-              : 'No job orders found. Click "Create Job Order" to create one.'}
-          </div>
-        )}
-      </div>
+      </CardGrid>
 
       {/* Pagination */}
       <Pagination

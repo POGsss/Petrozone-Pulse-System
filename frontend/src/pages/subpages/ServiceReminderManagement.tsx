@@ -5,8 +5,6 @@ import {
   LuSend,
   LuClock,
   LuBan,
-  LuMail,
-  LuMessageSquare,
   LuEllipsisVertical,
 } from "react-icons/lu";
 import { showToast } from "../../lib/toast";
@@ -24,8 +22,12 @@ import {
   Pagination,
   ErrorAlert,
   SkeletonLoader,
+  MobileCardList,
+  MobileCard,
+  DesktopTable,
+  DesktopTableRow,
 } from "../../components";
-import type { StatCard } from "../../components";
+import type { StatCard, DesktopTableColumn } from "../../components";
 import { useAuth } from "../../auth";
 import type { Branch, Customer, Vehicle, ServiceReminder } from "../../types";
 
@@ -487,132 +489,122 @@ export function ServiceReminderManagement() {
         />
 
         {/* Mobile Card View */}
-        <div className="md:hidden p-4">
-          <div className="grid grid-cols-1 gap-4">
+        <MobileCardList
+          isEmpty={paginatedReminders.length === 0}
+          emptyMessage={
+            searchQuery || filterStatus !== "all" || filterMethod !== "all" || filterBranch !== "all"
+              ? "No reminders match your filters."
+              : 'No reminders found. Click "Create Reminder" to create one.'
+          }
+        >
             {paginatedReminders.map((r) => {
               const sc = statusConfig[r.status] || statusConfig.draft;
               const canEditThis = canEdit && ["draft", "scheduled", "failed"].includes(r.status);
               const canDeleteThis = canDelete && ["draft", "scheduled", "failed"].includes(r.status);
               const canSendThis = canSend && ["draft", "scheduled", "failed"].includes(r.status);
               const canCancelThis = canEdit && ["draft", "scheduled"].includes(r.status);
-              const showDots = canSendThis || canCancelThis || true; // always show for View Details
+              const showDots = canSendThis || canCancelThis || true;
               const hasActions = canEditThis || canDeleteThis || showDots;
               return (
-                <div
+                <MobileCard
                   key={r.id}
                   onClick={() => openViewModal(r)}
-                  className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-100 transition-colors"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-primary-100 rounded-lg">
-                        <LuClock className="w-5 h-5 text-primary" />
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-neutral-950">{r.customers?.full_name || "—"}</h4>
-                        <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
-                          {r.branches?.name || "—"}
-                        </span>
-                      </div>
-                    </div>
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${sc.className}`}>
-                      {sc.label}
-                    </span>
-                  </div>
-                  <div className="space-y-1 text-sm text-neutral-900 mb-3">
-                    <p>{r.service_type}</p>
-                    <p className="text-neutral-900">{r.vehicles?.plate_number || "—"}</p>
-                    <p className="text-neutral-900">{r.delivery_method === "email" ? "Email" : "SMS"}</p>
-                    <p className="text-neutral-900">{new Date(r.scheduled_at).toLocaleString()}</p>
-                  </div>
-                  {hasActions && (
-                    <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
-                      {canEditThis && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openEditModal(r); }}
-                          className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-                        >
-                          <LuPencil className="w-4 h-4" /> Edit
-                        </button>
-                      )}
-                      {canDeleteThis && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openDeleteModal(r); }}
-                          className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                        >
-                          <LuTrash2 className="w-4 h-4" /> Delete
-                        </button>
-                      )}
-                      {/* More actions dropdown */}
-                      {showDots && (
-                        <div className="relative" ref={openDropdownId === `card-${r.id}` ? dropdownRef : undefined}>
+                  icon={<LuClock className="w-5 h-5 text-primary" />}
+                  title={r.customers?.full_name || "—"}
+                  subtitle={r.branches?.name || "—"}
+                  statusBadge={{ label: sc.label, className: sc.className }}
+                  details={
+                    <>
+                      <p>{r.service_type}</p>
+                      <p className="text-neutral-900">{r.vehicles?.plate_number || "—"}</p>
+                      <p className="text-neutral-900">{r.delivery_method === "email" ? "Email" : "SMS"}</p>
+                      <p className="text-neutral-900">{new Date(r.scheduled_at).toLocaleString()}</p>
+                    </>
+                  }
+                  extraActions={
+                    hasActions ? (
+                      <>
+                        {canEditThis && (
                           <button
-                            onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${r.id}` ? null : `card-${r.id}`); }}
-                            className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
-                            title="More actions"
+                            onClick={(e) => { e.stopPropagation(); openEditModal(r); }}
+                            className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
                           >
-                            <LuEllipsisVertical className="w-4 h-4" /> More
+                            <LuPencil className="w-4 h-4" /> Edit
                           </button>
-                          {openDropdownId === `card-${r.id}` && (
-                            <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
-                              {canSendThis && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); closeDropdown(); openSendModal(r); }}
-                                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                                >
-                                  <LuSend className="w-4 h-4" /> Send Reminder
-                                </button>
-                              )}
-                              {canCancelThis && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelModal(r); }}
-                                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                                >
-                                  <LuBan className="w-4 h-4" /> Cancel Reminder
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                        )}
+                        {canDeleteThis && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openDeleteModal(r); }}
+                            className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
+                          >
+                            <LuTrash2 className="w-4 h-4" /> Delete
+                          </button>
+                        )}
+                        {showDots && (
+                          <div className="relative" ref={openDropdownId === `card-${r.id}` ? dropdownRef : undefined}>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${r.id}` ? null : `card-${r.id}`); }}
+                              className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+                              title="More actions"
+                            >
+                              <LuEllipsisVertical className="w-4 h-4" /> More
+                            </button>
+                            {openDropdownId === `card-${r.id}` && (
+                              <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                                {canSendThis && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); closeDropdown(); openSendModal(r); }}
+                                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                  >
+                                    <LuSend className="w-4 h-4" /> Send Reminder
+                                  </button>
+                                )}
+                                {canCancelThis && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelModal(r); }}
+                                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                  >
+                                    <LuBan className="w-4 h-4" /> Cancel Reminder
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    ) : undefined
+                  }
+                />
               );
             })}
-            {paginatedReminders.length === 0 && (
-              <div className="col-span-full text-center py-12 text-neutral-900">
-                {searchQuery || filterStatus !== "all" || filterMethod !== "all" || filterBranch !== "all"
-                  ? "No reminders match your filters."
-                  : "No reminders found. Click \"Create Reminder\" to create one."}
-              </div>
-            )}
-          </div>
-        </div>
+        </MobileCardList>
 
         {/* Desktop Table View */}
-        <div className="hidden md:block">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-neutral-200 bg-neutral-100">
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Customer</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Subject</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Scheduled</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Method</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Status</th>
-                <th className="text-center py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+        <DesktopTable
+          columns={[
+            { label: "Customer" },
+            { label: "Subject" },
+            { label: "Scheduled" },
+            { label: "Method" },
+            { label: "Status" },
+            { label: "Actions", align: "center" },
+          ] as DesktopTableColumn[]}
+          isEmpty={paginatedReminders.length === 0}
+          emptyMessage={
+            searchQuery || filterStatus !== "all" || filterMethod !== "all" || filterBranch !== "all"
+              ? "No reminders match your filters."
+              : "No reminders found. Click \"Create Reminder\" to create one."
+          }
+        >
               {paginatedReminders.map((r) => {
                 const sc = statusConfig[r.status] || statusConfig.draft;
                 const canEditThis = canEdit && ["draft", "scheduled", "failed"].includes(r.status);
                 const canDeleteThis = canDelete && ["draft", "scheduled", "failed"].includes(r.status);
                 const canSendThis = canSend && ["draft", "scheduled", "failed"].includes(r.status);
                 const canCancelThis = canEdit && ["draft", "scheduled"].includes(r.status);
-                const showDots = canSendThis || canCancelThis || true; // always show for View Details
+                const showDots = canSendThis || canCancelThis;
                 return (
-                  <tr key={r.id} onClick={() => openViewModal(r)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer last:border-b-0">
+                  <DesktopTableRow key={r.id} onClick={() => openViewModal(r)}>
                     <td className="py-3 px-4 whitespace-nowrap">
                       <span className="font-medium text-neutral-900">{r.customers?.full_name || "—"}</span>
                     </td>
@@ -684,20 +676,10 @@ export function ServiceReminderManagement() {
                         )}
                       </div>
                     </td>
-                  </tr>
+                  </DesktopTableRow>
                 );
               })}
-            </tbody>
-          </table>
-
-          {paginatedReminders.length === 0 && (
-            <div className="text-center py-12 text-neutral-900">
-              {searchQuery || filterStatus !== "all" || filterMethod !== "all" || filterBranch !== "all"
-                ? "No reminders match your filters."
-                : "No reminders found. Click \"Create Reminder\" to create one."}
-            </div>
-          )}
-        </div>
+        </DesktopTable>
 
         {/* Pagination */}
         <Pagination

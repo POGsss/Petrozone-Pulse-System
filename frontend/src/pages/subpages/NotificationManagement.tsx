@@ -21,8 +21,12 @@ import {
   Pagination,
   ErrorAlert,
   SkeletonLoader,
+  MobileCardList,
+  MobileCard,
+  DesktopTable,
+  DesktopTableRow,
 } from "../../components";
-import type { StatCard } from "../../components";
+import type { StatCard, MobileCardAction, DesktopTableColumn } from "../../components";
 import { useAuth } from "../../auth";
 import type { Branch, Notification } from "../../types";
 
@@ -441,91 +445,62 @@ export function NotificationManagement() {
         />
 
         {/* Mobile Card View */}
-        <div className="md:hidden p-4">
-          <div className="grid grid-cols-1 gap-4">
-            {paginatedNotifications.map((n) => (
-              <div
-                key={n.id}
-                onClick={() => openViewModal(n)}
-                className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-100 transition-colors"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-primary-100 rounded-lg">
-                      <LuBell className="w-5 h-5 text-primary" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-neutral-950">{n.title}</h4>
-                      <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
-                        {targetTypeLabel[n.target_type] || n.target_type}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${
-                      n.status === "active" ? "bg-positive-100 text-positive" : "bg-negative-100 text-negative"
-                    }`}>
-                      {n.status === "active" ? "Active" : "Inactive"}
-                    </span>
-                  </div>
-                </div>
-                <div className="space-y-1 text-sm text-neutral-900 mb-3">
-                  <p className="text-neutral-900">{new Date(n.created_at).toLocaleDateString()}</p>
-                  <p className="text-neutral-900 line-clamp-2">{n.message}</p>
-                </div>
-                {(() => {
-                  const canEditThis = canEdit && n.notification_type === "manual";
-                  const canDeleteThis = canDelete;
-                  const hasActions = canEditThis || canDeleteThis;
-                  return hasActions ? (
-                    <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
-                      {canEditThis && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openEditModal(n); }}
-                          className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-                        >
-                          <LuPencil className="w-4 h-4" /> Edit
-                        </button>
-                      )}
-                      {canDeleteThis && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openDeleteModal(n); }}
-                          className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                        >
-                          <LuTrash2 className="w-4 h-4" /> Delete
-                        </button>
-                      )}
-                    </div>
-                  ) : null;
-                })()}
-              </div>
-            ))}
-            {paginatedNotifications.length === 0 && (
-              <div className="col-span-full text-center py-12 text-neutral-900">
-                {searchQuery || filterStatus !== "all" || filterTargetType !== "all" || filterBranch !== "all"
-                  ? "No notifications match your filters."
-                  : "No notifications found. Click \"Create Notification\" to create one."}
-              </div>
-            )}
-          </div>
-        </div>
+        <MobileCardList
+          isEmpty={paginatedNotifications.length === 0}
+          emptyMessage={
+            searchQuery || filterStatus !== "all" || filterTargetType !== "all" || filterBranch !== "all"
+              ? "No notifications match your filters."
+              : "No notifications found. Click \"Create Notification\" to create one."
+          }
+        >
+            {paginatedNotifications.map((n) => {
+              const canEditThis = canEdit && n.notification_type === "manual";
+              const canDeleteThis = canDelete;
+              const actions: MobileCardAction[] = [];
+              if (canEditThis) actions.push({ label: "Edit", icon: <LuPencil className="w-4 h-4" />, onClick: () => openEditModal(n) });
+              if (canDeleteThis) actions.push({ label: "Delete", icon: <LuTrash2 className="w-4 h-4" />, onClick: () => openDeleteModal(n), className: "flex items-center gap-1 text-sm text-negative hover:text-negative-900" });
+              return (
+                <MobileCard
+                  key={n.id}
+                  onClick={() => openViewModal(n)}
+                  icon={<LuBell className="w-5 h-5 text-primary" />}
+                  title={n.title}
+                  subtitle={targetTypeLabel[n.target_type] || n.target_type}
+                  statusBadge={{
+                    label: n.status === "active" ? "Active" : "Inactive",
+                    className: n.status === "active" ? "bg-positive-100 text-positive" : "bg-negative-100 text-negative",
+                  }}
+                  details={
+                    <>
+                      <p className="text-neutral-900">{new Date(n.created_at).toLocaleDateString()}</p>
+                      <p className="text-neutral-900 line-clamp-2">{n.message}</p>
+                    </>
+                  }
+                  actions={actions}
+                />
+              );
+            })}
+        </MobileCardList>
 
         {/* Desktop Table View */}
-        <div className="hidden md:block">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-neutral-200 bg-neutral-100">
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Title</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Target</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Branch</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Type</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Status</th>
-                <th className="text-center py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+        <DesktopTable
+          columns={[
+            { label: "Title" },
+            { label: "Target" },
+            { label: "Branch" },
+            { label: "Type" },
+            { label: "Status" },
+            { label: "Actions", align: "center" },
+          ] as DesktopTableColumn[]}
+          isEmpty={paginatedNotifications.length === 0}
+          emptyMessage={
+            searchQuery || filterStatus !== "all" || filterTargetType !== "all" || filterBranch !== "all"
+              ? "No notifications match your filters."
+              : "No notifications found. Click \"Create Notification\" to create one."
+          }
+        >
               {paginatedNotifications.map((n) => (
-                <tr key={n.id} onClick={() => openViewModal(n)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer last:border-b-0">
+                <DesktopTableRow key={n.id} onClick={() => openViewModal(n)}>
                   <td className="py-3 px-4 whitespace-nowrap">
                     <span className="font-medium text-neutral-900">{n.title}</span>
                   </td>
@@ -590,19 +565,9 @@ export function NotificationManagement() {
                       );
                     })()}
                   </td>
-                </tr>
+                </DesktopTableRow>
               ))}
-            </tbody>
-          </table>
-
-          {paginatedNotifications.length === 0 && (
-            <div className="text-center py-12 text-neutral-900">
-              {searchQuery || filterStatus !== "all" || filterTargetType !== "all" || filterBranch !== "all"
-                ? "No notifications match your filters."
-                : "No notifications found. Click \"Create Notification\" to create one."}
-            </div>
-          )}
-        </div>
+        </DesktopTable>
 
         <Pagination
           variant="table"

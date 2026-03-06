@@ -22,8 +22,12 @@ import {
   Pagination,
   ErrorAlert,
   SkeletonLoader,
+  MobileCardList,
+  MobileCard,
+  DesktopTable,
+  DesktopTableRow,
 } from "../../components";
-import type { StatCard } from "../../components";
+import type { StatCard, MobileCardAction, DesktopTableColumn } from "../../components";
 import type { PricingMatrix, CatalogItem } from "../../types";
 
 const ITEMS_PER_PAGE = 5;
@@ -355,99 +359,54 @@ export function PricingManagement() {
         />
 
         {/* Mobile Card View */}
-        <div className="md:hidden p-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {paginatedItems.map((item) => (
-              <div
+        <MobileCardList
+          isEmpty={paginatedItems.length === 0}
+          emptyMessage="No pricing rules found."
+        >
+          {paginatedItems.map((item) => {
+            const actions: MobileCardAction[] = [];
+            if (canUpdate) actions.push({ label: "Edit", icon: <LuPencil className="w-4 h-4" />, onClick: () => openEditModal(item) });
+            if (canDelete) actions.push({ label: "Delete", icon: <LuTrash2 className="w-4 h-4" />, onClick: () => openDeleteModal(item), className: "flex items-center gap-1 text-sm text-negative hover:text-negative-900" });
+            return (
+              <MobileCard
                 key={item.id}
                 onClick={() => openViewModal(item)}
-                className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-100 transition-colors"
-              >
-                {/* Card header */}
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-primary-100 rounded-lg">
-                      <LuDollarSign className="w-5 h-5 text-primary" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-neutral-950">
-                        {item.catalog_items?.name || "Unknown Item"}
-                      </h4>
-                    </div>
-                  </div>
-                  <span
-                    className={`px-2 py-1 rounded text-xs font-medium ${
-                      item.status === "active"
-                        ? "bg-positive-100 text-positive"
-                        : "bg-negative-100 text-negative"
-                    }`}
-                  >
-                    {item.status === "active" ? "Active" : "Inactive"}
-                  </span>
-                </div>
-
-                {/* Pricing details */}
-                <div className="space-y-1 text-sm text-neutral-900 mb-3">
-                  <p className="text-neutral-900">Light: {formatCurrency(item.light_price)}</p>
-                  <p className="text-neutral-900">Heavy: {formatCurrency(item.heavy_price)}</p>
-                  <p className="text-neutral-900">Extra Heavy: {formatCurrency(item.extra_heavy_price)}</p>
-                </div>
-
-                {/* Actions */}
-                {(canUpdate || canDelete) && (
-                  <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
-                    {canUpdate && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openEditModal(item); }}
-                        className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-                      >
-                        <LuPencil className="w-4 h-4" />
-                        Edit
-                      </button>
-                    )}
-                    {canDelete && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openDeleteModal(item); }}
-                        className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                      >
-                        <LuTrash2 className="w-4 h-4" />
-                        Delete
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {paginatedItems.length === 0 && (
-              <div className="col-span-full text-center py-12 text-neutral-900">
-                No pricing rules found.
-              </div>
-            )}
-          </div>
-        </div>
+                icon={<LuDollarSign className="w-5 h-5 text-primary" />}
+                title={item.catalog_items?.name || "Unknown Item"}
+                statusBadge={{
+                  label: item.status === "active" ? "Active" : "Inactive",
+                  className: item.status === "active" ? "bg-positive-100 text-positive" : "bg-negative-100 text-negative",
+                }}
+                details={
+                  <>
+                    <p className="text-neutral-900">Light: {formatCurrency(item.light_price)}</p>
+                    <p className="text-neutral-900">Heavy: {formatCurrency(item.heavy_price)}</p>
+                    <p className="text-neutral-900">Extra Heavy: {formatCurrency(item.extra_heavy_price)}</p>
+                  </>
+                }
+                actions={actions}
+              />
+            );
+          })}
+        </MobileCardList>
 
         {/* Desktop Table View */}
-        <div className="hidden md:block">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-neutral-200 bg-neutral-100">
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Catalog Item</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Light</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Heavy</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Extra Heavy</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Status</th>
-                {(canUpdate || canDelete) && (
-                  <th className="text-center py-3 px-4 text-sm font-medium text-neutral-950">Actions</th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
+        <DesktopTable
+          columns={[
+            { label: "Catalog Item" },
+            { label: "Light" },
+            { label: "Heavy" },
+            { label: "Extra Heavy" },
+            { label: "Status" },
+            ...((canUpdate || canDelete) ? [{ label: "Actions", align: "center" as const }] : []),
+          ] as DesktopTableColumn[]}
+          isEmpty={paginatedItems.length === 0}
+          emptyMessage="No pricing rules found."
+        >
               {paginatedItems.map((item) => (
-                <tr
+                <DesktopTableRow
                   key={item.id}
                   onClick={() => openViewModal(item)}
-                  className="border-b border-neutral-100 hover:bg-neutral-100 transition-colors cursor-pointer last:border-b-0"
                 >
                   <td className="py-3 px-4 text-sm text-neutral-900">
                     <span className="font-medium">{item.catalog_items?.name || "Unknown"}</span>
@@ -496,17 +455,9 @@ export function PricingManagement() {
                       </div>
                     </td>
                   )}
-                </tr>
+                </DesktopTableRow>
               ))}
-            </tbody>
-          </table>
-
-          {paginatedItems.length === 0 && (
-            <div className="text-center py-12 text-neutral-900">
-              No pricing rules found.
-            </div>
-          )}
-        </div>
+        </DesktopTable>
 
         <Pagination
           variant="table"

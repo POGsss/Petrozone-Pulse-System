@@ -581,7 +581,7 @@ router.post(
       if (reminder.delivery_method === "email") {
         const result = await sendEmail({
           to: customer.email,
-          subject: `Service Reminder – ${(reminder as any).vehicles?.plate_number || "Your Vehicle"}`,
+          subject: `${reminder.service_type} – ${(reminder as any).vehicles?.plate_number || "Your Vehicle"}`,
           text: reminder.message_template,
           html: `<p>${reminder.message_template.replace(/\n/g, "<br>")}</p>`,
         });
@@ -788,7 +788,7 @@ router.post(
           if (reminder.delivery_method === "email" && customer?.email) {
             const result = await sendEmail({
               to: customer.email,
-              subject: `Service Reminder – ${(reminder as any).vehicles?.plate_number || "Your Vehicle"}`,
+              subject: `${reminder.service_type} – ${(reminder as any).vehicles?.plate_number || "Your Vehicle"}`,
               text: reminder.message_template,
               html: `<p>${reminder.message_template.replace(/\n/g, "<br>")}</p>`,
             });

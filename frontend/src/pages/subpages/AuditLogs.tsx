@@ -11,8 +11,11 @@ import {
   Pagination,
   ErrorAlert,
   SkeletonLoader,
+  MobileCardList,
+  DesktopTable,
+  DesktopTableRow,
 } from "../../components";
-import type { StatCard } from "../../components";
+import type { StatCard, DesktopTableColumn } from "../../components";
 import type { AuditLog, PaginatedResponse } from "../../types";
 
 const ITEMS_PER_PAGE = 20;
@@ -246,7 +249,7 @@ export function AuditLogs() {
         />
 
         {/* Mobile Card View */}
-        <div className="md:hidden p-4 space-y-4">
+        <MobileCardList grid={false} isEmpty={filteredLogs.length === 0} emptyMessage="No audit logs found.">
           {filteredLogs.map((log) => (
             <div
               key={log.id}
@@ -284,29 +287,22 @@ export function AuditLogs() {
               </div>
             </div>
           ))}
-
-          {filteredLogs.length === 0 && (
-            <div className="text-center py-8 text-neutral-900">
-              No audit logs found.
-            </div>
-          )}
-        </div>
+        </MobileCardList>
 
         {/* Desktop Table View */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-neutral-200 bg-neutral-100">
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Date & Time</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Action</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Status</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">Entity</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950">User</th>
-              </tr>
-            </thead>
-            <tbody>
+        <DesktopTable
+          columns={[
+            { label: "Date & Time" },
+            { label: "Action" },
+            { label: "Status" },
+            { label: "Entity" },
+            { label: "User" },
+          ] as DesktopTableColumn[]}
+          isEmpty={filteredLogs.length === 0}
+          emptyMessage="No audit logs found."
+        >
               {filteredLogs.map((log) => (
-                <tr key={log.id} onClick={() => openViewModal(log)} className="border-b border-neutral-100 hover:bg-neutral-100 transition-colors cursor-pointer">
+                <DesktopTableRow key={log.id} onClick={() => openViewModal(log)}>
                   <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap">
                     {formatDate(log.created_at)}
                   </td>
@@ -326,17 +322,9 @@ export function AuditLogs() {
                   <td className="py-3 px-4 text-sm text-neutral-900">
                     {log.user_profiles?.full_name || log.user_profiles?.email || "-"}
                   </td>
-                </tr>
+                </DesktopTableRow>
               ))}
-            </tbody>
-          </table>
-
-          {filteredLogs.length === 0 && (
-            <div className="text-center py-12 text-neutral-900">
-              No audit logs found.
-            </div>
-          )}
-        </div>
+        </DesktopTable>
 
         {/* Pagination */}
         <Pagination

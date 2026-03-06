@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { LuPlus, LuRefreshCw, LuPencil, LuTrash2, LuTruck, LuPackage, LuEllipsisVertical, LuX, LuCheck } from "react-icons/lu";
+import { LuPlus, LuPencil, LuTrash2, LuTruck, LuPackage, LuEllipsisVertical, LuX, LuCheck } from "react-icons/lu";
 import { useAuth } from "../../auth";
 import { suppliersApi, branchesApi, supplierProductsApi, inventoryApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
-import { Modal, ModalSection, ModalInput, ModalSelect, ModalButtons, ModalError, SearchFilter, PageHeader, ErrorAlert, SkeletonLoader } from "../../components";
+import { Modal, ModalSection, ModalInput, ModalSelect, ModalButtons, ModalError, SearchFilter, PageHeader, ErrorAlert, SkeletonLoader, CardGrid, GridCard } from "../../components";
 import type { FilterGroup } from "../../components";
 import type { Supplier, Branch, SupplierProduct, InventoryItem } from "../../types";
 
@@ -497,112 +497,78 @@ export function SupplierManagement() {
       )}
 
       {/* Suppliers grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <CardGrid
+        isEmpty={filteredSuppliers.length === 0}
+        emptyMessage={
+          searchQuery || Object.values(activeFilters).some((v) => v && v !== "all")
+            ? "No suppliers match your search or filters."
+            : 'No suppliers found. Click "Add New Supplier" to create one.'
+        }
+      >
         {filteredSuppliers.map((supplier) => (
-          <div
+          <GridCard
             key={supplier.id}
             onClick={() => openViewSupplierWithProducts(supplier)}
-            className="bg-white rounded-xl border p-4 border-neutral-200 cursor-pointer hover:bg-neutral-100 transition-colors"
-          >
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-primary-100 rounded-lg">
-                  <LuTruck className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <h4 className="font-semibold text-neutral-950">{supplier.supplier_name}</h4>
-                  {supplier.branches && (
-                    <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
-                      {supplier.branches.code}
-                    </span>
-                  )}
-                </div>
+            icon={<LuTruck className="w-5 h-5 text-primary" />}
+            title={supplier.supplier_name}
+            subtitle={
+              supplier.branches ? (
+                <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
+                  {supplier.branches.code}
+                </span>
+              ) : undefined
+            }
+            statusBadge={{
+              label: supplier.status === "active" ? "Active" : "Inactive",
+              className: supplier.status === "active"
+                ? "bg-positive-100 text-positive"
+                : "bg-negative-100 text-negative",
+            }}
+            details={
+              <>
+                <p className="text-neutral-900">{supplier.contact_person}</p>
+                <p className="text-neutral-900">{supplier.email}</p>
+                <p className="text-neutral-900">{supplier.phone}</p>
+                {supplier.address && <p className="text-neutral-900">{supplier.address}</p>}
+              </>
+            }
+            actions={[
+              ...(canWrite ? [{
+                label: "Edit",
+                icon: <LuPencil className="w-4 h-4" />,
+                onClick: (e: React.MouseEvent) => { e.stopPropagation(); openEditModal(supplier); },
+              }] : []),
+              ...(canWrite ? [{
+                label: "Delete",
+                icon: <LuTrash2 className="w-4 h-4" />,
+                onClick: (e: React.MouseEvent) => { e.stopPropagation(); openDeleteConfirm(supplier); },
+                className: "flex items-center gap-1 text-sm text-negative hover:text-negative-900",
+              }] : []),
+            ]}
+            extraActions={
+              <div className="relative" ref={openDropdownId === `card-${supplier.id}` ? dropdownRef : undefined}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${supplier.id}` ? null : `card-${supplier.id}`); }}
+                  className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+                  title="More actions"
+                >
+                  <LuEllipsisVertical className="w-4 h-4" /> More
+                </button>
+                {openDropdownId === `card-${supplier.id}` && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); closeDropdown(); openManageProductsModal(supplier); }}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                    >
+                      <LuPackage className="w-4 h-4" /> Manage Products
+                    </button>
+                  </div>
+                )}
               </div>
-              <span
-                className={`px-2 py-1 rounded text-xs font-medium ${supplier.status === "active"
-                  ? "bg-positive-100 text-positive"
-                  : "bg-negative-100 text-negative"
-                  }`}
-              >
-                {supplier.status === "active" ? "Active" : "Inactive"}
-              </span>
-            </div>
-
-            {/* Supplier details */}
-            <div className="space-y-1 text-sm text-neutral-900 mb-3">
-              <p className="text-neutral-900">{supplier.contact_person}</p>
-              <p className="text-neutral-900">{supplier.email}</p>
-              <p className="text-neutral-900">{supplier.phone}</p>
-              {supplier.address && <p className="text-neutral-900">{supplier.address}</p>}
-            </div>
-
-            {(() => {
-              const canEditThis = canWrite;
-              const canDeleteThis = canWrite;
-              const showDots = true; // always show for Manage Products
-              const hasActions = canEditThis || canDeleteThis || showDots;
-              return hasActions ? (
-                <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
-                  {canEditThis && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openEditModal(supplier);
-                      }}
-                      className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-                    >
-                      <LuPencil className="w-4 h-4" />
-                      Edit
-                    </button>
-                  )}
-                  {canDeleteThis && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openDeleteConfirm(supplier);
-                      }}
-                      className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                    >
-                      <LuTrash2 className="w-4 h-4" />
-                      Delete
-                    </button>
-                  )}
-                  {/* More actions dropdown */}
-                  {showDots && (
-                    <div className="relative" ref={openDropdownId === `card-${supplier.id}` ? dropdownRef : undefined}>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${supplier.id}` ? null : `card-${supplier.id}`); }}
-                        className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
-                        title="More actions"
-                      >
-                        <LuEllipsisVertical className="w-4 h-4" /> More
-                      </button>
-                      {openDropdownId === `card-${supplier.id}` && (
-                        <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg border border-neutral-200 py-2 z-50">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); closeDropdown(); openManageProductsModal(supplier); }}
-                            className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                          >
-                            <LuPackage className="w-4 h-4" /> Manage Products
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ) : null;
-            })()}
-          </div>
+            }
+          />
         ))}
-
-        {filteredSuppliers.length === 0 && (
-          <div className="col-span-full text-center py-12 text-neutral-900">
-            {searchQuery || Object.values(activeFilters).some((v) => v && v !== "all")
-              ? "No suppliers match your search or filters."
-              : 'No suppliers found. Click "Add New Supplier" to create one.'}
-          </div>
-        )}
-      </div>
+      </CardGrid>
 
       {/* Add Supplier Modal */}
       <Modal
@@ -887,8 +853,13 @@ export function SupplierManagement() {
             {/* Linked Products (read-only) */}
             <ModalSection title="Linked Products">
               {loadingProducts ? (
-                <div className="flex items-center justify-center py-4">
-                  <LuRefreshCw className="w-4 h-4 animate-spin text-primary" />
+                <div className="space-y-2">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
+                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
+                    </div>
+                  ))}
                 </div>
               ) : supplierProducts.filter(p => p.status === "active").length === 0 ? (
                 <p className="text-sm text-neutral-500 text-center py-3">

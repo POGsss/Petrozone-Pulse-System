@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo } from "react";
 import { LuPencil, LuTrash2, LuUsers, LuUserCheck, LuUserX, LuEye, LuLock, LuLockOpen } from "react-icons/lu";
 import { showToast } from "../../lib/toast";
 import { rbacApi, branchesApi, authApi } from "../../lib/api";
-import { Modal, ModalSection, ModalInput, ModalSelect, ModalButtons, ModalError, PageHeader, StatsCards, TableSearchFilter, Pagination, ErrorAlert, SkeletonLoader } from "../../components";
-import type { StatCard } from "../../components";
+import { Modal, ModalSection, ModalInput, ModalSelect, ModalButtons, ModalError, PageHeader, StatsCards, TableSearchFilter, Pagination, ErrorAlert, SkeletonLoader, MobileCardList, MobileCard, DesktopTable, DesktopTableRow } from "../../components";
+import type { StatCard, MobileCardAction, DesktopTableColumn } from "../../components";
 import { useAuth } from "../../auth";
 import type { Branch, UserProfile, BranchAssignment, RoleInfo } from "../../types";
 
@@ -491,110 +491,77 @@ export function UserManagement() {
         />
 
         {/* Mobile Card View */}
-        <div className="md:hidden p-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {paginatedUsers.map((user) => (
-              <div
-                key={user.id}
-                onClick={() => openViewModal(user)}
-                className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-100 transition-colors"
-              >
-                {/* Card header */}
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-primary-100 rounded-lg">
-                      <LuUsers className="w-5 h-5 text-primary" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-neutral-950">{user.full_name}</h4>
-                      {user.branches.length > 0 && (
-                        <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
-                          {user.branches.find(b => b.is_primary)?.branches?.code || user.branches[0]?.branches?.code || "—"}
+        <MobileCardList
+          isEmpty={paginatedUsers.length === 0}
+          emptyMessage={
+            searchQuery || filterStatus !== "all" || filterRole !== "all" || filterBranch !== "all"
+              ? "No users match your filters."
+              : 'No users found. Click "Add a New User" to create one.'
+          }
+        >
+            {paginatedUsers.map((user) => {
+              const actions: MobileCardAction[] = [];
+              if (canEditUser(user)) {
+                actions.push({ label: "Edit", icon: <LuPencil className="w-4 h-4" />, onClick: () => openEditModal(user) });
+                actions.push({ label: "Delete", icon: <LuTrash2 className="w-4 h-4" />, onClick: () => openDeleteModal(user), className: "flex items-center gap-1 text-sm text-negative hover:text-negative-900" });
+              }
+              return (
+                <MobileCard
+                  key={user.id}
+                  onClick={() => openViewModal(user)}
+                  icon={<LuUsers className="w-5 h-5 text-primary" />}
+                  title={user.full_name}
+                  subtitle={user.branches.length > 0 ? (user.branches.find(b => b.is_primary)?.branches?.code || user.branches[0]?.branches?.code || "—") : undefined}
+                  statusBadge={{
+                    label: user.is_active ? "Active" : "Inactive",
+                    className: user.is_active ? "bg-positive-100 text-positive" : "bg-negative-100 text-negative",
+                  }}
+                  details={
+                    <>
+                      <p className="text-neutral-900">{user.email}</p>
+                      {user.phone && <p className="text-neutral-900">{user.phone}</p>}
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        {user.roles.map((role) => (
+                          <span
+                            key={role}
+                            className="px-2 py-0.5 bg-neutral-100 text-neutral-900 rounded text-xs font-medium"
+                          >
+                            {role}
+                          </span>
+                        ))}
+                      </div>
+                      {isUserLocked(user) && (
+                        <span className="px-2 py-1 rounded text-xs font-medium bg-negative-100 text-negative flex items-center gap-1 w-fit">
+                          <LuLock className="w-3 h-3" /> Locked
                         </span>
                       )}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    <span
-                      className={`px-2 py-1 rounded text-xs font-medium ${user.is_active
-                        ? "bg-positive-100 text-positive"
-                        : "bg-negative-100 text-negative"
-                        }`}
-                    >
-                      {user.is_active ? "Active" : "Inactive"}
-                    </span>
-                    {isUserLocked(user) && (
-                      <span className="px-2 py-1 rounded text-xs font-medium bg-negative-100 text-negative flex items-center gap-1">
-                        <LuLock className="w-3 h-3" /> Locked
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* User details */}
-                <div className="space-y-1 text-sm text-neutral-900 mb-3">
-                  <p className="text-neutral-900">{user.email}</p>
-                  {user.phone && <p className="text-neutral-900">{user.phone}</p>}
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {user.roles.map((role) => (
-                      <span
-                        key={role}
-                        className="px-2 py-0.5 bg-neutral-100 text-neutral-900 rounded text-xs font-medium"
-                      >
-                        {role}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Actions */}
-                {canEditUser(user) && (
-                  <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openEditModal(user); }}
-                      className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-                    >
-                      <LuPencil className="w-4 h-4" />
-                      Edit
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openDeleteModal(user); }}
-                      className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                    >
-                      <LuTrash2 className="w-4 h-4" />
-                      Delete
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {paginatedUsers.length === 0 && (
-              <div className="col-span-full text-center py-12 text-neutral-900">
-                {searchQuery || filterStatus !== "all" || filterRole !== "all" || filterBranch !== "all"
-                  ? "No users match your filters."
-                  : 'No users found. Click "Add a New User" to create one.'}
-              </div>
-            )}
-          </div>
-        </div>
+                    </>
+                  }
+                  actions={actions}
+                />
+              );
+            })}
+        </MobileCardList>
 
         {/* Desktop Table View */}
-        <div className="hidden md:block">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-neutral-200 bg-neutral-100">
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Name</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Email</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Roles</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Branches</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Status</th>
-                <th className="text-center py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+        <DesktopTable
+          columns={[
+            { label: "Name" },
+            { label: "Email" },
+            { label: "Roles" },
+            { label: "Branches" },
+            { label: "Status" },
+            { label: "Actions", align: "center" },
+          ] as DesktopTableColumn[]}
+          isEmpty={paginatedUsers.length === 0}
+          emptyMessage={
+            searchQuery || filterStatus !== "all" || filterRole !== "all" || filterBranch !== "all"
+              ? "No users match your filters."
+              : "No users found. Click \"Add a New User\" to create one."
+          }
+        >
               {paginatedUsers.map((user) => (
-                <tr key={user.id} onClick={() => openViewModal(user)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer last:border-b-0">
+                <DesktopTableRow key={user.id} onClick={() => openViewModal(user)}>
                   <td className="py-3 px-4 whitespace-nowrap">
                     <span className="font-medium text-neutral-900">{user.full_name}</span>
                   </td>
@@ -664,19 +631,9 @@ export function UserManagement() {
                       )}
                     </div>
                   </td>
-                </tr>
+                </DesktopTableRow>
               ))}
-            </tbody>
-          </table>
-
-          {paginatedUsers.length === 0 && (
-            <div className="text-center py-12 text-neutral-900">
-              {searchQuery || filterStatus !== "all" || filterRole !== "all" || filterBranch !== "all"
-                ? "No users match your filters."
-                : "No users found. Click \"Add a New User\" to create one."}
-            </div>
-          )}
-        </div>
+        </DesktopTable>
 
         {/* Pagination */}
         <Pagination

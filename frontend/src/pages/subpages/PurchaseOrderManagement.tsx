@@ -28,8 +28,12 @@ import {
   Pagination,
   ErrorAlert,
   SkeletonLoader,
+  MobileCardList,
+  MobileCard,
+  DesktopTable,
+  DesktopTableRow,
 } from "../../components";
-import type { StatCard } from "../../components";
+import type { StatCard, DesktopTableColumn } from "../../components";
 import type { PurchaseOrder, Branch, Supplier, SupplierProduct } from "../../types";
 
 const ITEMS_PER_PAGE = 10;
@@ -742,8 +746,14 @@ export function PurchaseOrderManagement() {
         />
 
         {/* Mobile Card View */}
-        <div className="md:hidden p-4">
-          <div className="grid grid-cols-1 gap-4">
+        <MobileCardList
+          isEmpty={paginatedItems.length === 0}
+          emptyMessage={
+            searchQuery || filterStatus !== "all" || filterBranch !== "all"
+              ? "No purchase orders match your filters."
+              : 'No purchase orders found. Click "Create Purchase Order" to create one.'
+          }
+        >
             {paginatedItems.map((order) => {
               const dropdownActions = getDropdownActions(order);
               const showDots = dropdownActions.length > 0;
@@ -752,106 +762,87 @@ export function PurchaseOrderManagement() {
               const hasActions = canEditThis || canDeleteThis || showDots;
 
               return (
-                <div
+                <MobileCard
                   key={order.id}
                   onClick={() => openViewModal(order)}
-                  className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-100 transition-colors"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-primary-100 rounded-lg">
-                        <LuShoppingCart className="w-5 h-5 text-primary" />
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-neutral-950">{order.po_number}</h4>
-                        {order.branches && (
-                          <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
-                            {order.branches.code}
-                          </span>
+                  icon={<LuShoppingCart className="w-5 h-5 text-primary" />}
+                  title={order.po_number}
+                  subtitle={order.branches?.code}
+                  statusBadge={{ label: statusLabel(order.status), className: statusBadge(order.status) }}
+                  details={
+                    <>
+                      <p className="text-neutral-900">{formatPrice(order.total_amount)}</p>
+                      {order.supplier_name && <p className="text-neutral-900">{order.supplier_name}</p>}
+                      <p className="text-neutral-900">{formatDate(order.created_at)}</p>
+                    </>
+                  }
+                  extraActions={
+                    hasActions ? (
+                      <>
+                        {canEditThis && (
+                          <button onClick={(e) => { e.stopPropagation(); openEditModal(order); }} className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"><LuPencil className="w-4 h-4" /> Edit</button>
                         )}
-                      </div>
-                    </div>
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${statusBadge(order.status)}`}>
-                      {statusLabel(order.status)}
-                    </span>
-                  </div>
-
-                  <div className="space-y-1 text-sm text-neutral-900 mb-3">
-                    <p className="text-neutral-900">{formatPrice(order.total_amount)}</p>
-                    {order.supplier_name && <p className="text-neutral-900">{order.supplier_name}</p>}
-                    <p className="text-neutral-900">{formatDate(order.created_at)}</p>
-                  </div>
-
-                  {hasActions && (
-                    <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
-                      {canEditThis && (
-                        <button onClick={(e) => { e.stopPropagation(); openEditModal(order); }} className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"><LuPencil className="w-4 h-4" /> Edit</button>
-                      )}
-                      {canDeleteThis && (
-                        <button onClick={(e) => { e.stopPropagation(); openDeleteModal(order); }} className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"><LuTrash2 className="w-4 h-4" /> Delete</button>
-                      )}
-                      {showDots && (
-                        <div className="relative" ref={openDropdownId === `card-${order.id}` ? dropdownRef : undefined}>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${order.id}` ? null : `card-${order.id}`); }}
-                            className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
-                            title="More actions"
-                          >
-                            <LuEllipsisVertical className="w-4 h-4" /> More
-                          </button>
-                          {openDropdownId === `card-${order.id}` && (
-                            <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg border border-neutral-200 py-2 z-50">
-                              {order.status === "draft" && (
-                                <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openSubmitConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuSend className="w-4 h-4" /> Submit PO</button>
-                              )}
-                              {order.status === "submitted" && canApprove && (
-                                <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openApproveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBadgeCheck className="w-4 h-4" /> Approve PO</button>
-                              )}
-                              {order.status === "approved" && (
-                                <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openReceiveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuPackageCheck className="w-4 h-4" /> Receive &amp; Stock In</button>
-                              )}
-                              {["draft", "submitted"].includes(order.status) && (
-                                <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBan className="w-4 h-4" /> Cancel PO</button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                        {canDeleteThis && (
+                          <button onClick={(e) => { e.stopPropagation(); openDeleteModal(order); }} className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"><LuTrash2 className="w-4 h-4" /> Delete</button>
+                        )}
+                        {showDots && (
+                          <div className="relative" ref={openDropdownId === `card-${order.id}` ? dropdownRef : undefined}>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${order.id}` ? null : `card-${order.id}`); }}
+                              className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+                              title="More actions"
+                            >
+                              <LuEllipsisVertical className="w-4 h-4" /> More
+                            </button>
+                            {openDropdownId === `card-${order.id}` && (
+                              <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                                {order.status === "draft" && (
+                                  <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openSubmitConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuSend className="w-4 h-4" /> Submit PO</button>
+                                )}
+                                {order.status === "submitted" && canApprove && (
+                                  <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openApproveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBadgeCheck className="w-4 h-4" /> Approve PO</button>
+                                )}
+                                {order.status === "approved" && (
+                                  <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openReceiveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuPackageCheck className="w-4 h-4" /> Receive &amp; Stock In</button>
+                                )}
+                                {["draft", "submitted"].includes(order.status) && (
+                                  <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBan className="w-4 h-4" /> Cancel PO</button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    ) : undefined
+                  }
+                />
               );
             })}
-            {paginatedItems.length === 0 && (
-              <div className="text-center py-12 text-neutral-900">
-                {searchQuery || filterStatus !== "all" || filterBranch !== "all"
-                  ? "No purchase orders match your filters."
-                  : 'No purchase orders found. Click "Create Purchase Order" to create one.'}
-              </div>
-            )}
-          </div>
-        </div>
+        </MobileCardList>
 
         {/* Desktop Table View */}
-        <div className="hidden md:block">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-neutral-200 bg-neutral-100">
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">PO Number</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Supplier</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Total</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Branch</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Status</th>
-                <th className="text-center py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+        <DesktopTable
+          columns={[
+            { label: "PO Number" },
+            { label: "Supplier" },
+            { label: "Total" },
+            { label: "Branch" },
+            { label: "Status" },
+            { label: "Actions", align: "center" },
+          ] as DesktopTableColumn[]}
+          isEmpty={paginatedItems.length === 0}
+          emptyMessage={
+            searchQuery || filterStatus !== "all" || filterBranch !== "all"
+              ? "No purchase orders match your filters."
+              : 'No purchase orders found. Click "Create Purchase Order" to create one.'
+          }
+        >
               {paginatedItems.map((order) => {
                 const dropdownActions = getDropdownActions(order);
                 const showDots = dropdownActions.length > 0;
 
                 return (
-                  <tr key={order.id} onClick={() => openViewModal(order)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer last:border-b-0">
+                  <DesktopTableRow key={order.id} onClick={() => openViewModal(order)}>
                     <td className="py-3 px-4 whitespace-nowrap">
                       <span className="font-medium text-neutral-900">{order.po_number}</span>
                     </td>
@@ -920,20 +911,10 @@ export function PurchaseOrderManagement() {
                         )}
                       </div>
                     </td>
-                  </tr>
+                  </DesktopTableRow>
                 );
               })}
-            </tbody>
-          </table>
-
-          {paginatedItems.length === 0 && (
-            <div className="text-center py-12 text-neutral-900">
-              {searchQuery || filterStatus !== "all" || filterBranch !== "all"
-                ? "No purchase orders match your filters."
-                : 'No purchase orders found. Click "Create Purchase Order" to create one.'}
-            </div>
-          )}
-        </div>
+        </DesktopTable>
 
         {/* Pagination */}
         <Pagination

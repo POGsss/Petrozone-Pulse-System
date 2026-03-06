@@ -26,8 +26,12 @@ import {
   Pagination,
   ErrorAlert,
   SkeletonLoader,
+  MobileCardList,
+  MobileCard,
+  DesktopTable,
+  DesktopTableRow,
 } from "../../components";
-import type { StatCard } from "../../components";
+import type { StatCard, DesktopTableColumn } from "../../components";
 import type { InventoryItem, Branch, StockMovement } from "../../types";
 
 const ITEMS_PER_PAGE = 10;
@@ -568,148 +572,127 @@ export function InventoryManagement() {
         />
 
         {/* Mobile Card View */}
-        <div className="md:hidden p-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <MobileCardList
+          isEmpty={paginatedItems.length === 0}
+          emptyMessage={
+            searchQuery || filterStatus !== "all" || filterCategory !== "all" || filterBranch !== "all"
+              ? "No items match your filters."
+              : 'No inventory items found. Click "Add New Inventory" to create one.'
+          }
+        >
             {paginatedItems.map((item) => (
-              <div
+              <MobileCard
                 key={item.id}
                 onClick={() => openViewModal(item)}
-                className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-100 transition-colors"
-              >
-                {/* Card header */}
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-primary-100 rounded-lg">
-                      <LuBox className="w-5 h-5 text-primary" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-neutral-950">{item.item_name}</h4>
-                      {item.branches && (
-                        <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
-                          {item.branches.code}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <span
-                    className={`px-2 py-1 rounded text-xs font-medium ${item.status === "active"
-                      ? "bg-positive-100 text-positive"
-                      : "bg-negative-100 text-negative"
-                      }`}
-                  >
-                    {item.status === "active" ? "Active" : "Inactive"}
-                  </span>
-                </div>
-
-                {/* Item details */}
-                <div className="space-y-1 text-sm text-neutral-900 mb-3">
-                  <p className="text-neutral-900 font-mono">{item.sku_code}</p>
-                  <p className={`text-neutral-900 ${item.is_low_stock ? "text-negative font-semibold" : ""}`}>
-                    {item.current_quantity} {item.unit_of_measure} {item.is_low_stock && "(Low Stock)"}
-                  </p>
-                  <p className="text-neutral-900">{item.category}</p>
-                </div>
-
-                {/* Actions */}
-                {(() => {
-                  const canEditThis = canUpdate;
-                  const canDeleteThis = canDelete && item.status === "active";
-                  const showDots = true; // always show for Movement History
-                  const hasActions = canEditThis || canDeleteThis || showDots;
-                  return hasActions ? (
-                    <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
-                      {canEditThis && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openEditModal(item); }}
-                          className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-                        >
-                          <LuPencil className="w-4 h-4" />
-                          Edit
-                        </button>
-                      )}
-                      {canDeleteThis && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openDeleteConfirmModal(item); }}
-                          className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                        >
-                          <LuTrash2 className="w-4 h-4" />
-                          Delete
-                        </button>
-                      )}
-                      {/* More actions dropdown */}
-                      {showDots && (
-                        <div className="relative" ref={openDropdownId === `card-${item.id}` ? dropdownRef : undefined}>
+                icon={<LuBox className="w-5 h-5 text-primary" />}
+                title={item.item_name}
+                subtitle={item.branches?.code}
+                statusBadge={{
+                  label: item.status === "active" ? "Active" : "Inactive",
+                  className: item.status === "active" ? "bg-positive-100 text-positive" : "bg-negative-100 text-negative",
+                }}
+                details={
+                  <>
+                    <p className="text-neutral-900 font-mono">{item.sku_code}</p>
+                    <p className={`text-neutral-900 ${item.is_low_stock ? "text-negative font-semibold" : ""}`}>
+                      {item.current_quantity} {item.unit_of_measure} {item.is_low_stock && "(Low Stock)"}
+                    </p>
+                    <p className="text-neutral-900">{item.category}</p>
+                  </>
+                }
+                extraActions={
+                  (() => {
+                    const canEditThis = canUpdate;
+                    const canDeleteThis = canDelete && item.status === "active";
+                    const showDots = true;
+                    const hasActions = canEditThis || canDeleteThis || showDots;
+                    if (!hasActions) return null;
+                    return (
+                      <>
+                        {canEditThis && (
                           <button
-                            onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${item.id}` ? null : `card-${item.id}`); }}
-                            className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
-                            title="More actions"
+                            onClick={(e) => { e.stopPropagation(); openEditModal(item); }}
+                            className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
                           >
-                            <LuEllipsisVertical className="w-4 h-4" /> More
+                            <LuPencil className="w-4 h-4" /> Edit
                           </button>
-                          {openDropdownId === `card-${item.id}` && (
-                            <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); closeDropdown(); setShowMovementsModal(true); setMovementsItem(item); setMovements([]); setMovementsLoading(true); inventoryApi.getMovements(item.id, { limit: 100 }).then((res) => { setMovements(res.data); }).catch(() => { }).finally(() => { setMovementsLoading(false); }); }}
-                                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                              >
-                                <LuHistory className="w-4 h-4" /> Movement History
-                              </button>
-                              {canStockIn && item.status === "active" && (
+                        )}
+                        {canDeleteThis && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openDeleteConfirmModal(item); }}
+                            className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
+                          >
+                            <LuTrash2 className="w-4 h-4" /> Delete
+                          </button>
+                        )}
+                        {showDots && (
+                          <div className="relative" ref={openDropdownId === `card-${item.id}` ? dropdownRef : undefined}>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${item.id}` ? null : `card-${item.id}`); }}
+                              className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+                              title="More actions"
+                            >
+                              <LuEllipsisVertical className="w-4 h-4" /> More
+                            </button>
+                            {openDropdownId === `card-${item.id}` && (
+                              <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
                                 <button
-                                  onClick={(e) => { e.stopPropagation(); closeDropdown(); openStockInModal(item); }}
+                                  onClick={(e) => { e.stopPropagation(); closeDropdown(); setShowMovementsModal(true); setMovementsItem(item); setMovements([]); setMovementsLoading(true); inventoryApi.getMovements(item.id, { limit: 100 }).then((res) => { setMovements(res.data); }).catch(() => { }).finally(() => { setMovementsLoading(false); }); }}
                                   className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
                                 >
-                                  <LuCircleArrowUp className="w-4 h-4" /> Stock In
+                                  <LuHistory className="w-4 h-4" /> Movement History
                                 </button>
-                              )}
-                              {canAdjust && item.status === "active" && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); closeDropdown(); openAdjustModal(item); }}
-                                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                                >
-                                  <LuCircleArrowDown className="w-4 h-4" /> Adjust Stock
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ) : null;
-                })()}
-              </div>
+                                {canStockIn && item.status === "active" && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); closeDropdown(); openStockInModal(item); }}
+                                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                  >
+                                    <LuCircleArrowUp className="w-4 h-4" /> Stock In
+                                  </button>
+                                )}
+                                {canAdjust && item.status === "active" && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); closeDropdown(); openAdjustModal(item); }}
+                                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                  >
+                                    <LuCircleArrowDown className="w-4 h-4" /> Adjust Stock
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()
+                }
+              />
             ))}
-
-            {paginatedItems.length === 0 && (
-              <div className="col-span-full text-center py-12 text-neutral-900">
-                {searchQuery || filterStatus !== "all" || filterCategory !== "all" || filterBranch !== "all"
-                  ? "No items match your filters."
-                  : 'No inventory items found. Click "Add New Inventory" to create one.'}
-              </div>
-            )}
-          </div>
-        </div>
+        </MobileCardList>
 
         {/* Desktop Table View */}
-        <div className="hidden md:block">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-neutral-200 bg-neutral-100">
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Item Name</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">SKU</th>
-                <th className="text-center py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Stock</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Branch</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Status</th>
-                <th className="text-center py-3 px-4 text-sm font-medium text-neutral-950 whitespace-nowrap">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+        <DesktopTable
+          columns={[
+            { label: "Item Name" },
+            { label: "SKU" },
+            { label: "Stock", align: "center" },
+            { label: "Branch" },
+            { label: "Status" },
+            { label: "Actions", align: "center" },
+          ] as DesktopTableColumn[]}
+          isEmpty={paginatedItems.length === 0}
+          emptyMessage={
+            searchQuery || filterStatus !== "all" || filterCategory !== "all" || filterBranch !== "all"
+              ? "No items match your filters."
+              : "No inventory items found. Click \"Add New Inventory\" to create one."
+          }
+        >
               {paginatedItems.map((item) => {
                 const canEditThis = canUpdate;
                 const canDeleteThis = canDelete && item.status === "active";
                 const showDots = true; // always show for Movement History
                 return (
-                <tr key={item.id} onClick={() => openViewModal(item)} className="border-b border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer last:border-b-0">
+                <DesktopTableRow key={item.id} onClick={() => openViewModal(item)}>
                   <td className="py-3 px-4 whitespace-nowrap">
                     <span className="font-medium text-neutral-900">{item.item_name}</span>
                   </td>
@@ -796,20 +779,10 @@ export function InventoryManagement() {
                       )}
                     </div>
                   </td>
-                </tr>
+                </DesktopTableRow>
                 );
               })}
-            </tbody>
-          </table>
-
-          {paginatedItems.length === 0 && (
-            <div className="text-center py-12 text-neutral-900">
-              {searchQuery || filterStatus !== "all" || filterCategory !== "all" || filterBranch !== "all"
-                ? "No items match your filters."
-                : "No inventory items found. Click \"Add New Inventory\" to create one."}
-            </div>
-          )}
-        </div>
+        </DesktopTable>
 
         {/* Pagination */}
         <Pagination

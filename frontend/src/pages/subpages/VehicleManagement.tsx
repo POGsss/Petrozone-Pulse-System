@@ -19,6 +19,8 @@ import {
   Pagination,
   ErrorAlert,
   SkeletonLoader,
+  CardGrid,
+  GridCard,
 } from "../../components";
 import type { FilterGroup } from "../../components";
 import type { Vehicle, Customer, Branch } from "../../types";
@@ -474,87 +476,58 @@ export function VehicleManagement() {
       )}
 
       {/* Vehicle Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <CardGrid
+        isEmpty={paginatedVehicles.length === 0}
+        emptyMessage={
+          searchQuery
+            ? "No vehicles match your search."
+            : 'No vehicles found. Click "Add Vehicle" to create one.'
+        }
+      >
         {paginatedVehicles.map((vehicle) => (
-          <div
+          <GridCard
             key={vehicle.id}
             onClick={() => openViewModal(vehicle)}
-            className="bg-white rounded-xl border border-neutral-200 p-4 cursor-pointer hover:bg-neutral-100 transition-colors"
-          >
-            {/* Card header */}
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-primary-100 rounded-lg">
-                  <LuCar className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <h4 className="font-semibold text-neutral-950">{vehicle.plate_number}</h4>
-                  {vehicle.branches && (
-                    <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
-                      {vehicle.branches.code}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <span
-                className={`px-2 py-1 rounded text-xs font-medium ${vehicle.status === "active"
-                  ? "bg-positive-100 text-positive"
-                  : "bg-negative-100 text-negative"
-                  }`}
-              >
-                {vehicle.status === "active" ? "Active" : "Inactive"}
-              </span>
-            </div>
-
-            {/* Vehicle details */}
-            <div className="space-y-1 text-sm text-neutral-900 mb-3">
-              <p className="text-neutral-900">{vehicleTypeLabel(vehicle.vehicle_type)} · {vehicleClassLabel(vehicle.vehicle_class || "light")}</p>
-              <p className="text-neutral-900">{vehicle.model}</p>
-              <p className="text-neutral-900">{vehicle.orcr}</p>
-              {vehicle.color && <p className="text-neutral-900">{vehicle.color}{vehicle.year ? ` · ${vehicle.year}` : ""}</p>}
-              {vehicle.customers && <p className="text-neutral-900">{vehicle.customers.full_name}</p>}
-            </div>
-
-            {/* Actions */}
-            {(canUpdate || canDelete) && (
-              <div className="flex items-center justify-end gap-4 pt-3 border-t border-neutral-200">
-                {canUpdate && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openEditModal(vehicle);
-                    }}
-                    className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-                  >
-                    <LuPencil className="w-4 h-4" />
-                    Edit
-                  </button>
-                )}
-                {canDelete && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openDeleteConfirmModal(vehicle);
-                    }}
-                    className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                  >
-                    <LuTrash2 className="w-4 h-4" />
-                    Delete
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+            icon={<LuCar className="w-5 h-5 text-primary" />}
+            title={vehicle.plate_number}
+            subtitle={
+              vehicle.branches ? (
+                <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
+                  {vehicle.branches.code}
+                </span>
+              ) : undefined
+            }
+            statusBadge={{
+              label: vehicle.status === "active" ? "Active" : "Inactive",
+              className: vehicle.status === "active"
+                ? "bg-positive-100 text-positive"
+                : "bg-negative-100 text-negative",
+            }}
+            details={
+              <>
+                <p className="text-neutral-900">{vehicleTypeLabel(vehicle.vehicle_type)} · {vehicleClassLabel(vehicle.vehicle_class || "light")}</p>
+                <p className="text-neutral-900">{vehicle.model}</p>
+                <p className="text-neutral-900">{vehicle.orcr}</p>
+                {vehicle.color && <p className="text-neutral-900">{vehicle.color}{vehicle.year ? ` · ${vehicle.year}` : ""}</p>}
+                {vehicle.customers && <p className="text-neutral-900">{vehicle.customers.full_name}</p>}
+              </>
+            }
+            actions={[
+              ...(canUpdate ? [{
+                label: "Edit",
+                icon: <LuPencil className="w-4 h-4" />,
+                onClick: (e: React.MouseEvent) => { e.stopPropagation(); openEditModal(vehicle); },
+              }] : []),
+              ...(canDelete ? [{
+                label: "Delete",
+                icon: <LuTrash2 className="w-4 h-4" />,
+                onClick: (e: React.MouseEvent) => { e.stopPropagation(); openDeleteConfirmModal(vehicle); },
+                className: "flex items-center gap-1 text-sm text-negative hover:text-negative-900",
+              }] : []),
+            ]}
+          />
         ))}
-
-        {paginatedVehicles.length === 0 && (
-          <div className="col-span-full text-center py-12 text-neutral-900">
-            {searchQuery
-              ? "No vehicles match your search."
-              : 'No vehicles found. Click "Add Vehicle" to create one.'}
-          </div>
-        )}
-      </div>
+      </CardGrid>
 
       {/* Pagination */}
       <Pagination
