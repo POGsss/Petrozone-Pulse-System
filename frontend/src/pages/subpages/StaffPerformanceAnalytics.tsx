@@ -4,7 +4,6 @@ import {
   LuClipboardCheck,
   LuClock,
   LuDollarSign,
-  LuTrophy,
   LuMedal,
   LuChevronDown,
   LuRefreshCw,
@@ -310,7 +309,7 @@ export function StaffPerformanceAnalytics() {
                     className="flex items-center gap-3 p-3 rounded-lg bg-neutral-100 hover:bg-neutral-200 transition-colors"
                   >
                     <div
-                      className="flex items-center justify-center w-8 h-8 rounded-full text-white text-xs font-bold flex-shrink-0"
+                      className="flex items-center justify-center w-8 h-8 rounded-full text-white text-xs font-bold shrink-0"
                       style={{ backgroundColor: RANK_COLORS[idx] || "#8E8E91" }}
                     >
                       {idx < 3 ? <LuMedal className="w-4 h-4" /> : idx + 1}
@@ -319,14 +318,14 @@ export function StaffPerformanceAnalytics() {
                       <p className="text-sm font-medium text-neutral-950 truncate">{staff.name}</p>
                       <p className="text-xs text-neutral-500 truncate">{staff.branch}</p>
                     </div>
-                    <span className="text-sm font-semibold text-neutral-950 flex-shrink-0">
+                    <span className="text-sm font-semibold text-neutral-950 shrink-0">
                       {formatMetricValue(leaderMetric, staff.value)}
                     </span>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="h-[200px] flex items-center justify-center text-sm text-neutral-500">
+              <div className="h-50 flex items-center justify-center text-sm text-neutral-500">
                 No data available for this metric
               </div>
             )}
@@ -384,7 +383,7 @@ export function StaffPerformanceAnalytics() {
                 </div>
               </div>
             ) : (
-              <div className="h-[200px] flex items-center justify-center text-sm text-neutral-500">
+              <div className="h-50 flex items-center justify-center text-sm text-neutral-500">
                 No data available for this metric
               </div>
             )}

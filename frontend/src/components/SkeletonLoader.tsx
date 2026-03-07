@@ -240,7 +240,7 @@ export function SkeletonLoader({
                     <div className="h-3 w-20 bg-neutral-100 rounded" />
                   </div>
                 </div>
-                <div className="flex items-end gap-2 h-[300px] pt-8">
+                <div className="flex items-end gap-2 h-75 pt-8">
                   {Array.from({ length: 8 }).map((_, j) => (
                     <div
                       key={j}
