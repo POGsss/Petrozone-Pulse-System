@@ -303,12 +303,12 @@ export function NotificationManagement() {
   const targetTypeOptions =
     form.target_type === "role"
       ? [
-          { value: "HM", label: "Higher Management" },
-          { value: "POC", label: "POC Supervisor" },
-          { value: "JS", label: "Junior Supervisor" },
-          { value: "R", label: "Receptionist" },
-          { value: "T", label: "Technician" },
-        ]
+        { value: "HM", label: "Higher Management" },
+        { value: "POC", label: "POC Supervisor" },
+        { value: "JS", label: "Junior Supervisor" },
+        { value: "R", label: "Receptionist" },
+        { value: "T", label: "Technician" },
+      ]
       : [];
 
   // Shared target configuration JSX for Create/Edit modals
@@ -453,33 +453,33 @@ export function NotificationManagement() {
               : "No notifications found. Click \"Create Notification\" to create one."
           }
         >
-            {paginatedNotifications.map((n) => {
-              const canEditThis = canEdit && n.notification_type === "manual";
-              const canDeleteThis = canDelete;
-              const actions: MobileCardAction[] = [];
-              if (canEditThis) actions.push({ label: "Edit", icon: <LuPencil className="w-4 h-4" />, onClick: () => openEditModal(n) });
-              if (canDeleteThis) actions.push({ label: "Delete", icon: <LuTrash2 className="w-4 h-4" />, onClick: () => openDeleteModal(n), className: "flex items-center gap-1 text-sm text-negative hover:text-negative-900" });
-              return (
-                <MobileCard
-                  key={n.id}
-                  onClick={() => openViewModal(n)}
-                  icon={<LuBell className="w-5 h-5 text-primary" />}
-                  title={n.title}
-                  subtitle={targetTypeLabel[n.target_type] || n.target_type}
-                  statusBadge={{
-                    label: n.status === "active" ? "Active" : "Inactive",
-                    className: n.status === "active" ? "bg-positive-100 text-positive" : "bg-negative-100 text-negative",
-                  }}
-                  details={
-                    <>
-                      <p className="text-neutral-900">{new Date(n.created_at).toLocaleDateString()}</p>
-                      <p className="text-neutral-900 line-clamp-2">{n.message}</p>
-                    </>
-                  }
-                  actions={actions}
-                />
-              );
-            })}
+          {paginatedNotifications.map((n) => {
+            const canEditThis = canEdit && n.notification_type === "manual";
+            const canDeleteThis = canDelete;
+            const actions: MobileCardAction[] = [];
+            if (canEditThis) actions.push({ label: "Edit", icon: <LuPencil className="w-4 h-4" />, onClick: () => openEditModal(n) });
+            if (canDeleteThis) actions.push({ label: "Delete", icon: <LuTrash2 className="w-4 h-4" />, onClick: () => openDeleteModal(n), className: "flex items-center gap-1 text-sm text-negative hover:text-negative-900" });
+            return (
+              <MobileCard
+                key={n.id}
+                onClick={() => openViewModal(n)}
+                icon={<LuBell className="w-5 h-5 text-primary" />}
+                title={n.title}
+                subtitle={targetTypeLabel[n.target_type] || n.target_type}
+                statusBadge={{
+                  label: n.status === "active" ? "Active" : "Inactive",
+                  className: n.status === "active" ? "bg-positive-100 text-positive" : "bg-negative-100 text-negative",
+                }}
+                details={
+                  <>
+                    <p className="text-neutral-900">{new Date(n.created_at).toLocaleDateString()}</p>
+                    <p className="text-neutral-900 line-clamp-2">{n.message}</p>
+                  </>
+                }
+                actions={actions}
+              />
+            );
+          })}
         </MobileCardList>
 
         {/* Desktop Table View */}
@@ -499,74 +499,72 @@ export function NotificationManagement() {
               : "No notifications found. Click \"Create Notification\" to create one."
           }
         >
-              {paginatedNotifications.map((n) => (
-                <DesktopTableRow key={n.id} onClick={() => openViewModal(n)}>
-                  <td className="py-3 px-4 whitespace-nowrap">
-                    <span className="font-medium text-neutral-900">{n.title}</span>
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className="text-xs font-mono bg-positive-100 text-positive-950 px-2 py-0.5 rounded">
-                      {targetTypeLabel[n.target_type] || n.target_type}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap">
-                    {n.branches?.name || getBranchName(n.branch_id)}
-                  </td>
-                  <td className="py-3 px-4 whitespace-nowrap">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      n.notification_type === "system"
-                        ? "bg-positive-100 text-positive-950"
-                        : "bg-primary-100 text-primary"
-                    }`}>
-                      {n.notification_type === "system" ? "System" : "Manual"}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 whitespace-nowrap">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      n.status === "active" ? "bg-positive-100 text-positive-950" : "bg-negative-100 text-negative-950"
-                    }`}>
-                      {n.status === "active" ? "Active" : "Inactive"}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 whitespace-nowrap">
-                    {(() => {
-                      const canEditThis = canEdit && n.notification_type === "manual";
-                      const canDeleteThis = canDelete;
-                      return (
-                        <div className="flex items-center justify-center gap-2">
-                          {canEditThis && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); openEditModal(n); }}
-                              className="p-2 text-primary-950 hover:text-primary-900 hover:bg-primary-50 rounded-lg transition-colors"
-                              title="Edit notification"
-                            >
-                              <LuPencil className="w-4 h-4" />
-                            </button>
-                          )}
-                          {canDeleteThis && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); openDeleteModal(n); }}
-                              className="p-2 text-negative-950 hover:text-negative-900 hover:bg-negative-50 rounded-lg transition-colors"
-                              title="Deactivate notification"
-                            >
-                              <LuTrash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                          {!canEditThis && !canDeleteThis && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); openViewModal(n); }}
-                              className="p-2 text-positive-950 hover:text-positive-900 rounded-lg transition-colors"
-                              title="View notification"
-                            >
-                              <LuEye className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </td>
-                </DesktopTableRow>
-              ))}
+          {paginatedNotifications.map((n) => (
+            <DesktopTableRow key={n.id} onClick={() => openViewModal(n)}>
+              <td className="py-3 px-4 whitespace-nowrap">
+                <span className="font-medium text-neutral-900">{n.title}</span>
+              </td>
+              <td className="py-3 px-4">
+                <span className="text-xs font-mono bg-positive-100 text-positive-950 px-2 py-0.5 rounded">
+                  {targetTypeLabel[n.target_type] || n.target_type}
+                </span>
+              </td>
+              <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap">
+                {n.branches?.name || getBranchName(n.branch_id)}
+              </td>
+              <td className="py-3 px-4 whitespace-nowrap">
+                <span className={`px-3 py-1 rounded-full text-xs font-medium ${n.notification_type === "system"
+                    ? "bg-positive-100 text-positive-950"
+                    : "bg-primary-100 text-primary"
+                  }`}>
+                  {n.notification_type === "system" ? "System" : "Manual"}
+                </span>
+              </td>
+              <td className="py-3 px-4 whitespace-nowrap">
+                <span className={`px-3 py-1 rounded-full text-xs font-medium ${n.status === "active" ? "bg-positive-100 text-positive-950" : "bg-negative-100 text-negative-950"
+                  }`}>
+                  {n.status === "active" ? "Active" : "Inactive"}
+                </span>
+              </td>
+              <td className="py-3 px-4 whitespace-nowrap">
+                {(() => {
+                  const canEditThis = canEdit && n.notification_type === "manual";
+                  const canDeleteThis = canDelete;
+                  return (
+                    <div className="flex items-center justify-center gap-2">
+                      {canEditThis && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openEditModal(n); }}
+                          className="p-2 text-primary-950 hover:text-primary-900 hover:bg-primary-50 rounded-lg transition-colors"
+                          title="Edit notification"
+                        >
+                          <LuPencil className="w-4 h-4" />
+                        </button>
+                      )}
+                      {canDeleteThis && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openDeleteModal(n); }}
+                          className="p-2 text-negative-950 hover:text-negative-900 hover:bg-negative-50 rounded-lg transition-colors"
+                          title="Deactivate notification"
+                        >
+                          <LuTrash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                      {!canEditThis && !canDeleteThis && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openViewModal(n); }}
+                          className="p-2 text-positive-950 hover:text-positive-900 rounded-lg transition-colors"
+                          title="View notification"
+                        >
+                          <LuEye className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
+              </td>
+            </DesktopTableRow>
+          ))}
         </DesktopTable>
 
         <Pagination
@@ -655,7 +653,7 @@ export function NotificationManagement() {
               <ModalInput
                 type="text"
                 value={selectedNotification.title}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Title"
                 disabled
               />
@@ -670,7 +668,7 @@ export function NotificationManagement() {
               <div className="grid grid-cols-2 gap-4">
                 <ModalSelect
                   value={selectedNotification.notification_type}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   options={[
                     { value: "system", label: "System" },
                     { value: "manual", label: "Manual" },
@@ -679,7 +677,7 @@ export function NotificationManagement() {
                 />
                 <ModalSelect
                   value={selectedNotification.status}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   options={[
                     { value: "active", label: "Active" },
                     { value: "inactive", label: "Inactive" },
@@ -692,7 +690,7 @@ export function NotificationManagement() {
             <ModalSection title="Target Configuration">
               <ModalSelect
                 value={selectedNotification.target_type}
-                onChange={() => {}}
+                onChange={() => { }}
                 options={[
                   { value: "branch", label: "All Users in Branch" },
                   { value: "role", label: "Specific Role" },
@@ -705,14 +703,14 @@ export function NotificationManagement() {
                 value={selectedNotification.target_type === "branch"
                   ? getBranchName(selectedNotification.target_value)
                   : selectedNotification.target_value}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Target Value"
                 disabled
               />
               <ModalInput
                 type="text"
                 value={selectedNotification.branches?.name || getBranchName(selectedNotification.branch_id)}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Branch"
                 disabled
               />
@@ -722,7 +720,7 @@ export function NotificationManagement() {
               <ModalInput
                 type="text"
                 value={new Date(selectedNotification.created_at).toLocaleString()}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Created At"
                 disabled
               />
@@ -730,7 +728,7 @@ export function NotificationManagement() {
                 <ModalInput
                   type="text"
                   value={`${selectedNotification.reference_type} – ${selectedNotification.reference_id}`}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   placeholder="Reference"
                   disabled
                 />

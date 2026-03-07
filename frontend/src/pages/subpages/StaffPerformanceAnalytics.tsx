@@ -307,7 +307,7 @@ export function StaffPerformanceAnalytics() {
                 {leaderboard.map((staff, idx) => (
                   <div
                     key={staff.staffId}
-                    className="flex items-center gap-3 p-3 rounded-lg bg-neutral-50 hover:bg-neutral-100 transition-colors"
+                    className="flex items-center gap-3 p-3 rounded-lg bg-neutral-100 hover:bg-neutral-200 transition-colors"
                   >
                     <div
                       className="flex items-center justify-center w-8 h-8 rounded-full text-white text-xs font-bold flex-shrink-0"

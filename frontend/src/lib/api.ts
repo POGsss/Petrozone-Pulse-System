@@ -1566,6 +1566,22 @@ export const reportsApi = {
     });
   },
 
+  update: async (
+    id: string,
+    data: {
+      report_name?: string;
+      report_type?: import("../types").ReportType;
+      filters?: Record<string, string>;
+      branch_id?: string;
+      is_template?: boolean;
+    }
+  ) => {
+    return fetchWithAuth<{ data: import("../types").Report }>(`/api/reports/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
   generate: async (id: string) => {
     return fetchWithAuth<{ data: import("../types").ReportData }>(`/api/reports/${id}/generate`, {
       method: "POST",

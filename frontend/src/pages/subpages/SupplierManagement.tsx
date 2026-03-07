@@ -575,6 +575,7 @@ export function SupplierManagement() {
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         title="Add New Supplier"
+        maxWidth="lg"
       >
         <form onSubmit={handleAddSupplier}>
           <ModalSection title="Supplier Information">
@@ -656,6 +657,7 @@ export function SupplierManagement() {
         isOpen={showEditModal && !!selectedSupplier}
         onClose={() => setShowEditModal(false)}
         title="Edit Supplier"
+        maxWidth="lg"
       >
         {selectedSupplier && (
           <form onSubmit={handleEditSupplier}>
@@ -789,6 +791,7 @@ export function SupplierManagement() {
           setSupplierProducts([]);
         }}
         title="Supplier Details"
+        maxWidth="lg"
       >
         {viewSupplier && (
           <div>

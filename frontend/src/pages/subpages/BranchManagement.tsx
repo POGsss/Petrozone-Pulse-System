@@ -362,6 +362,7 @@ export function BranchManagement() {
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         title="Add New Branch"
+        maxWidth="lg"
       >
         <form onSubmit={handleAddBranch}>
           <ModalSection title="Branch Information">
@@ -427,6 +428,7 @@ export function BranchManagement() {
         isOpen={showEditModal && !!selectedBranch}
         onClose={() => setShowEditModal(false)}
         title="Edit Branch"
+        maxWidth="lg"
       >
         {selectedBranch && (
           <form onSubmit={handleEditBranch}>
@@ -550,6 +552,7 @@ export function BranchManagement() {
         isOpen={showViewModal && !!viewBranch}
         onClose={() => setShowViewModal(false)}
         title="Branch Details"
+        maxWidth="lg"
       >
         {viewBranch && (
           <div>

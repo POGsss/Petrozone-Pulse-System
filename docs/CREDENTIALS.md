@@ -3,7 +3,3 @@ POC: poc@petrozone.test / Point of Contact / 0987654321 / Poc123456!
 JS: js@petrozone.test / Junior Supervisor / 0987654321 / Junior123!
 R: r@petrozone.test / Receptionist / 0987654321 / Receptionists123!
 T: t@petrozone.test / Technician / 0987654321 / Tecnician123!
-
-GMAIL: petrozonepulse@gmail.com / PetrozonePulse123!
-
-APP_PASSWORD: bwpbegnurftublxn

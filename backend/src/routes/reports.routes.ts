@@ -166,6 +166,71 @@ router.post(
 );
 
 /**
+ * PUT /api/reports/:id
+ * Update a report's configuration
+ * RBAC: HM, POC, JS, R
+ */
+router.put(
+  "/:id",
+  requireRoles("HM", "POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = req.user!.id;
+      const reportId = req.params.id as string;
+      const { report_name, report_type, filters, branch_id, is_template } = req.body;
+
+      // Check existence
+      const { data: existing, error: findError } = await supabaseAdmin
+        .from("reports")
+        .select("id")
+        .eq("id", reportId)
+        .eq("is_deleted", false)
+        .single();
+
+      if (findError || !existing) {
+        res.status(404).json({ error: "Report not found" });
+        return;
+      }
+
+      if (report_type && !VALID_REPORT_TYPES.includes(report_type)) {
+        res.status(400).json({ error: `Invalid report_type. Must be one of: ${VALID_REPORT_TYPES.join(", ")}` });
+        return;
+      }
+
+      const updateData: Record<string, unknown> = {};
+      if (report_name !== undefined) updateData.report_name = report_name;
+      if (report_type !== undefined) updateData.report_type = report_type;
+      if (filters !== undefined) updateData.filters = filters;
+      if (branch_id !== undefined) updateData.branch_id = branch_id || null;
+      if (is_template !== undefined) updateData.is_template = is_template;
+
+      const { data, error } = await supabaseAdmin
+        .from("reports")
+        .update(updateData)
+        .eq("id", reportId)
+        .select(
+          "*, user_profiles!reports_generated_by_fkey(id, full_name, email), branches!reports_branch_id_fkey(id, name, code)"
+        )
+        .single();
+
+      if (error) {
+        await logFailedAction(req, "UPDATE", "report", reportId, error.message);
+        res.status(500).json({ error: error.message });
+        return;
+      }
+
+      await fixAuditLogUser("report", reportId, "UPDATE", userId);
+
+      res.json({ data });
+    } catch (error) {
+      console.error("Update report error:", error);
+      await logFailedAction(req, "UPDATE", "report", req.params.id as string, String(error));
+      res.status(500).json({ error: "Failed to update report" });
+    }
+  }
+);
+
+/**
  * DELETE /api/reports/:id
  * Soft delete a report
  * RBAC: HM, POC, JS, R
