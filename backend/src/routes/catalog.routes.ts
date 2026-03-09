@@ -116,10 +116,8 @@ router.post(
   requireRoles("HM", "POC", "JS"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { name, description, status } = req.body;
-
-      // Validation: name required
-      if (!name || !name.trim()) {
+      const { name, description, status, inventory_types } = req.body;
+      if (!name?.trim()) {
         res.status(400).json({ error: "Name is required" });
         return;
       }
@@ -138,6 +136,7 @@ router.post(
           name: name.trim(),
           description: description?.trim() || null,
           status: status || "active",
+          inventory_types: Array.isArray(inventory_types) ? inventory_types : [],
           created_by: req.user!.id,
         })
         .select("*")
@@ -171,7 +170,7 @@ router.put(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const itemId = req.params.itemId as string;
-      const { name, description, status } = req.body;
+      const { name, description, status, inventory_types } = req.body;
 
       // Get existing item
       const { data: existing, error: fetchError } = await supabaseAdmin
@@ -212,6 +211,10 @@ router.put(
           return;
         }
         updateData.status = status;
+      }
+
+      if (inventory_types !== undefined) {
+        updateData.inventory_types = Array.isArray(inventory_types) ? inventory_types : [];
       }
 
       if (Object.keys(updateData).length === 0) {

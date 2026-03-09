@@ -159,6 +159,7 @@ export interface CatalogItem {
   name: string;
   description: string | null;
   status: CatalogItemStatus;
+  inventory_types: string[];
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -241,6 +242,8 @@ export interface JobOrderItemInventory {
   unit_cost: number;
   line_total: number;
   created_at: string;
+  category?: string;
+  available_items?: Array<{ id: string; item_name: string; cost_price: number }>;
 }
 
 export interface JobOrderHistory {
@@ -272,16 +275,20 @@ export interface JobOrder {
   completion_time: string | null;
   approval_requested_at: string | null;
   assigned_technician_id: string | null;
+  assigned_technician?: {
+    id: string;
+    full_name: string | null;
+    email: string;
+  } | null;
+  odometer_reading: number | null;
+  vehicle_bay: string | null;
   cancellation_reason: string | null;
   rejection_reason: string | null;
   cancelled_at: string | null;
   cancelled_by: string | null;
-  payment_method: string | null;
-  payment_notes: string | null;
-  payment_recorded_at: string | null;
-  payment_recorded_by: string | null;
   deleted_at: string | null;
   deleted_by: string | null;
+  is_deleted: boolean;
   approval_status: string | null;
   approval_method: string | null;
   created_at: string;

@@ -503,6 +503,7 @@ export const catalogApi = {
     name: string;
     description?: string;
     status?: string;
+    inventory_types?: string[];
   }) => {
     return fetchWithAuth<import("../types").CatalogItem>("/api/catalog", {
       method: "POST",
@@ -516,6 +517,7 @@ export const catalogApi = {
       name?: string;
       description?: string | null;
       status?: string;
+      inventory_types?: string[];
     }
   ) => {
     return fetchWithAuth<import("../types").CatalogItem>(`/api/catalog/${id}`, {
@@ -644,6 +646,7 @@ export const jobOrdersApi = {
     vehicle_id?: string;
     status?: string;
     search?: string;
+    include_deleted?: boolean;
     limit?: number;
     offset?: number;
   }) => {
@@ -671,6 +674,8 @@ export const jobOrdersApi = {
     branch_id: string;
     vehicle_class: import("../types").VehicleClass;
     notes?: string;
+    odometer_reading?: number;
+    vehicle_bay?: string;
     items: Array<{
       catalog_item_id: string;
       quantity: number;

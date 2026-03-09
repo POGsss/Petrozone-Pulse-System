@@ -666,8 +666,31 @@ export function ReportsManagement() {
 
             <ModalSection title="Report Preview">
               {viewLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <div className="animate-pulse space-y-4">
+                  {/* Summary skeleton */}
+                  <div className="grid grid-cols-3 gap-4">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3.5 text-center space-y-2">
+                        <div className="h-3 w-16 bg-neutral-200 rounded mx-auto" />
+                        <div className="h-6 w-20 bg-neutral-200 rounded mx-auto" />
+                      </div>
+                    ))}
+                  </div>
+                  {/* Table skeleton */}
+                  <div className="rounded-xl border border-neutral-200 overflow-hidden">
+                    <div className="bg-neutral-100 px-3 py-2.5 flex gap-4">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <div key={i} className="h-3 w-20 bg-neutral-200 rounded" />
+                      ))}
+                    </div>
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <div key={i} className="px-3 py-3 flex gap-4 border-t border-neutral-100">
+                        {[1, 2, 3, 4, 5].map((j) => (
+                          <div key={j} className="h-3 w-20 bg-neutral-100 rounded" />
+                        ))}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : viewData ? (
                 <>

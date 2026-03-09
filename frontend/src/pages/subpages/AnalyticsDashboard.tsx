@@ -174,7 +174,7 @@ export function AnalyticsDashboard() {
 
   // Filter states
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
-  const [dateRange, setDateRange] = useState<string>("30d");
+  const [dateRange] = useState<string>("30d");
   const [salesPeriod, setSalesPeriod] = useState<string>("daily");
   const [topServicesPeriod, setTopServicesPeriod] = useState<string>("daily");
   const [revenuePeriod, setRevenuePeriod] = useState<string>("daily");

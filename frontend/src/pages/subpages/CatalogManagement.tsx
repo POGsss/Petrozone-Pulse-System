@@ -1,13 +1,12 @@
 import { useState, useEffect, useMemo } from "react";
 import {
   LuPlus,
-  LuRefreshCw,
   LuPencil,
   LuTrash2,
   LuPackage,
   LuX,
 } from "react-icons/lu";
-import { catalogApi, inventoryApi } from "../../lib/api";
+import { catalogApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
 import { useAuth } from "../../auth";
 import {
@@ -26,7 +25,7 @@ import {
   GridCard,
 } from "../../components";
 import type { FilterGroup } from "../../components";
-import type { CatalogItem, CatalogInventoryLink, InventoryItem } from "../../types";
+import type { CatalogItem } from "../../types";
 
 const ITEMS_PER_PAGE = 12;
 
@@ -35,19 +34,24 @@ const STATUS_OPTIONS = [
   { value: "inactive", label: "Inactive" },
 ];
 
+const CATEGORY_PRESETS = [
+  "Oil & Lubricants",
+  "Filters",
+  "Brake Parts",
+  "Engine Parts",
+  "Tires",
+  "Batteries",
+  "Accessories",
+  "Cleaning Supplies",
+  "Other",
+];
+
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",
   });
-}
-
-function formatPrice(price: number): string {
-  return new Intl.NumberFormat("en-PH", {
-    style: "currency",
-    currency: "PHP",
-  }).format(price);
 }
 
 export function CatalogManagement() {
@@ -75,14 +79,13 @@ export function CatalogManagement() {
   const [addForm, setAddForm] = useState({
     name: "",
     description: "",
+    inventory_types: [] as string[],
   });
   const [addError, setAddError] = useState<string | null>(null);
 
   // View modal
   const [showViewModal, setShowViewModal] = useState(false);
   const [viewItem, setViewItem] = useState<CatalogItem | null>(null);
-  const [viewLinks, setViewLinks] = useState<CatalogInventoryLink[]>([]);
-  const [viewLinksLoading, setViewLinksLoading] = useState(false);
 
   // Edit modal
   const [showEditModal, setShowEditModal] = useState(false);
@@ -92,6 +95,7 @@ export function CatalogManagement() {
     name: "",
     description: "",
     status: "active",
+    inventory_types: [] as string[],
   });
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -100,21 +104,10 @@ export function CatalogManagement() {
   const [deletingItem, setDeletingItem] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<CatalogItem | null>(null);
 
-  // Inventory counts for card display
-  const [inventoryCounts, setInventoryCounts] = useState<Record<string, number>>({});
-
-  // Add modal – draft inventory
-  const [addDraftInv, setAddDraftInv] = useState<InventoryItem[]>([]);
-  const [addAvailInv, setAddAvailInv] = useState<InventoryItem[]>([]);
-  const [addInvSelectId, setAddInvSelectId] = useState("");
-  const [addLoadingInv, setAddLoadingInv] = useState(false);
-
-  // Edit modal – live inventory links
-  const [editInvLinks, setEditInvLinks] = useState<CatalogInventoryLink[]>([]);
-  const [editInvLoading, setEditInvLoading] = useState(false);
-  const [editAvailInv, setEditAvailInv] = useState<InventoryItem[]>([]);
-  const [editInvSelectId, setEditInvSelectId] = useState("");
-  const [editInvAdding, setEditInvAdding] = useState(false);
+  // Category select state for add modal
+  const [addCategorySelect, setAddCategorySelect] = useState("");
+  // Category select state for edit modal
+  const [editCategorySelect, setEditCategorySelect] = useState("");
 
   // Filter groups for SearchFilter
   const filterGroups: FilterGroup[] = useMemo(() => {
@@ -165,19 +158,6 @@ export function CatalogManagement() {
       setError(null);
       const catalogRes = await catalogApi.getAll({ limit: 1000 });
       setAllItems(catalogRes.data);
-      // Load inventory link counts
-      const counts: Record<string, number> = {};
-      await Promise.all(
-        catalogRes.data.map(async (item) => {
-          try {
-            const links = await catalogApi.getInventoryLinks(item.id);
-            counts[item.id] = links.length;
-          } catch {
-            counts[item.id] = 0;
-          }
-        })
-      );
-      setInventoryCounts(counts);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch data");
     } finally {
@@ -187,20 +167,10 @@ export function CatalogManagement() {
 
   // --- Add ---
   async function openAddModal() {
-    setAddForm({ name: "", description: "" });
+    setAddForm({ name: "", description: "", inventory_types: [] });
     setAddError(null);
-    setAddDraftInv([]);
-    setAddInvSelectId("");
-    setAddLoadingInv(true);
+    setAddCategorySelect("");
     setShowAddModal(true);
-    try {
-      const invRes = await inventoryApi.getAll({ status: "active", limit: 500 });
-      setAddAvailInv(invRes.data);
-    } catch {
-      // Silently fail
-    } finally {
-      setAddLoadingInv(false);
-    }
   }
 
   async function handleAddItem(e: React.FormEvent) {
@@ -214,18 +184,11 @@ export function CatalogManagement() {
 
     try {
       setAddingItem(true);
-      const created = await catalogApi.create({
+      await catalogApi.create({
         name: addForm.name.trim(),
         description: addForm.description.trim() || undefined,
+        inventory_types: addForm.inventory_types,
       });
-      // Add inventory links
-      for (const inv of addDraftInv) {
-        try {
-          await catalogApi.addInventoryLink(created.id, { inventory_item_id: inv.id });
-        } catch {
-          // continue
-        }
-      }
       setShowAddModal(false);
       showToast.success("Catalog item created successfully");
       fetchData();
@@ -240,17 +203,7 @@ export function CatalogManagement() {
   // --- View ---
   async function openViewModal(item: CatalogItem) {
     setViewItem(item);
-    setViewLinks([]);
-    setViewLinksLoading(true);
     setShowViewModal(true);
-    try {
-      const links = await catalogApi.getInventoryLinks(item.id);
-      setViewLinks(links);
-    } catch {
-      // Silently fail
-    } finally {
-      setViewLinksLoading(false);
-    }
   }
 
   // --- Edit ---
@@ -260,24 +213,11 @@ export function CatalogManagement() {
       name: item.name,
       description: item.description || "",
       status: item.status,
+      inventory_types: item.inventory_types || [],
     });
     setEditError(null);
-    setEditInvLinks([]);
-    setEditInvSelectId("");
-    setEditInvLoading(true);
+    setEditCategorySelect("");
     setShowEditModal(true);
-    try {
-      const [links, invRes] = await Promise.all([
-        catalogApi.getInventoryLinks(item.id),
-        inventoryApi.getAll({ status: "active", limit: 500 }),
-      ]);
-      setEditInvLinks(links);
-      setEditAvailInv(invRes.data);
-    } catch {
-      // Silently fail
-    } finally {
-      setEditInvLoading(false);
-    }
   }
 
   async function handleEditItem(e: React.FormEvent) {
@@ -296,6 +236,7 @@ export function CatalogManagement() {
         name: editForm.name.trim(),
         description: editForm.description.trim() || null,
         status: editForm.status,
+        inventory_types: editForm.inventory_types,
       });
       setShowEditModal(false);
       setSelectedItem(null);
@@ -335,47 +276,6 @@ export function CatalogManagement() {
       setDeletingItem(false);
     }
   }
-
-  // --- Edit modal: inventory link management ---
-  async function handleEditAddLink() {
-    if (!selectedItem || !editInvSelectId) return;
-    try {
-      setEditInvAdding(true);
-      const newLink = await catalogApi.addInventoryLink(selectedItem.id, {
-        inventory_item_id: editInvSelectId,
-      });
-      setEditInvLinks((prev) => [...prev, newLink]);
-      setEditInvSelectId("");
-      showToast.success("Inventory item linked");
-    } catch (err) {
-      showToast.error(err instanceof Error ? err.message : "Failed to add link");
-    } finally {
-      setEditInvAdding(false);
-    }
-  }
-
-  async function handleEditRemoveLink(linkId: string) {
-    if (!selectedItem) return;
-    try {
-      await catalogApi.removeInventoryLink(selectedItem.id, linkId);
-      setEditInvLinks((prev) => prev.filter((l) => l.id !== linkId));
-      showToast.success("Inventory link removed");
-    } catch (err) {
-      showToast.error(err instanceof Error ? err.message : "Failed to remove link");
-    }
-  }
-
-  // Available inventory for add modal
-  const addAvailableInvItems = useMemo(() => {
-    const draftIds = new Set(addDraftInv.map((inv) => inv.id));
-    return addAvailInv.filter((inv) => !draftIds.has(inv.id));
-  }, [addAvailInv, addDraftInv]);
-
-  // Available inventory for edit modal
-  const editAvailableInvItems = useMemo(() => {
-    const linkedIds = new Set(editInvLinks.map((l) => l.inventory_item_id));
-    return editAvailInv.filter((inv) => !linkedIds.has(inv.id));
-  }, [editAvailInv, editInvLinks]);
 
   if (loading) {
     return <SkeletonLoader showHeader rows={6} variant="grid" />;
@@ -434,7 +334,7 @@ export function CatalogManagement() {
             }}
             details={
               <>
-                <p className="text-xs">{inventoryCounts[item.id] ?? 0} inventory item{(inventoryCounts[item.id] ?? 0) !== 1 ? "s" : ""}</p>
+                <p className="text-xs">{(item.inventory_types?.length ?? 0)} categor{(item.inventory_types?.length ?? 0) !== 1 ? "ies" : "y"}</p>
                 {item.description && <p className="text-neutral-900 line-clamp-2">{item.description}</p>}
               </>
             }
@@ -490,46 +390,44 @@ export function CatalogManagement() {
             />
           </ModalSection>
 
-          <ModalSection title="Inventory Items">
+          <ModalSection title="Required Categories">
             <div className="flex gap-2 items-end">
               <div className="flex-1">
                 <ModalSelect
-                  value={addInvSelectId}
-                  onChange={setAddInvSelectId}
-                  placeholder={addLoadingInv ? "Loading..." : "Select Inventory Item"}
-                  options={addAvailableInvItems.map((inv) => ({
-                    value: inv.id,
-                    label: `${inv.item_name} (${inv.sku_code}) \u2014 ${formatPrice(inv.cost_price)}`,
-                  }))}
-                  disabled={addLoadingInv}
+                  value={addCategorySelect}
+                  onChange={setAddCategorySelect}
+                  placeholder="Select Category"
+                  options={CATEGORY_PRESETS.map((c) => ({ value: c, label: c }))}
                 />
               </div>
               <button
                 type="button"
                 onClick={() => {
-                  const inv = addAvailInv.find((i) => i.id === addInvSelectId);
-                  if (inv) {
-                    setAddDraftInv((prev) => [...prev, inv]);
-                    setAddInvSelectId("");
+                  if (addCategorySelect) {
+                    setAddForm((prev) => ({
+                      ...prev,
+                      inventory_types: [...prev.inventory_types, addCategorySelect],
+                    }));
+                    setAddCategorySelect("");
                   }
                 }}
-                disabled={!addInvSelectId || addLoadingInv}
+                disabled={!addCategorySelect}
                 className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
               >
                 <LuPlus className="w-4 h-4" />
               </button>
             </div>
-            {addDraftInv.length > 0 && (
-              <div className="mt-3 space-y-4">
-                {addDraftInv.map((inv) => (
-                  <div key={inv.id} className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-neutral-950 text-sm truncate">{inv.item_name}</p>
-                      <p className="text-xs text-neutral-900">SKU: {inv.sku_code} | {formatPrice(inv.cost_price)} / {inv.unit_of_measure || "unit"}</p>
-                    </div>
+            {addForm.inventory_types.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {addForm.inventory_types.map((cat, idx) => (
+                  <div key={idx} className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3">
+                    <p className="font-medium text-neutral-950 text-sm">{cat}</p>
                     <button
                       type="button"
-                      onClick={() => setAddDraftInv((prev) => prev.filter((i) => i.id !== inv.id))}
+                      onClick={() => setAddForm((prev) => ({
+                        ...prev,
+                        inventory_types: prev.inventory_types.filter((_, i) => i !== idx),
+                      }))}
                       className="text-negative hover:text-negative-900 p-1 ml-3"
                     >
                       <LuX className="w-4 h-4" />
@@ -537,6 +435,8 @@ export function CatalogManagement() {
                   </div>
                 ))}
               </div>
+            ) : (
+              <p className="text-xs text-neutral-900 mt-1">Add categories to define which inventory types are required for this service.</p>
             )}
           </ModalSection>
 
@@ -582,34 +482,17 @@ export function CatalogManagement() {
               />
             </ModalSection>
 
-            <ModalSection title="Linked Inventory">
-              {viewLinksLoading ? (
-                <div className="space-y-4">
-                  {[1, 2].map((i) => (
-                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
-                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
-                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
-                    </div>
-                  ))}
-                </div>
-              ) : viewLinks.length > 0 ? (
-                <div className="max-h-40 overflow-y-auto space-y-4">
-                  {viewLinks.map((link) => (
-                    <div
-                      key={link.id}
-                      className="bg-neutral-100 rounded-xl px-4 py-3"
-                    >
-                      <p className="font-medium text-neutral-950 text-sm">
-                        {link.inventory_items?.item_name || "Unknown"}
-                      </p>
-                      <p className="text-xs text-neutral-900">
-                        SKU: {link.inventory_items?.sku_code || "-"} · {formatPrice(link.inventory_items?.cost_price || 0)} / {link.inventory_items?.unit_of_measure || "unit"}
-                      </p>
+            <ModalSection title="Required Categories">
+              {viewItem.inventory_types && viewItem.inventory_types.length > 0 ? (
+                <div className="space-y-2">
+                  {viewItem.inventory_types.map((cat, idx) => (
+                    <div key={idx} className="bg-neutral-100 rounded-xl px-4 py-3">
+                      <p className="font-medium text-neutral-950 text-sm">{cat}</p>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-neutral-900 text-center py-3">No inventory items linked.</p>
+                <p className="text-sm text-neutral-900 text-center py-3">No categories specified.</p>
               )}
             </ModalSection>
 
@@ -669,57 +552,44 @@ export function CatalogManagement() {
             />
           </ModalSection>
 
-          <ModalSection title="Inventory Items">
+          <ModalSection title="Required Categories">
             <div className="flex gap-2 items-end">
               <div className="flex-1">
                 <ModalSelect
-                  value={editInvSelectId}
-                  onChange={setEditInvSelectId}
-                  placeholder={editInvLoading ? "Loading..." : "Select Inventory Item"}
-                  options={editAvailableInvItems.map((inv) => ({
-                    value: inv.id,
-                    label: `${inv.item_name} (${inv.sku_code}) \u2014 ${formatPrice(inv.cost_price)}`,
-                  }))}
-                  disabled={editInvLoading}
+                  value={editCategorySelect}
+                  onChange={setEditCategorySelect}
+                  placeholder="Select Category"
+                  options={CATEGORY_PRESETS.map((c) => ({ value: c, label: c }))}
                 />
               </div>
               <button
                 type="button"
-                onClick={handleEditAddLink}
-                disabled={editInvAdding || !editInvSelectId}
+                onClick={() => {
+                  if (editCategorySelect) {
+                    setEditForm((prev) => ({
+                      ...prev,
+                      inventory_types: [...prev.inventory_types, editCategorySelect],
+                    }));
+                    setEditCategorySelect("");
+                  }
+                }}
+                disabled={!editCategorySelect}
                 className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
               >
-                {editInvAdding ? (
-                  <LuRefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <LuPlus className="w-4 h-4" />
-                )}
+                <LuPlus className="w-4 h-4" />
               </button>
             </div>
-            {editInvLoading ? (
-              <div className="mt-3 space-y-4">
-                {[1, 2].map((i) => (
-                  <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
-                    <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
-                    <div className="h-3 bg-neutral-200 rounded w-1/2" />
-                  </div>
-                ))}
-              </div>
-            ) : editInvLinks.length > 0 ? (
-              <div className="mt-3 space-y-4">
-                {editInvLinks.map((link) => (
-                  <div key={link.id} className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-neutral-950 text-sm truncate">
-                        {link.inventory_items?.item_name || "Unknown"}
-                      </p>
-                      <p className="text-xs text-neutral-900">
-                        SKU: {link.inventory_items?.sku_code || "-"} | {formatPrice(link.inventory_items?.cost_price || 0)} / {link.inventory_items?.unit_of_measure || "unit"}
-                      </p>
-                    </div>
+            {editForm.inventory_types.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {editForm.inventory_types.map((cat, idx) => (
+                  <div key={idx} className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3">
+                    <p className="font-medium text-neutral-950 text-sm">{cat}</p>
                     <button
                       type="button"
-                      onClick={() => handleEditRemoveLink(link.id)}
+                      onClick={() => setEditForm((prev) => ({
+                        ...prev,
+                        inventory_types: prev.inventory_types.filter((_, i) => i !== idx),
+                      }))}
                       className="text-negative hover:text-negative-900 p-1 ml-3"
                     >
                       <LuX className="w-4 h-4" />
@@ -728,7 +598,7 @@ export function CatalogManagement() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-neutral-900 text-center py-3">No inventory items linked.</p>
+              <p className="text-xs text-neutral-900 mt-1">Add categories to define which inventory types are required for this service.</p>
             )}
           </ModalSection>
 

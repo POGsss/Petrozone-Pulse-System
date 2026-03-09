@@ -116,6 +116,7 @@ export type Database = {
           created_by: string | null
           description: string | null
           id: string
+          inventory_types: string[]
           name: string
           status: string
           updated_at: string
@@ -125,6 +126,7 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           id?: string
+          inventory_types?: string[]
           name: string
           status?: string
           updated_at?: string
@@ -134,6 +136,7 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           id?: string
+          inventory_types?: string[]
           name?: string
           status?: string
           updated_at?: string
@@ -613,12 +616,14 @@ export type Database = {
           id: string
           is_deleted: boolean
           notes: string | null
+          odometer_reading: number | null
           order_number: string
           rejection_reason: string | null
           start_time: string | null
           status: Database["public"]["Enums"]["job_order_status"]
           total_amount: number
           updated_at: string
+          vehicle_bay: string | null
           vehicle_class: string
           vehicle_id: string
         }
@@ -643,12 +648,14 @@ export type Database = {
           id?: string
           is_deleted?: boolean
           notes?: string | null
+          odometer_reading?: number | null
           order_number: string
           rejection_reason?: string | null
           start_time?: string | null
           status?: Database["public"]["Enums"]["job_order_status"]
           total_amount?: number
           updated_at?: string
+          vehicle_bay?: string | null
           vehicle_class?: string
           vehicle_id: string
         }
@@ -673,12 +680,14 @@ export type Database = {
           id?: string
           is_deleted?: boolean
           notes?: string | null
+          odometer_reading?: number | null
           order_number?: string
           rejection_reason?: string | null
           start_time?: string | null
           status?: Database["public"]["Enums"]["job_order_status"]
           total_amount?: number
           updated_at?: string
+          vehicle_bay?: string | null
           vehicle_class?: string
           vehicle_id?: string
         }

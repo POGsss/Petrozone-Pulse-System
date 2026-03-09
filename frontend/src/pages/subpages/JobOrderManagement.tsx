@@ -17,7 +17,7 @@ import {
   LuCircleCheck,
   LuCreditCard,
 } from "react-icons/lu";
-import { jobOrdersApi, branchesApi, customersApi, vehiclesApi, catalogApi, pricingApi, thirdPartyRepairsApi } from "../../lib/api";
+import { jobOrdersApi, branchesApi, customersApi, vehiclesApi, catalogApi, pricingApi, thirdPartyRepairsApi, inventoryApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
 import { useAuth } from "../../auth";
 import {
@@ -36,7 +36,7 @@ import {
   GridCard,
 } from "../../components";
 import type { FilterGroup } from "../../components";
-import type { JobOrder, JobOrderItem, JobOrderHistory, Branch, Customer, Vehicle, CatalogItem, CatalogInventoryLink, ResolvedPricing, ThirdPartyRepair, VehicleClass } from "../../types";
+import type { JobOrder, JobOrderItem, JobOrderHistory, Branch, Customer, Vehicle, CatalogItem, CatalogInventoryLink, ResolvedPricing, ThirdPartyRepair, VehicleClass, InventoryItem } from "../../types";
 
 const ITEMS_PER_PAGE = 12;
 
@@ -109,6 +109,8 @@ interface DraftItem {
     inventory_item_name: string;
     unit_cost: number;
     quantity: number;
+    category?: string;
+    available_items?: Array<{ id: string; item_name: string; cost_price: number }>;
   }>;
   /** Cached resolved pricing so we can recalculate on vehicle class change */
   resolved_pricing?: { light_price: number; heavy_price: number; extra_heavy_price: number } | null;
@@ -168,6 +170,8 @@ export function JobOrderManagement() {
   const [addNotes, setAddNotes] = useState("");
   const [draftItems, setDraftItems] = useState<DraftItem[]>([]);
   const [draftRepairs, setDraftRepairs] = useState<DraftRepair[]>([]);
+  const [addOdometer, setAddOdometer] = useState("");
+  const [addVehicleBay, setAddVehicleBay] = useState("");
   const [newRepairProvider, setNewRepairProvider] = useState("");
   const [newRepairDescription, setNewRepairDescription] = useState("");
   const [newRepairCost, setNewRepairCost] = useState("");
@@ -290,6 +294,7 @@ export function JobOrderManagement() {
           { value: "completed", label: "Completed" },
           { value: "rejected", label: "Rejected" },
           { value: "cancelled", label: "Cancelled" },
+          { value: "deleted", label: "Deleted" },
         ],
       },
       {
@@ -317,7 +322,7 @@ export function JobOrderManagement() {
 
       const statusFilter = activeFilters.status;
       const matchStatus =
-        !statusFilter || statusFilter === "all" || order.status === statusFilter;
+        !statusFilter || statusFilter === "all" || statusFilter === "deleted" || order.status === statusFilter;
 
       return matchSearch && matchBranch && matchStatus;
     });
@@ -332,7 +337,7 @@ export function JobOrderManagement() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [activeFilters.status]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -342,8 +347,13 @@ export function JobOrderManagement() {
     try {
       setLoading(true);
       setError(null);
+      const statusFilter = activeFilters.status;
+      const apiParams: Parameters<typeof jobOrdersApi.getAll>[0] = { limit: 1000 };
+      if (statusFilter === "deleted") {
+        apiParams.status = "deleted";
+      }
       const [ordersRes, branchesData] = await Promise.all([
-        jobOrdersApi.getAll({ limit: 1000 }),
+        jobOrdersApi.getAll(apiParams),
         branchesApi.getAll(),
       ]);
       setAllOrders(ordersRes.data);
@@ -449,6 +459,8 @@ export function JobOrderManagement() {
     setAddVehicleId("");
     setAddVehicleClass("light");
     setAddNotes("");
+    setAddOdometer("");
+    setAddVehicleBay("");
     setDraftItems([]);
     setDraftRepairs([]);
     setNewRepairProvider("");
@@ -551,24 +563,67 @@ export function JobOrderManagement() {
       }
 
       // Fetch inventory links (template) to determine required inventory items
+      // Fetch inventory items based on catalog item's inventory_types or legacy links
       let inventoryQuantities: Array<{
         inventory_item_id: string;
         inventory_item_name: string;
         unit_cost: number;
         quantity: number;
+        category?: string;
+        available_items?: Array<{ id: string; item_name: string; cost_price: number }>;
       }> = [];
-      try {
-        const linksRes = await catalogApi.getInventoryLinks(catalog_item.id);
-        if (linksRes && linksRes.length > 0) {
-          inventoryQuantities = linksRes.map((l: CatalogInventoryLink) => ({
-            inventory_item_id: l.inventory_items?.id || l.inventory_item_id,
-            inventory_item_name: l.inventory_items?.item_name || "Unknown",
-            unit_cost: l.inventory_items?.cost_price || 0,
-            quantity: 1, // Default to 1
-          }));
+
+      const catItem = catalogItems.find((c) => c.id === catalog_item.id);
+      const invTypes = catItem?.inventory_types || [];
+
+      if (invTypes.length > 0) {
+        // Category-based: fetch available items per required category, default to first
+        try {
+          const catResults = await Promise.all(
+            invTypes.map((t) => inventoryApi.getAll({ category: t, branch_id: addBranchId, status: "active", limit: 500 }))
+          );
+          for (let i = 0; i < invTypes.length; i++) {
+            const items = catResults[i]?.data || [];
+            const availableItems = items.map((it) => ({ id: it.id, item_name: it.item_name, cost_price: it.cost_price }));
+            if (items.length > 0) {
+              inventoryQuantities.push({
+                inventory_item_id: items[0].id,
+                inventory_item_name: items[0].item_name,
+                unit_cost: items[0].cost_price,
+                quantity: 1,
+                category: invTypes[i],
+                available_items: availableItems,
+              });
+            } else {
+              // No items in this category, still add a slot with empty selection
+              inventoryQuantities.push({
+                inventory_item_id: "",
+                inventory_item_name: `No ${invTypes[i]} items available`,
+                unit_cost: 0,
+                quantity: 1,
+                category: invTypes[i],
+                available_items: [],
+              });
+            }
+          }
+        } catch {
+          // ignore — user can still pick manually
         }
-      } catch {
-        // ignore — backend will validate on submission
+      } else {
+        // Legacy: use catalog_inventory_links template
+        try {
+          const linksRes = await catalogApi.getInventoryLinks(catalog_item.id);
+          if (linksRes && linksRes.length > 0) {
+            inventoryQuantities = linksRes.map((l: CatalogInventoryLink) => ({
+              inventory_item_id: l.inventory_items?.id || l.inventory_item_id,
+              inventory_item_name: l.inventory_items?.item_name || "Unknown",
+              unit_cost: l.inventory_items?.cost_price || 0,
+              quantity: 1,
+            }));
+          }
+        } catch {
+          // ignore — backend will validate on submission
+        }
       }
 
       const inventoryCost = inventoryQuantities.reduce(
@@ -624,6 +679,34 @@ export function JobOrderManagement() {
     );
   }
 
+  // Change the selected inventory item for a specific slot index in a draft item
+  function changeDraftInventoryItem(catalogItemId: string, slotIndex: number, newItemId: string) {
+    setDraftItems((prev) =>
+      prev.map((item) => {
+        if (item.catalog_item_id !== catalogItemId) return item;
+        const updatedInv = item.inventory_quantities.map((iq, idx) => {
+          if (idx !== slotIndex) return iq;
+          const available = iq.available_items || [];
+          const selected = available.find((a) => a.id === newItemId);
+          if (!selected) return iq;
+          return {
+            ...iq,
+            inventory_item_id: selected.id,
+            inventory_item_name: selected.item_name,
+            unit_cost: selected.cost_price,
+          };
+        });
+        const newInvCost = updatedInv.reduce((sum, iq) => sum + iq.unit_cost * iq.quantity, 0);
+        return {
+          ...item,
+          inventory_quantities: updatedInv,
+          inventory_cost: newInvCost,
+          line_total: (item.labor_price + newInvCost) * item.quantity,
+        };
+      })
+    );
+  }
+
   // Draft repair functions for create modal
   function handleAddDraftRepair() {
     if (!newRepairProvider.trim()) { setAddError("Provider name is required"); return; }
@@ -661,6 +744,7 @@ export function JobOrderManagement() {
     if (!addBranchId) { setAddError("Branch is required"); return; }
     if (!addCustomerId) { setAddError("Customer is required"); return; }
     if (!addVehicleId) { setAddError("Vehicle is required"); return; }
+    if (!addVehicleBay) { setAddError("Vehicle bay is required"); return; }
     if (draftItems.length === 0) { setAddError("Add at least one item"); return; }
 
     try {
@@ -671,6 +755,8 @@ export function JobOrderManagement() {
         branch_id: addBranchId,
         vehicle_class: addVehicleClass,
         notes: addNotes.trim() || undefined,
+        odometer_reading: addOdometer ? parseInt(addOdometer) : undefined,
+        vehicle_bay: addVehicleBay,
         items: draftItems.map((d) => ({
           catalog_item_id: d.catalog_item_id,
           quantity: d.quantity,
@@ -765,9 +851,41 @@ export function JobOrderManagement() {
         catalogApi.getAll({ limit: 1000 }),
       ]);
       const items = fullOrder.job_order_items || [];
-      setEditItems(items);
-      setOrigEditItems(items);
-      setEditCatalogItems(catRes.data);
+      const catalogItems = catRes.data;
+      setEditCatalogItems(catalogItems);
+
+      // Augment existing items' inventories with available alternatives
+      const augmentedItems = await Promise.all(
+        items.map(async (item: JobOrderItem) => {
+          const catItem = catalogItems.find((c: CatalogItem) => c.id === item.catalog_item_id);
+          const invTypes = catItem?.inventory_types || [];
+          if (invTypes.length === 0 || !item.job_order_item_inventories?.length) return item;
+
+          // Fetch available items per category
+          try {
+            const catResults = await Promise.all(
+              invTypes.map((t: string) =>
+                inventoryApi.getAll({ category: t, branch_id: order.branch_id, status: "active", limit: 500 })
+              )
+            );
+            const updatedInv = item.job_order_item_inventories.map((inv, idx) => {
+              const categoryIdx = Math.min(idx, invTypes.length - 1);
+              const availItems = (catResults[categoryIdx]?.data || []).map((it: InventoryItem) => ({
+                id: it.id,
+                item_name: it.item_name,
+                cost_price: it.cost_price,
+              }));
+              return { ...inv, category: invTypes[categoryIdx], available_items: availItems };
+            });
+            return { ...item, job_order_item_inventories: updatedInv };
+          } catch {
+            return item;
+          }
+        })
+      );
+
+      setEditItems(augmentedItems);
+      setOrigEditItems(augmentedItems);
     } catch {
       // Fail silently — items section won't populate
     } finally {
@@ -796,6 +914,30 @@ export function JobOrderManagement() {
             ? { ...inv, quantity: newQty, line_total: newQty * inv.unit_cost }
             : inv
         );
+        const newInvCost = updatedInv.reduce((sum, inv) => sum + inv.unit_cost * inv.quantity, 0);
+        const newLineTotal = ((item.labor_price || 0) + newInvCost) * item.quantity;
+        return { ...item, job_order_item_inventories: updatedInv, inventory_cost: newInvCost, line_total: newLineTotal };
+      })
+    );
+  }
+
+  function changeEditExistingInventoryItem(itemId: string, invIndex: number, newItemId: string) {
+    setEditItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemId) return item;
+        const updatedInv = (item.job_order_item_inventories || []).map((inv, idx) => {
+          if (idx !== invIndex) return inv;
+          const available = inv.available_items || [];
+          const selected = available.find((a) => a.id === newItemId);
+          if (!selected) return inv;
+          return {
+            ...inv,
+            inventory_item_id: selected.id,
+            inventory_item_name: selected.item_name,
+            unit_cost: selected.cost_price,
+            line_total: selected.cost_price * inv.quantity,
+          };
+        });
         const newInvCost = updatedInv.reduce((sum, inv) => sum + inv.unit_cost * inv.quantity, 0);
         const newLineTotal = ((item.labor_price || 0) + newInvCost) * item.quantity;
         return { ...item, job_order_item_inventories: updatedInv, inventory_cost: newInvCost, line_total: newLineTotal };
@@ -858,25 +1000,66 @@ export function JobOrderManagement() {
         );
       }
 
-      // Fetch inventory links (template)
+      // Fetch inventory based on catalog item's inventory_types or legacy links
       let editInvQuantities: Array<{
         inventory_item_id: string;
         inventory_item_name: string;
         unit_cost: number;
         quantity: number;
+        category?: string;
+        available_items?: Array<{ id: string; item_name: string; cost_price: number }>;
       }> = [];
-      try {
-        const linksRes = await catalogApi.getInventoryLinks(catalog_item.id);
-        if (linksRes && linksRes.length > 0) {
-          editInvQuantities = linksRes.map((l: CatalogInventoryLink) => ({
-            inventory_item_id: l.inventory_items?.id || l.inventory_item_id,
-            inventory_item_name: l.inventory_items?.item_name || "Unknown",
-            unit_cost: l.inventory_items?.cost_price || 0,
-            quantity: 1,
-          }));
+
+      const catItemData = editCatalogItems.find((c) => c.id === catalog_item.id);
+      const invTypes = catItemData?.inventory_types || [];
+
+      if (invTypes.length > 0) {
+        // Category-based: fetch available items per required category
+        try {
+          const catResults = await Promise.all(
+            invTypes.map((t) => inventoryApi.getAll({ category: t, branch_id: editOrder.branch_id, status: "active", limit: 500 }))
+          );
+          for (let i = 0; i < invTypes.length; i++) {
+            const items = catResults[i]?.data || [];
+            const availableItems = items.map((it) => ({ id: it.id, item_name: it.item_name, cost_price: it.cost_price }));
+            if (items.length > 0) {
+              editInvQuantities.push({
+                inventory_item_id: items[0].id,
+                inventory_item_name: items[0].item_name,
+                unit_cost: items[0].cost_price,
+                quantity: 1,
+                category: invTypes[i],
+                available_items: availableItems,
+              });
+            } else {
+              editInvQuantities.push({
+                inventory_item_id: "",
+                inventory_item_name: `No ${invTypes[i]} items available`,
+                unit_cost: 0,
+                quantity: 1,
+                category: invTypes[i],
+                available_items: [],
+              });
+            }
+          }
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore
+      } else {
+        // Legacy: use catalog_inventory_links template
+        try {
+          const linksRes = await catalogApi.getInventoryLinks(catalog_item.id);
+          if (linksRes && linksRes.length > 0) {
+            editInvQuantities = linksRes.map((l: CatalogInventoryLink) => ({
+              inventory_item_id: l.inventory_items?.id || l.inventory_item_id,
+              inventory_item_name: l.inventory_items?.item_name || "Unknown",
+              unit_cost: l.inventory_items?.cost_price || 0,
+              quantity: 1,
+            }));
+          }
+        } catch {
+          // ignore
+        }
       }
 
       const editInvCost = editInvQuantities.reduce(
@@ -914,6 +1097,33 @@ export function JobOrderManagement() {
     }
     setEditError(null);
     setEditDraftItems((prev) => prev.filter((d) => d.catalog_item_id !== catalogItemId));
+  }
+
+  function changeEditDraftInventoryItem(catalogItemId: string, slotIndex: number, newItemId: string) {
+    setEditDraftItems((prev) =>
+      prev.map((item) => {
+        if (item.catalog_item_id !== catalogItemId) return item;
+        const updatedInv = item.inventory_quantities.map((iq, idx) => {
+          if (idx !== slotIndex) return iq;
+          const available = iq.available_items || [];
+          const selected = available.find((a) => a.id === newItemId);
+          if (!selected) return iq;
+          return {
+            ...iq,
+            inventory_item_id: selected.id,
+            inventory_item_name: selected.item_name,
+            unit_cost: selected.cost_price,
+          };
+        });
+        const newInvCost = updatedInv.reduce((sum, iq) => sum + iq.unit_cost * iq.quantity, 0);
+        return {
+          ...item,
+          inventory_quantities: updatedInv,
+          inventory_cost: newInvCost,
+          line_total: (item.labor_price + newInvCost) * item.quantity,
+        };
+      })
+    );
   }
 
   async function handleEditOrder(e: React.FormEvent) {
@@ -1290,8 +1500,8 @@ export function JobOrderManagement() {
               ) : undefined
             }
             statusBadge={{
-              label: getStatusLabel(order.status),
-              className: getStatusColors(order.status),
+              label: order.is_deleted ? "Deleted" : getStatusLabel(order.status),
+              className: order.is_deleted ? "bg-negative-100 text-negative-950" : getStatusColors(order.status),
             }}
             details={
               <>
@@ -1302,12 +1512,12 @@ export function JobOrderManagement() {
               </>
             }
             actions={[
-              ...(canUpdate ? [{
+              ...(!order.is_deleted && canUpdate ? [{
                 label: "Edit",
                 icon: <LuPencil className="w-4 h-4" />,
                 onClick: (e: React.MouseEvent) => { e.stopPropagation(); openEditModal(order); },
               }] : []),
-              ...(canDelete ? [{
+              ...(!order.is_deleted && canDelete ? [{
                 label: "Delete",
                 icon: <LuTrash2 className="w-4 h-4" />,
                 onClick: (e: React.MouseEvent) => { e.stopPropagation(); openDeleteConfirmModal(order); },
@@ -1473,6 +1683,23 @@ export function JobOrderManagement() {
               rows={2}
               className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
             />
+            <div className="grid grid-cols-2 gap-4">
+              <ModalInput
+                type="number"
+                value={addOdometer}
+                onChange={setAddOdometer}
+                placeholder="Odometer Reading (km)"
+              />
+              <ModalSelect
+                value={addVehicleBay}
+                onChange={setAddVehicleBay}
+                placeholder="Vehicle Bay *"
+                options={[
+                  { value: "bay1", label: "Bay 1" },
+                  { value: "bay2", label: "Bay 2" },
+                ]}
+              />
+            </div>
           </ModalSection>
 
           <ModalSection title="Items Lists">
@@ -1541,13 +1768,27 @@ export function JobOrderManagement() {
                         </button>
                       </div>
                     </div>
-                    {/* Inventory items with editable quantities */}
+                    {/* Inventory items with editable quantities and item selection */}
                     {item.inventory_quantities.length > 0 && (
-                      <div className="mt-2 pl-3 border-l-2 border-neutral-200 space-y-1">
-                        {item.inventory_quantities.map((iq) => (
-                          <div key={iq.inventory_item_id} className="flex items-center justify-between text-xs text-neutral-900">
-                            <span className="truncate flex-1">{iq.inventory_item_name} ({formatPrice(iq.unit_cost * iq.quantity)})</span>
-                            <div className="flex items-center gap-1 ml-2">
+                      <div className="mt-2 pl-3 border-l-2 border-neutral-200 space-y-2">
+                        {item.inventory_quantities.map((iq, slotIdx) => (
+                          <div key={slotIdx} className="text-xs text-neutral-900">
+                            <div className="flex items-center gap-2">
+                              {iq.available_items && iq.available_items.length > 1 ? (
+                                <select
+                                  value={iq.inventory_item_id}
+                                  onChange={(e) => changeDraftInventoryItem(item.catalog_item_id, slotIdx, e.target.value)}
+                                  className="appearance-none flex-1 min-w-0 text-xs focus:outline-none focus:ring-1 focus:ring-primary truncate"
+                                >
+                                  {iq.available_items.map((opt) => (
+                                    <option key={opt.id} value={opt.id}>
+                                      {opt.item_name} ({formatPrice(opt.cost_price)})
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span className="truncate flex-1">{iq.inventory_item_name} ({formatPrice(iq.unit_cost * iq.quantity)})</span>
+                              )}
                               <input
                                 type="number"
                                 min={0}
@@ -1712,6 +1953,15 @@ export function JobOrderManagement() {
                   disabled
                 />
               )}
+              {viewOrder.assigned_technician_id && ["in_progress", "ready_for_release", "pending_payment", "completed"].includes(viewOrder.status) && (
+                <ModalInput
+                  type="text"
+                  value={viewOrder.assigned_technician?.full_name || viewOrder.assigned_technician?.email || "—"}
+                  onChange={() => { }}
+                  placeholder="Assigned Technician"
+                  disabled
+                />
+              )}
             </ModalSection>
 
             <ModalSection title="Customer & Vehicle">
@@ -1744,6 +1994,22 @@ export function JobOrderManagement() {
                 placeholder="Branch"
                 disabled
               />
+              <div className="grid grid-cols-2 gap-4">
+                <ModalInput
+                  type="text"
+                  value={viewOrder.odometer_reading != null ? `${viewOrder.odometer_reading.toLocaleString()} km` : "—"}
+                  onChange={() => { }}
+                  placeholder="Odometer"
+                  disabled
+                />
+                <ModalInput
+                  type="text"
+                  value={viewOrder.vehicle_bay ? (viewOrder.vehicle_bay === "bay1" ? "Bay 1" : viewOrder.vehicle_bay === "bay2" ? "Bay 2" : viewOrder.vehicle_bay) : "—"}
+                  onChange={() => { }}
+                  placeholder="Vehicle Bay"
+                  disabled
+                />
+              </div>
             </ModalSection>
 
             {/* Items section */}
@@ -1860,6 +2126,43 @@ export function JobOrderManagement() {
                 />
               </ModalSection>
             )}
+
+            <ModalSection title="Recent History">
+              {loadingHistory ? (
+                <div className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i}>
+                      <div className="h-3 bg-neutral-200 rounded w-3/4 mb-1" />
+                      <div className="h-2 bg-neutral-200 rounded w-1/2" />
+                    </div>
+                  ))}
+                </div>
+              ) : history.length > 0 ? (
+                <>
+                  <div
+                    className="bg-neutral-100 rounded-xl px-4 py-3 divide-y divide-neutral-200 cursor-pointer hover:bg-neutral-200/60 transition-colors"
+                    onClick={() => setShowHistoryModal(true)}
+                  >
+                    {history.slice(0, 3).map((entry) => (
+                      <div key={entry.id} className="py-2.5 first:pt-0 last:pb-0">
+                        <div className="flex items-center gap-2">
+                          <LuHistory className="w-3 h-3 text-neutral-600 shrink-0" />
+                          <span className="text-xs font-semibold text-neutral-950 uppercase">{entry.action}</span>
+                          <span className="text-xs text-neutral-600 ml-auto">{formatDateTime(entry.created_at)}</span>
+                        </div>
+                        {entry.user_profiles && (
+                          <p className="text-xs text-neutral-900 ml-5">
+                            By: {entry.user_profiles.full_name || entry.user_profiles.email}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-neutral-900 text-center py-3">No history available.</p>
+              )}
+            </ModalSection>
 
             <ModalSection title="Timestamps">
               <div className="grid grid-cols-2 gap-4">
@@ -2183,12 +2486,28 @@ export function JobOrderManagement() {
                           </button>
                         </div>
                       </div>
-                      {/* Inventory sub-items with editable quantities */}
+                      {/* Inventory sub-items with editable quantities and item selection */}
                       {item.job_order_item_inventories && item.job_order_item_inventories.length > 0 && (
                         <div className="mt-2 pl-3 border-l-2 border-neutral-200 space-y-1">
-                          {item.job_order_item_inventories.map((inv) => (
+                          {item.job_order_item_inventories.map((inv, invIdx) => (
                             <div key={inv.id} className="flex items-center justify-between text-xs text-neutral-900">
-                              <span className="truncate flex-1">{inv.inventory_item_name} ({formatPrice(inv.unit_cost * inv.quantity)})</span>
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                {inv.available_items && inv.available_items.length > 1 ? (
+                                  <select
+                                    value={inv.inventory_item_id}
+                                    onChange={(e) => changeEditExistingInventoryItem(item.id, invIdx, e.target.value)}
+                                    className="appearance-none flex-1 min-w-0 text-xs focus:outline-none focus:ring-1 focus:ring-primary truncate"
+                                  >
+                                    {inv.available_items.map((opt) => (
+                                      <option key={opt.id} value={opt.id}>
+                                        {opt.item_name} ({formatPrice(opt.cost_price)})
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <span className="truncate flex-1">{inv.inventory_item_name} ({formatPrice(inv.unit_cost * inv.quantity)})</span>
+                                )}
+                              </div>
                               <div className="flex items-center gap-1 ml-2">
                                 <input
                                   type="number"
@@ -2211,32 +2530,61 @@ export function JobOrderManagement() {
                   {editDraftItems.map((item) => (
                     <div
                       key={item.catalog_item_id}
-                      className="flex items-center justify-between bg-primary-100 rounded-xl px-4 py-3 mb-4"
+                      className="bg-primary-100 rounded-xl px-4 py-3 mb-4"
                     >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-neutral-950 text-sm truncate">
-                          {item.catalog_item_name}
-                          <span className="text-primary text-xs ml-2">(new)</span>
-                        </p>
-                        <p className="text-xs text-neutral-900">
-                          Labor: {formatPrice(item.labor_price)}
-                          {item.inventory_cost > 0 && ` + Inventory: ${formatPrice(item.inventory_cost)}`}
-                          {" \u00d7 "}{item.quantity}
-                        </p>
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-neutral-950 text-sm truncate">
+                            {item.catalog_item_name}
+                            <span className="text-primary text-xs ml-2">(new)</span>
+                          </p>
+                          <p className="text-xs text-neutral-900">
+                            Labor: {formatPrice(item.labor_price)}
+                            {item.inventory_cost > 0 && ` + Inventory: ${formatPrice(item.inventory_cost)}`}
+                            {" \u00d7 "}{item.quantity}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3 ml-3">
+                          <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap">
+                            {formatPrice(item.line_total)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveEditDraftItem(item.catalog_item_id)}
+                            className="text-negative hover:text-negative-900 p-1"
+                            title="Remove item"
+                          >
+                            <LuX className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3 ml-3">
-                        <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap">
-                          {formatPrice(item.line_total)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveEditDraftItem(item.catalog_item_id)}
-                          className="text-negative hover:text-negative-900 p-1"
-                          title="Remove item"
-                        >
-                          <LuX className="w-4 h-4" />
-                        </button>
-                      </div>
+                      {/* Inventory items with editable selection */}
+                      {item.inventory_quantities.length > 0 && (
+                        <div className="mt-2 pl-3 border-l-2 border-neutral-200 space-y-2">
+                          {item.inventory_quantities.map((iq, slotIdx) => (
+                            <div key={slotIdx} className="text-xs text-neutral-900">
+                              <div className="flex items-center gap-2">
+                                {iq.available_items && iq.available_items.length > 1 ? (
+                                  <select
+                                    value={iq.inventory_item_id}
+                                    onChange={(e) => changeEditDraftInventoryItem(item.catalog_item_id, slotIdx, e.target.value)}
+                                    className="appearance-none flex-1 min-w-0 text-xs focus:outline-none focus:ring-1 focus:ring-primary truncate"
+                                  >
+                                    {iq.available_items.map((opt) => (
+                                      <option key={opt.id} value={opt.id}>
+                                        {opt.item_name} ({formatPrice(opt.cost_price)})
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <span className="truncate flex-1">{iq.inventory_item_name} ({formatPrice(iq.unit_cost * iq.quantity)})</span>
+                                )}
+                                <span className="text-xs text-neutral-900 w-14 text-center">×{iq.quantity}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
 
@@ -2284,7 +2632,9 @@ export function JobOrderManagement() {
               </p>
             </div>
             <p className="text-sm text-neutral-900 mb-2">
-              This will permanently remove the job order and all its items.
+              {orderToDelete.status === "draft"
+                ? "This will permanently remove the job order and all its items."
+                : "This job order will be soft-deleted and can be viewed under the Deleted filter."}
             </p>
             <div className="flex gap-3 mt-6">
               <button

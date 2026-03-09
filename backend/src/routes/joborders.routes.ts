@@ -28,6 +28,7 @@ router.get(
         vehicle_id,
         status,
         search,
+        include_deleted,
         limit = "50",
         offset = "0",
       } = req.query;
@@ -43,9 +44,19 @@ router.get(
           third_party_repairs(cost)
         `,
           { count: "exact" }
-        )
-        .eq("is_deleted", false)
-        .order("created_at", { ascending: false });
+        );
+
+      // Filter by deletion status
+      if (include_deleted === "true") {
+        // Show all including deleted — no is_deleted filter
+      } else if (status === "deleted") {
+        // Show only soft-deleted
+        query = query.eq("is_deleted", true);
+      } else {
+        query = query.eq("is_deleted", false);
+      }
+
+      query = query.order("created_at", { ascending: false });
 
       // Branch scoping: HM sees all, others see only their branches
       if (!req.user!.roles.includes("HM")) {
@@ -62,7 +73,7 @@ router.get(
       if (vehicle_id) {
         query = query.eq("vehicle_id", vehicle_id as string);
       }
-      if (status) {
+      if (status && status !== "deleted") {
         query = query.eq(
           "status",
           status as "draft" | "pending_approval" | "approved" | "in_progress" | "ready_for_release" | "completed" | "rejected" | "cancelled"
@@ -123,7 +134,8 @@ router.get(
           customers(id, full_name, contact_number, email),
           vehicles(id, plate_number, model, vehicle_type),
           branches(id, name, code),
-          job_order_items(*, job_order_item_inventories(*))
+          job_order_items(*, job_order_item_inventories(*)),
+          assigned_technician:user_profiles!job_orders_assigned_technician_id_fkey(id, full_name, email)
         `
         )
         .eq("id", orderId)
@@ -166,7 +178,7 @@ router.post(
   requireRoles("POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { customer_id, vehicle_id, branch_id, notes, items, vehicle_class } = req.body;
+      const { customer_id, vehicle_id, branch_id, notes, items, vehicle_class, odometer_reading, vehicle_bay } = req.body;
 
       // Validation
       if (!customer_id) {
@@ -286,7 +298,7 @@ router.post(
           laborPrice = pricingMatrix[priceKey] || 0;
         }
 
-        // Fetch catalog inventory template links
+        // Fetch catalog inventory template links (legacy support)
         const { data: templateLinks } = await supabaseAdmin
           .from("catalog_inventory_links")
           .select("inventory_item_id, inventory_items(id, item_name, cost_price, branch_id, status)")
@@ -298,24 +310,58 @@ router.post(
         const userInventoryQuantities: Array<{ inventory_item_id: string; quantity: number }> =
           item.inventory_quantities || [];
 
-        // Validate: user cannot add inventory items outside catalog template
-        for (const uiq of userInventoryQuantities) {
-          if (!catalogTemplateIds.includes(uiq.inventory_item_id)) {
-            res.status(400).json({
-              error: `Inventory item ${uiq.inventory_item_id} is not in the catalog template for ${catalogItem.name}`,
-            });
-            return;
-          }
-        }
+        // Check if catalog uses inventory_types (new flow) or template links (legacy flow)
+        const { data: catItemFull } = await supabaseAdmin
+          .from("catalog_items")
+          .select("inventory_types")
+          .eq("id", item.catalog_item_id)
+          .single();
 
-        // Validate: all template items must be present
-        for (const templateId of catalogTemplateIds) {
-          const found = userInventoryQuantities.find((uiq: any) => uiq.inventory_item_id === templateId);
-          if (!found) {
-            res.status(400).json({
-              error: `Missing inventory quantity for template item ${templateId} in catalog ${catalogItem.name}. All template items must be included.`,
-            });
-            return;
+        const hasInventoryTypes = catItemFull?.inventory_types && catItemFull.inventory_types.length > 0;
+
+        if (hasInventoryTypes) {
+          // New flow: validate that each provided inventory item matches a required category
+          for (const uiq of userInventoryQuantities) {
+            const { data: invItem } = await supabaseAdmin
+              .from("inventory_items")
+              .select("id, category, status")
+              .eq("id", uiq.inventory_item_id)
+              .single();
+            if (!invItem) {
+              res.status(400).json({ error: `Inventory item not found: ${uiq.inventory_item_id}` });
+              return;
+            }
+            if (invItem.status !== "active") {
+              res.status(400).json({ error: `Inventory item ${uiq.inventory_item_id} is not active` });
+              return;
+            }
+            if (!catItemFull.inventory_types.includes(invItem.category)) {
+              res.status(400).json({
+                error: `Inventory item category "${invItem.category}" is not required by catalog "${catalogItem.name}". Required categories: ${catItemFull.inventory_types.join(", ")}`,
+              });
+              return;
+            }
+          }
+        } else {
+          // Legacy flow: validate against catalog_inventory_links template
+          for (const uiq of userInventoryQuantities) {
+            if (!catalogTemplateIds.includes(uiq.inventory_item_id)) {
+              res.status(400).json({
+                error: `Inventory item ${uiq.inventory_item_id} is not in the catalog template for ${catalogItem.name}`,
+              });
+              return;
+            }
+          }
+
+          // Validate: all template items must be present
+          for (const templateId of catalogTemplateIds) {
+            const found = userInventoryQuantities.find((uiq: any) => uiq.inventory_item_id === templateId);
+            if (!found) {
+              res.status(400).json({
+                error: `Missing inventory quantity for template item ${templateId} in catalog ${catalogItem.name}. All template items must be included.`,
+              });
+              return;
+            }
           }
         }
 
@@ -335,8 +381,20 @@ router.post(
             return;
           }
 
-          const templateLink = (templateLinks ?? []).find((l: any) => l.inventory_item_id === uiq.inventory_item_id);
-          const invItem = templateLink?.inventory_items as any;
+          // Look up the inventory item directly (works for both legacy and type-based flows)
+          let invItem: any = null;
+          if (!hasInventoryTypes) {
+            const templateLink = (templateLinks ?? []).find((l: any) => l.inventory_item_id === uiq.inventory_item_id);
+            invItem = templateLink?.inventory_items;
+          }
+          if (!invItem) {
+            const { data: directItem } = await supabaseAdmin
+              .from("inventory_items")
+              .select("id, item_name, cost_price")
+              .eq("id", uiq.inventory_item_id)
+              .single();
+            invItem = directItem;
+          }
           if (!invItem) continue;
 
           const unitCost = invItem.cost_price || 0;
@@ -378,6 +436,8 @@ router.post(
           vehicle_class,
           notes: notes?.trim() || null,
           total_amount: totalAmount,
+          odometer_reading: odometer_reading ? parseInt(odometer_reading) : null,
+          vehicle_bay: vehicle_bay?.trim() || null,
           created_by: req.user!.id,
         })
         .select(
@@ -1328,7 +1388,7 @@ router.post(
         laborPrice = pricingMatrix[priceKey] || 0;
       }
 
-      // Fetch catalog inventory template links
+      // Fetch catalog inventory template links (legacy support)
       const { data: templateLinks } = await supabaseAdmin
         .from("catalog_inventory_links")
         .select("inventory_item_id, inventory_items(id, item_name, cost_price, branch_id, status)")
@@ -1340,23 +1400,53 @@ router.post(
       const userInventoryQuantities: Array<{ inventory_item_id: string; quantity: number }> =
         inventory_quantities || [];
 
-      // Validate: user cannot add items outside template
-      for (const uiq of userInventoryQuantities) {
-        if (!catalogTemplateIds.includes(uiq.inventory_item_id)) {
-          res.status(400).json({
-            error: `Inventory item ${uiq.inventory_item_id} is not in the catalog template for ${catalogItem.name}`,
-          });
-          return;
-        }
-      }
+      // Check if catalog uses inventory_types (new flow) or template links (legacy flow)
+      const { data: catItemFull } = await supabaseAdmin
+        .from("catalog_items")
+        .select("inventory_types")
+        .eq("id", catalog_item_id)
+        .single();
 
-      // Validate: all template items must be present
-      for (const templateId of catalogTemplateIds) {
-        if (!userInventoryQuantities.find((uiq: any) => uiq.inventory_item_id === templateId)) {
-          res.status(400).json({
-            error: `Missing inventory quantity for template item ${templateId} in catalog ${catalogItem.name}`,
-          });
-          return;
+      const hasInventoryTypes = catItemFull?.inventory_types && catItemFull.inventory_types.length > 0;
+
+      if (hasInventoryTypes) {
+        for (const uiq of userInventoryQuantities) {
+          const { data: invItem } = await supabaseAdmin
+            .from("inventory_items")
+            .select("id, category, status")
+            .eq("id", uiq.inventory_item_id)
+            .single();
+          if (!invItem) {
+            res.status(400).json({ error: `Inventory item not found: ${uiq.inventory_item_id}` });
+            return;
+          }
+          if (invItem.status !== "active") {
+            res.status(400).json({ error: `Inventory item ${uiq.inventory_item_id} is not active` });
+            return;
+          }
+          if (!catItemFull.inventory_types.includes(invItem.category)) {
+            res.status(400).json({
+              error: `Inventory item category "${invItem.category}" is not required by catalog "${catalogItem.name}"`,
+            });
+            return;
+          }
+        }
+      } else {
+        for (const uiq of userInventoryQuantities) {
+          if (!catalogTemplateIds.includes(uiq.inventory_item_id)) {
+            res.status(400).json({
+              error: `Inventory item ${uiq.inventory_item_id} is not in the catalog template for ${catalogItem.name}`,
+            });
+            return;
+          }
+        }
+        for (const templateId of catalogTemplateIds) {
+          if (!userInventoryQuantities.find((uiq: any) => uiq.inventory_item_id === templateId)) {
+            res.status(400).json({
+              error: `Missing inventory quantity for template item ${templateId} in catalog ${catalogItem.name}`,
+            });
+            return;
+          }
         }
       }
 
@@ -1375,8 +1465,19 @@ router.post(
           res.status(400).json({ error: "Inventory quantity cannot be negative" });
           return;
         }
-        const templateLink = (templateLinks ?? []).find((l: any) => l.inventory_item_id === uiq.inventory_item_id);
-        const invItem = templateLink?.inventory_items as any;
+        let invItem: any = null;
+        if (!hasInventoryTypes) {
+          const templateLink = (templateLinks ?? []).find((l: any) => l.inventory_item_id === uiq.inventory_item_id);
+          invItem = templateLink?.inventory_items;
+        }
+        if (!invItem) {
+          const { data: directItem } = await supabaseAdmin
+            .from("inventory_items")
+            .select("id, item_name, cost_price")
+            .eq("id", uiq.inventory_item_id)
+            .single();
+          invItem = directItem;
+        }
         if (!invItem) continue;
 
         const unitCost = invItem.cost_price || 0;
