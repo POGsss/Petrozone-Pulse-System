@@ -9,7 +9,7 @@ const router = Router();
 // All notification routes require authentication
 router.use(requireAuth);
 
-// ─── Helper: create notification receipts for targeted users ───
+// Helper: create notification receipts for targeted users
 async function createReceipts(notificationId: string, targetType: string, targetValue: string, branchId: string): Promise<void> {
   let userIds: string[] = [];
 
@@ -590,7 +590,7 @@ router.post(
   }
 );
 
-// ─── Exported helper for Job Order status change notifications ───
+// Exported helper for Job Order status change notifications
 
 /**
  * Create a system notification when a Job Order status changes.

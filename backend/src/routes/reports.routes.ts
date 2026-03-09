@@ -398,10 +398,6 @@ router.get(
   }
 );
 
-// ================================
-// Report generation helpers
-// ================================
-
 async function generateReportData(
   reportType: string,
   filters: Record<string, string>,
@@ -551,10 +547,6 @@ async function generateStaffPerformanceReport(
     },
   };
 }
-
-// ================================
-// Export helpers
-// ================================
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9_\- ]/g, "").replace(/\s+/g, "_");

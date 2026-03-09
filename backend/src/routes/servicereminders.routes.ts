@@ -573,7 +573,7 @@ router.post(
         return;
       }
 
-      // ─── Real delivery via email/SMS ───
+      // Real delivery via email/SMS
       let deliverySuccess = false;
       let deliveryError = "";
       const now = new Date().toISOString();

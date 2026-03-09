@@ -1,10 +1,4 @@
-/**
- * SMS service using Semaphore (semaphore.co) — Philippine SMS gateway.
- *
- * Required env vars:
- *   SEMAPHORE_API_KEY   – Your Semaphore API key
- *   SEMAPHORE_SENDER    – Sender name (max 11 chars, e.g. "Petrozone")
- */
+// SMS service using Semaphore (semaphore.co) — Philippine SMS gateway.
 
 const SEMAPHORE_API_URL = "https://api.semaphore.co/api/v4/messages";
 

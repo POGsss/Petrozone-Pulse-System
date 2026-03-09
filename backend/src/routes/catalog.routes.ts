@@ -352,8 +352,6 @@ router.delete(
   }
 );
 
-// --- CATALOG INVENTORY LINKS ---
-
 /**
  * GET /api/catalog/:itemId/inventory-links
  * Get all inventory items linked to a catalog item

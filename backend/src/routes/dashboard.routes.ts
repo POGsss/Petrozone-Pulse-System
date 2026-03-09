@@ -9,14 +9,14 @@ const router = Router();
 // All dashboard routes require authentication
 router.use(requireAuth);
 
-// ─── Helper: resolve branch scoping ───
+// Helper: resolve branch scoping
 function getBranchScope(req: Request): string[] | null {
   // HM sees all branches
   if (req.user!.roles.includes("HM")) return null;
   return req.user!.branchIds;
 }
 
-// ─── GET /api/dashboard/summary ───
+// GET /api/dashboard/summary
 // Returns top-level KPI cards
 router.get(
   "/summary",
@@ -26,7 +26,7 @@ router.get(
       const { branch_id, date_from, date_to } = req.query;
       const branchScope = getBranchScope(req);
 
-      // ── Total Sales (completed JOs) ──
+      // Total Sales (completed JOs)
       let salesQuery = supabaseAdmin
         .from("job_orders")
         .select("total_amount", { count: "exact" })
@@ -41,7 +41,7 @@ router.get(
       const { data: salesData, count: completedCount } = await salesQuery;
       const totalSales = (salesData || []).reduce((sum, jo) => sum + (jo.total_amount || 0), 0);
 
-      // ── Active Job Orders ──
+      // Active Job Orders
       let activeQuery = supabaseAdmin
         .from("job_orders")
         .select("id", { count: "exact" })
@@ -55,7 +55,7 @@ router.get(
 
       const { count: activeCount } = await activeQuery;
 
-      // ── Total Job Orders ──
+      // Total Job Orders
       let totalJoQuery = supabaseAdmin
         .from("job_orders")
         .select("id", { count: "exact" })
@@ -68,7 +68,7 @@ router.get(
 
       const { count: totalJoCount } = await totalJoQuery;
 
-      // ── Customers ──
+      // Customers
       let custQuery = supabaseAdmin
         .from("customers")
         .select("id", { count: "exact" })
@@ -79,7 +79,7 @@ router.get(
 
       const { count: customerCount } = await custQuery;
 
-      // ── Low-Stock Inventory (items where on-hand <= reorder_threshold) ──
+      // Low-Stock Inventory (items where on-hand <= reorder_threshold)
       let inventoryQuery = supabaseAdmin
         .from("inventory_on_hand")
         .select("*");
@@ -116,7 +116,7 @@ router.get(
   }
 );
 
-// ─── GET /api/dashboard/sales-over-time ───
+// GET /api/dashboard/sales-over-time
 // Returns daily sales aggregation for line chart
 router.get(
   "/sales-over-time",
@@ -183,7 +183,7 @@ router.get(
   }
 );
 
-// ─── GET /api/dashboard/top-services ───
+// GET /api/dashboard/top-services
 // Returns top catalog items by revenue for bar chart
 router.get(
   "/top-services",
@@ -241,7 +241,7 @@ router.get(
   }
 );
 
-// ─── GET /api/dashboard/job-status-distribution ───
+// GET /api/dashboard/job-status-distribution
 // Returns job order counts grouped by status for pie chart
 router.get(
   "/job-status-distribution",
@@ -286,7 +286,7 @@ router.get(
   }
 );
 
-// ─── GET /api/dashboard/revenue-per-branch ───
+// GET /api/dashboard/revenue-per-branch
 // Returns total revenue per branch
 router.get(
   "/revenue-per-branch",
@@ -339,7 +339,7 @@ router.get(
   }
 );
 
-// ─── GET /api/dashboard/recent-orders ───
+// GET /api/dashboard/recent-orders
 // Returns recent job orders for the "Recent Orders" card
 router.get(
   "/recent-orders",
@@ -379,7 +379,7 @@ router.get(
   }
 );
 
-// ─── POST /api/dashboard/chat ───
+// POST /api/dashboard/chat
 // AI chatbot powered by Gemini — answers questions based on current dashboard data
 router.post(
   "/chat",

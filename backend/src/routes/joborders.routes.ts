@@ -1877,10 +1877,6 @@ router.delete(
   }
 );
 
-// ============================================================
-// NEW LIFECYCLE TRANSITIONS: start-work, mark-ready, complete
-// ============================================================
-
 /**
  * PATCH /api/job-orders/:id/start-work
  * Transition: approved -> in_progress

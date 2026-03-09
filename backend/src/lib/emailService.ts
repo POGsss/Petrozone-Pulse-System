@@ -1,15 +1,7 @@
 import nodemailer from "nodemailer";
 
-/**
- * Email service using Nodemailer with Gmail SMTP.
- *
- * Required env vars:
- *   SMTP_HOST      – e.g. "smtp.gmail.com"
- *   SMTP_PORT      – e.g. "587"
- *   SMTP_USER      – Gmail address (e.g. myapp@gmail.com)
- *   SMTP_PASS      – Gmail App Password (16-char)
- *   SMTP_FROM_NAME – Display name (e.g. "Petrozone Pulse")
- */
+// Email service using Nodemailer with Gmail SMTP.
+
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || "smtp.gmail.com",
@@ -54,10 +46,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<{ success: b
   }
 }
 
-/**
- * Verify SMTP connection on startup (optional).
- * Call this during app init to confirm credentials work.
- */
+// Verify SMTP connection on startup (optional).
 export async function verifyEmailService(): Promise<boolean> {
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
     console.warn("[EmailService] SMTP not configured — email service disabled");

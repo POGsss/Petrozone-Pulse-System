@@ -10,7 +10,7 @@ const router = Router();
 // All inventory routes require authentication
 router.use(requireAuth);
 
-// ─── helpers ───────────────────────────────────────────────────────────
+// Helpers
 
 /**
  * Compute on-hand quantity from the stock_movements ledger.
@@ -48,7 +48,7 @@ async function getOnHandSingle(itemId: string): Promise<number> {
   return map[itemId] ?? 0;
 }
 
-// ─── GET /api/inventory ────────────────────────────────────────────────
+// GET /api/inventory
 // List inventory items with computed on-hand quantity
 // Roles: HM, POC, JS, R (view — R needs read access for PO item selection)
 router.get(
@@ -133,7 +133,7 @@ router.get(
   }
 );
 
-// ─── GET /api/inventory/low-stock ──────────────────────────────────────
+// GET /api/inventory/low-stock
 // Low-stock items for dashboard indicator (FR-4)
 // Roles: HM, POC, JS, R, T (view)
 router.get(
@@ -177,7 +177,7 @@ router.get(
   }
 );
 
-// ─── GET /api/inventory/:id ────────────────────────────────────────────
+// GET /api/inventory/:id
 // Get a single inventory item with on-hand quantity
 // Roles: HM, POC, JS, R (R needs read access for PO item selection)
 router.get(
@@ -224,7 +224,7 @@ router.get(
   }
 );
 
-// ─── POST /api/inventory ──────────────────────────────────────────────
+// POST /api/inventory
 // Add inventory item (UC45)
 // Roles: HM, POC, JS
 router.post(
@@ -348,7 +348,7 @@ router.post(
   }
 );
 
-// ─── PUT /api/inventory/:id ───────────────────────────────────────────
+// PUT /api/inventory/:id
 // Update inventory item (UC47)
 // Roles: HM, POC, JS
 router.put(
@@ -518,7 +518,7 @@ router.put(
   }
 );
 
-// ─── DELETE /api/inventory/:id ────────────────────────────────────────
+// DELETE /api/inventory/:id
 // Soft-delete inventory item (UC48) — set status to inactive
 // Roles: HM, POC, JS
 router.delete(
@@ -598,7 +598,7 @@ router.delete(
   }
 );
 
-// ─── POST /api/inventory/:id/adjust ───────────────────────────────────
+// POST /api/inventory/:id/adjust
 // Manual inventory adjustment (HM, POC only)
 router.post(
   "/:id/adjust",
@@ -727,7 +727,7 @@ router.post(
   }
 );
 
-// ─── POST /api/inventory/:id/stock-in ─────────────────────────────────
+// POST /api/inventory/:id/stock-in
 // Add stock (stock-in) for an inventory item
 // Roles: HM, POC, JS
 router.post(
@@ -816,7 +816,7 @@ router.post(
   }
 );
 
-// ─── GET /api/inventory/:id/movements ─────────────────────────────────
+// GET /api/inventory/:id/movements
 // Get stock movement history for an item
 // Roles: HM, POC, JS
 router.get(
@@ -881,7 +881,7 @@ router.get(
   }
 );
 
-// ─── Exported helper for JO stock deduction ─────────────────────────
+// Exported helper for JO stock deduction
 /**
  * Deduct stock for a job order's items.
  * Called from the JO approval endpoint.

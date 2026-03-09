@@ -9,7 +9,7 @@ const router = Router();
 // All purchase-order routes require authentication
 router.use(requireAuth);
 
-// ─── GET /api/purchase-orders ──────────────────────────────────────────
+// GET /api/purchase-orders
 // List purchase orders — UC50
 // Roles: HM, POC, JS, R
 router.get(
