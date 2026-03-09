@@ -30,7 +30,7 @@ import type { StatCard, MobileCardAction, DesktopTableColumn } from "../../compo
 import { useAuth } from "../../auth";
 import type { Branch, Notification } from "../../types";
 
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 20;
 
 export function NotificationManagement() {
   const { user } = useAuth();

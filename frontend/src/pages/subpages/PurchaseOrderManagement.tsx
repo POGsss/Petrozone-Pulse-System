@@ -36,7 +36,7 @@ import {
 import type { StatCard, DesktopTableColumn } from "../../components";
 import type { PurchaseOrder, Branch, Supplier, SupplierProduct } from "../../types";
 
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 20;
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-US", {

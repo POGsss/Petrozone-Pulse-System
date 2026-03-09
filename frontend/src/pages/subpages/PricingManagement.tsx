@@ -30,7 +30,7 @@ import {
 import type { StatCard, MobileCardAction, DesktopTableColumn } from "../../components";
 import type { PricingMatrix, CatalogItem } from "../../types";
 
-const ITEMS_PER_PAGE = 5;
+const ITEMS_PER_PAGE = 20;
 
 const STATUS_OPTIONS = [
   { value: "active", label: "Active" },

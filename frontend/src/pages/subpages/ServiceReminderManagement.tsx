@@ -31,7 +31,7 @@ import type { StatCard, DesktopTableColumn } from "../../components";
 import { useAuth } from "../../auth";
 import type { Branch, Customer, Vehicle, ServiceReminder } from "../../types";
 
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 20;
 
 export function ServiceReminderManagement() {
   const { user } = useAuth();

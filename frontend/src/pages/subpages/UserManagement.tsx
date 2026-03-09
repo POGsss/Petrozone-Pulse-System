@@ -26,7 +26,7 @@ interface User extends UserProfile {
   branches: BranchAssignment[];
 }
 
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 20;
 
 export function UserManagement() {
   const { user: currentUser } = useAuth();

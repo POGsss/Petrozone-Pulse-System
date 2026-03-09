@@ -34,7 +34,7 @@ import {
 import type { StatCard, DesktopTableColumn } from "../../components";
 import type { InventoryItem, Branch, StockMovement } from "../../types";
 
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 20;
 
 const CATEGORY_PRESETS = [
   { value: "Oil & Lubricants", label: "Oil & Lubricants" },

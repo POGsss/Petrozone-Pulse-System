@@ -2141,7 +2141,7 @@ export function JobOrderManagement() {
                 <>
                   <div
                     className="bg-neutral-100 rounded-xl px-4 py-3 divide-y divide-neutral-200 cursor-pointer hover:bg-neutral-200/60 transition-colors"
-                    onClick={() => setShowHistoryModal(true)}
+                    onClick={() => { setShowHistoryModal(true); setShowViewModal(false); }}
                   >
                     {history.slice(0, 3).map((entry) => (
                       <div key={entry.id} className="py-2.5 first:pt-0 last:pb-0">

@@ -30,7 +30,7 @@ import {
 import type { StatCard, MobileCardAction, DesktopTableColumn } from "../../components";
 import type { Customer, Branch, Vehicle, JobOrder } from "../../types";
 
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 20;
 
 // Format date helper
 function formatDate(dateStr: string): string {
