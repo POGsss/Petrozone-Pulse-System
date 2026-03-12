@@ -105,6 +105,8 @@ export function CustomerManagement() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingCustomer, setDeletingCustomer] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
+  const [customerHasReferences, setCustomerHasReferences] = useState(false);
+  const [checkingReferences, setCheckingReferences] = useState(false);
 
   // Computed stats
   const stats = useMemo(() => {
@@ -351,23 +353,36 @@ export function CustomerManagement() {
   }
 
   // Delete customer
-  function openDeleteConfirmModal(customer: Customer) {
+  async function openDeleteConfirmModal(customer: Customer) {
     setCustomerToDelete(customer);
+    setCustomerHasReferences(false);
+    setCheckingReferences(true);
     setShowDeleteConfirm(true);
+    try {
+      const joRes = await jobOrdersApi.getAll({ customer_id: customer.id, limit: 1 });
+      setCustomerHasReferences((joRes.data?.length ?? 0) > 0);
+    } catch {
+      // Default to soft-delete label if check fails
+      setCustomerHasReferences(true);
+    } finally {
+      setCheckingReferences(false);
+    }
   }
 
   async function handleDeleteCustomer() {
     if (!customerToDelete) return;
     try {
       setDeletingCustomer(true);
-      await customersApi.delete(customerToDelete.id);
+      const result = await customersApi.delete(customerToDelete.id);
       setShowDeleteConfirm(false);
       setCustomerToDelete(null);
-      showToast.success("Customer deleted successfully");
+      const isDeactivated = result.message?.toLowerCase().includes("deactivated");
+      showToast.success(isDeactivated ? "Customer deactivated successfully" : "Customer deleted successfully");
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete customer");
-      showToast.error(err instanceof Error ? err.message : "Failed to delete customer");
+      const failMsg = customerHasReferences ? "Failed to deactivate customer" : "Failed to delete customer";
+      setError(err instanceof Error ? err.message : failMsg);
+      showToast.error(err instanceof Error ? err.message : failMsg);
     } finally {
       setDeletingCustomer(false);
     }
@@ -905,22 +920,28 @@ export function CustomerManagement() {
         </form>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete / Deactivate Confirmation Modal */}
       <Modal
         isOpen={showDeleteConfirm && !!customerToDelete}
         onClose={() => setShowDeleteConfirm(false)}
-        title="Delete Customer"
+        title={customerHasReferences ? "Deactivate Customer" : "Delete Customer"}
         maxWidth="sm"
       >
         {customerToDelete && (
           <div>
             <div className="bg-neutral-100 rounded-xl p-4 my-4">
               <p className="text-neutral-900">
-                Are you sure you want to delete <strong className="text-neutral-950">{customerToDelete.full_name}</strong>?
+                {customerHasReferences
+                  ? <>Are you sure you want to deactivate <strong className="text-neutral-950">{customerToDelete.full_name}</strong>?</>
+                  : <>Are you sure you want to delete <strong className="text-neutral-950">{customerToDelete.full_name}</strong>?</>
+                }
               </p>
             </div>
             <p className="text-sm text-neutral-900 mb-2">
-              This action cannot be undone. All customer data will be permanently removed.
+              {customerHasReferences
+                ? "This customer has existing job orders and will be set to inactive instead of deleted."
+                : "This action cannot be undone. All customer data will be permanently removed."
+              }
             </p>
 
             <div className="flex gap-3 mt-6">
@@ -934,10 +955,15 @@ export function CustomerManagement() {
               <button
                 type="button"
                 onClick={handleDeleteCustomer}
-                disabled={deletingCustomer}
+                disabled={deletingCustomer || checkingReferences}
                 className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {deletingCustomer ? "Deleting..." : "Delete"}
+                {checkingReferences
+                  ? "Checking..."
+                  : deletingCustomer
+                    ? (customerHasReferences ? "Deactivating..." : "Deleting...")
+                    : (customerHasReferences ? "Deactivate" : "Delete")
+                }
               </button>
             </div>
           </div>
