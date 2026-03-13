@@ -10,7 +10,34 @@ const router = Router();
 // All inventory routes require authentication
 router.use(requireAuth);
 
+const MAX_ITEM_NAME_LENGTH = 100;
+const ITEM_NAME_REGEX = /^[A-Za-z0-9 ]+$/;
+
 // Helpers
+
+function normalizeAndValidateItemName(rawName: unknown): { valid: boolean; value?: string; error?: string } {
+  const itemName = typeof rawName === "string" ? rawName.trim() : "";
+
+  if (!itemName) {
+    return { valid: false, error: "Item name is required" };
+  }
+
+  if (itemName.length > MAX_ITEM_NAME_LENGTH) {
+    return {
+      valid: false,
+      error: `Item name must be at most ${MAX_ITEM_NAME_LENGTH} characters`,
+    };
+  }
+
+  if (!ITEM_NAME_REGEX.test(itemName)) {
+    return {
+      valid: false,
+      error: "Item name can only contain letters, numbers, and spaces",
+    };
+  }
+
+  return { valid: true, value: itemName };
+}
 
 /**
  * Compute on-hand quantity from the stock_movements ledger.
@@ -244,10 +271,12 @@ router.post(
       } = req.body;
 
       // Validation
-      if (!item_name?.trim()) {
-        res.status(400).json({ error: "Item name is required" });
+      const validatedName = normalizeAndValidateItemName(item_name);
+      if (!validatedName.valid) {
+        res.status(400).json({ error: validatedName.error });
         return;
       }
+      const normalizedItemName = validatedName.value as string;
       if (!sku_code?.trim()) {
         res.status(400).json({ error: "SKU code is required" });
         return;
@@ -267,6 +296,13 @@ router.post(
       if (!branch_id) {
         res.status(400).json({ error: "Branch is required" });
         return;
+      }
+      if (initial_stock !== undefined && initial_stock !== null) {
+        const initialStockNumber = parseInt(initial_stock, 10);
+        if (isNaN(initialStockNumber) || initialStockNumber < 0) {
+          res.status(400).json({ error: "Initial stock must be a non-negative integer" });
+          return;
+        }
       }
 
       // Branch access check
@@ -294,12 +330,19 @@ router.post(
       const { data: item, error } = await supabaseAdmin
         .from("inventory_items")
         .insert({
-          item_name: item_name.trim(),
+          item_name: normalizedItemName,
           sku_code: sku_code.trim().toUpperCase(),
           category: category.trim(),
           unit_of_measure: unit_of_measure.trim(),
           cost_price: parseFloat(cost_price),
           reorder_threshold: parseInt(reorder_threshold) || 0,
+          status: "draft",
+          approval_status: "DRAFT",
+          approval_requested_at: null,
+          approved_at: null,
+          approved_by: null,
+          rejection_reason: null,
+          initial_stock_pending: Math.max(0, parseInt(initial_stock, 10) || 0),
           branch_id,
           created_by: req.user!.id,
         })
@@ -311,20 +354,8 @@ router.post(
         return;
       }
 
-      // If initial stock provided, create a stock_in movement
-      let current_quantity = 0;
-      if (initial_stock && parseInt(initial_stock) > 0) {
-        await supabaseAdmin.from("stock_movements").insert({
-          inventory_item_id: item.id,
-          movement_type: "stock_in",
-          quantity: parseInt(initial_stock),
-          reference_type: "purchase_order",
-          reason: "Initial stock",
-          branch_id,
-          created_by: req.user!.id,
-        });
-        current_quantity = parseInt(initial_stock);
-      }
+      // Initial stock is deferred and only posted as stock movement when approved.
+      const current_quantity = 0;
 
       // Fix audit log user_id (trigger may set it from created_by)
       await fixAuditLogUser("INVENTORY_ITEM", item.id, "CREATE", req.user!.id, req.user!.branchIds[0] || null);
@@ -395,11 +426,12 @@ router.put(
       const updateData: Record<string, unknown> = {};
 
       if (item_name !== undefined) {
-        if (!item_name.trim()) {
-          res.status(400).json({ error: "Item name cannot be empty" });
+        const validatedName = normalizeAndValidateItemName(item_name);
+        if (!validatedName.valid) {
+          res.status(400).json({ error: validatedName.error });
           return;
         }
-        updateData.item_name = item_name.trim();
+        updateData.item_name = validatedName.value;
       }
 
       if (sku_code !== undefined) {
@@ -462,6 +494,12 @@ router.put(
           res.status(400).json({ error: 'Status must be "active" or "inactive"' });
           return;
         }
+        if (!["active", "inactive"].includes(existing.status)) {
+          res.status(400).json({
+            error: `Status for ${existing.status} items must be changed using approval actions.`,
+          });
+          return;
+        }
         updateData.status = status;
       }
 
@@ -518,8 +556,254 @@ router.put(
   }
 );
 
+// PATCH /api/inventory/:id/request-approval
+// Submit draft/rejected item for HM/POC approval
+// Roles: HM, POC, JS
+router.patch(
+  "/:id/request-approval",
+  requireRoles("HM", "POC", "JS"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const itemId = req.params.id as string;
+
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("inventory_items")
+        .select("id, branch_id, status, item_name")
+        .eq("id", itemId)
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === "PGRST116") {
+          res.status(404).json({ error: "Inventory item not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError.message });
+        return;
+      }
+
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(existing.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this branch" });
+        return;
+      }
+
+      if (!["draft", "rejected"].includes(existing.status)) {
+        res.status(400).json({
+          error: `Cannot request approval for item with status "${existing.status}".`,
+        });
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const { error: updateError } = await supabaseAdmin
+        .from("inventory_items")
+        .update({
+          status: "pending_approval",
+          approval_status: "REQUESTED",
+          approval_requested_at: now,
+          rejection_reason: null,
+        })
+        .eq("id", itemId);
+
+      if (updateError) {
+        res.status(500).json({ error: updateError.message });
+        return;
+      }
+
+      const { data: updated, error: refetchError } = await supabaseAdmin
+        .from("inventory_items")
+        .select("*, branches(id, name, code)")
+        .eq("id", itemId)
+        .single();
+
+      if (refetchError) {
+        res.status(500).json({ error: refetchError.message });
+        return;
+      }
+
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "APPROVAL_REQUESTED",
+          p_entity_type: "INVENTORY_ITEM",
+          p_entity_id: itemId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: {
+            item_name: existing.item_name,
+            status: "pending_approval",
+            approval_status: "REQUESTED",
+            approval_requested_at: now,
+          },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      const current_quantity = await getOnHandSingle(itemId);
+      res.json({
+        ...updated,
+        current_quantity,
+        is_low_stock: current_quantity <= updated.reorder_threshold,
+      });
+    } catch (error) {
+      console.error("Request inventory approval error:", error);
+      await logFailedAction(
+        req,
+        "APPROVAL_REQUESTED",
+        "INVENTORY_ITEM",
+        (req.params.id as string) || null,
+        error instanceof Error ? error.message : "Failed to request inventory approval"
+      );
+      res.status(500).json({ error: "Failed to request approval" });
+    }
+  }
+);
+
+// PATCH /api/inventory/:id/record-approval
+// Record HM/POC approval decision for draft/rejected/pending item
+// Roles: HM, POC
+router.patch(
+  "/:id/record-approval",
+  requireRoles("HM", "POC"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const itemId = req.params.id as string;
+      const { decision, rejection_reason } = req.body;
+
+      if (!decision || !["approved", "rejected"].includes(decision)) {
+        res.status(400).json({ error: 'Decision must be either "approved" or "rejected"' });
+        return;
+      }
+
+      if (decision === "rejected" && (!rejection_reason || !rejection_reason.trim())) {
+        res.status(400).json({ error: "Provide rejection reason." });
+        return;
+      }
+
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("inventory_items")
+        .select("id, branch_id, status, item_name, initial_stock_pending")
+        .eq("id", itemId)
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === "PGRST116") {
+          res.status(404).json({ error: "Inventory item not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError.message });
+        return;
+      }
+
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(existing.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this branch" });
+        return;
+      }
+
+      if (!["draft", "rejected", "pending_approval"].includes(existing.status)) {
+        res.status(400).json({
+          error: `Cannot record approval for status "${existing.status}". Only draft, rejected, or pending_approval is allowed.`,
+        });
+        return;
+      }
+
+      const now = new Date().toISOString();
+
+      const updatePayload: Database["public"]["Tables"]["inventory_items"]["Update"] = {
+        status: decision === "approved" ? "active" : "rejected",
+        approval_status: decision === "approved" ? "APPROVED" : "REJECTED",
+        approved_at: now,
+        approved_by: req.user!.id,
+        rejection_reason: decision === "rejected" ? rejection_reason.trim() : null,
+      };
+
+      if (decision === "approved") {
+        updatePayload.initial_stock_pending = 0;
+      }
+
+      const { error: updateError } = await supabaseAdmin
+        .from("inventory_items")
+        .update(updatePayload)
+        .eq("id", itemId);
+
+      if (updateError) {
+        res.status(500).json({ error: updateError.message });
+        return;
+      }
+
+      if (decision === "approved" && (existing.initial_stock_pending ?? 0) > 0) {
+        const { error: moveError } = await supabaseAdmin.from("stock_movements").insert({
+          inventory_item_id: itemId,
+          movement_type: "stock_in",
+          quantity: existing.initial_stock_pending,
+          reference_type: "adjustment",
+          reason: "Initial stock (approved)",
+          branch_id: existing.branch_id,
+          created_by: req.user!.id,
+        });
+
+        if (moveError) {
+          res.status(500).json({ error: moveError.message });
+          return;
+        }
+      }
+
+      const { data: updated, error: refetchError } = await supabaseAdmin
+        .from("inventory_items")
+        .select("*, branches(id, name, code)")
+        .eq("id", itemId)
+        .single();
+
+      if (refetchError) {
+        res.status(500).json({ error: refetchError.message });
+        return;
+      }
+
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "APPROVAL_RECORDED",
+          p_entity_type: "INVENTORY_ITEM",
+          p_entity_id: itemId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: {
+            item_name: existing.item_name,
+            status: decision === "approved" ? "active" : "rejected",
+            approval_status: decision === "approved" ? "APPROVED" : "REJECTED",
+            rejection_reason: decision === "rejected" ? rejection_reason.trim() : null,
+          },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      const current_quantity = await getOnHandSingle(itemId);
+      res.json({
+        ...updated,
+        current_quantity,
+        is_low_stock: current_quantity <= updated.reorder_threshold,
+      });
+    } catch (error) {
+      console.error("Record inventory approval error:", error);
+      await logFailedAction(
+        req,
+        "APPROVAL_RECORDED",
+        "INVENTORY_ITEM",
+        (req.params.id as string) || null,
+        error instanceof Error ? error.message : "Failed to record inventory approval"
+      );
+      res.status(500).json({ error: "Failed to record approval" });
+    }
+  }
+);
+
 // DELETE /api/inventory/:id
-// Soft-delete inventory item (UC48) — set status to inactive
+// Hard-delete if no references, soft-delete (deactivate) if referenced
 // Roles: HM, POC, JS
 router.delete(
   "/:id",
@@ -552,38 +836,100 @@ router.delete(
         return;
       }
 
-      // Soft delete: set status to inactive
-      const { error: updateError } = await supabaseAdmin
-        .from("inventory_items")
-        .update({ status: "inactive" as "active" | "inactive" })
-        .eq("id", itemId);
+      // Check references in job_order_item_inventories, purchase_order_items, stock_movements
+      const { count: joiiCount } = await supabaseAdmin
+        .from("job_order_item_inventories")
+        .select("id", { count: "exact", head: true })
+        .eq("inventory_item_id", itemId);
 
-      if (updateError) {
-        res.status(500).json({ error: updateError.message });
-        return;
-      }
+      const { count: poiCount } = await supabaseAdmin
+        .from("purchase_order_items")
+        .select("id", { count: "exact", head: true })
+        .eq("inventory_item_id", itemId);
 
-      // Audit log
-      try {
-        await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "DELETE",
-          p_entity_type: "INVENTORY_ITEM",
-          p_entity_id: itemId,
-          p_performed_by_user_id: req.user!.id,
-          p_performed_by_branch_id: req.user!.branchIds[0] || null,
-          p_new_values: {
-            item_name: existing.item_name,
-            sku_code: existing.sku_code,
-            status: "inactive",
-          },
+      const { count: smCount } = await supabaseAdmin
+        .from("stock_movements")
+        .select("id", { count: "exact", head: true })
+        .eq("inventory_item_id", itemId);
+
+      const hasReferences = ((joiiCount ?? 0) + (poiCount ?? 0) + (smCount ?? 0)) > 0;
+
+      if (hasReferences) {
+        // Soft delete: set status to inactive
+        const { error: updateError } = await supabaseAdmin
+          .from("inventory_items")
+          .update({ status: "inactive" })
+          .eq("id", itemId);
+
+        if (updateError) {
+          res.status(500).json({ error: updateError.message });
+          return;
+        }
+
+        try {
+          await supabaseAdmin.rpc("log_admin_action", {
+            p_action: "UPDATE",
+            p_entity_type: "INVENTORY_ITEM",
+            p_entity_id: itemId,
+            p_performed_by_user_id: req.user!.id,
+            p_performed_by_branch_id: req.user!.branchIds[0] || null,
+            p_new_values: {
+              item_name: existing.item_name,
+              sku_code: existing.sku_code,
+              status: "inactive",
+              reason: "soft_delete",
+            },
+          });
+        } catch (auditErr) {
+          console.error("Audit log error:", auditErr);
+        }
+
+        res.json({
+          message: `Inventory item "${existing.item_name}" deactivated (referenced by other records)`,
         });
-      } catch (auditErr) {
-        console.error("Audit log error:", auditErr);
-      }
+      } else {
+        // Hard delete: remove links first, then the item
+        await supabaseAdmin
+          .from("catalog_inventory_links")
+          .delete()
+          .eq("inventory_item_id", itemId);
 
-      res.json({
-        message: `Inventory item "${existing.item_name}" has been deactivated`,
-      });
+        await supabaseAdmin
+          .from("supplier_products")
+          .delete()
+          .eq("inventory_item_id", itemId);
+
+        const { error: deleteError } = await supabaseAdmin
+          .from("inventory_items")
+          .delete()
+          .eq("id", itemId);
+
+        if (deleteError) {
+          res.status(500).json({ error: deleteError.message });
+          return;
+        }
+
+        try {
+          await supabaseAdmin.rpc("log_admin_action", {
+            p_action: "DELETE",
+            p_entity_type: "INVENTORY_ITEM",
+            p_entity_id: itemId,
+            p_performed_by_user_id: req.user!.id,
+            p_performed_by_branch_id: req.user!.branchIds[0] || null,
+            p_new_values: {
+              item_name: existing.item_name,
+              sku_code: existing.sku_code,
+              deleted: true,
+            },
+          });
+        } catch (auditErr) {
+          console.error("Audit log error:", auditErr);
+        }
+
+        res.json({
+          message: `Inventory item "${existing.item_name}" deleted permanently`,
+        });
+      }
     } catch (error) {
       console.error("Delete inventory item error:", error);
       await logFailedAction(
@@ -644,6 +990,11 @@ router.post(
         !req.user!.branchIds.includes(item.branch_id)
       ) {
         res.status(403).json({ error: "No access to this branch" });
+        return;
+      }
+
+      if (item.status !== "active") {
+        res.status(400).json({ error: "Only active inventory items can be adjusted." });
         return;
       }
 
@@ -763,6 +1114,11 @@ router.post(
         !req.user!.branchIds.includes(item.branch_id)
       ) {
         res.status(403).json({ error: "No access to this branch" });
+        return;
+      }
+
+      if (item.status !== "active") {
+        res.status(400).json({ error: "Only active inventory items can receive stock-in." });
         return;
       }
 

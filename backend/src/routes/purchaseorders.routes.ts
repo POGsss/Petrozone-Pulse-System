@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
@@ -10,7 +10,7 @@ const router = Router();
 router.use(requireAuth);
 
 // GET /api/purchase-orders
-// List purchase orders — UC50
+// List purchase orders � UC50
 // Roles: HM, POC, JS, R
 router.get(
   "/",
@@ -28,7 +28,7 @@ router.get(
       let query = supabaseAdmin
         .from("purchase_orders")
         .select("*, suppliers(id, supplier_name), branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))", { count: "exact" })
-        .eq("is_deleted", false)
+        .neq("status", "deactivated")
         .order("created_at", { ascending: false });
 
       // Branch scoping
@@ -70,8 +70,8 @@ router.get(
   }
 );
 
-// ─── GET /api/purchase-orders/:id ──────────────────────────────────────
-// Get single PO with items — UC50
+// --- GET /api/purchase-orders/:id --------------------------------------
+// Get single PO with items � UC50
 router.get(
   "/:id",
   requireRoles("HM", "POC", "JS", "R"),
@@ -82,7 +82,7 @@ router.get(
         .from("purchase_orders")
         .select("*, suppliers(id, supplier_name), branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure, cost_price))")
         .eq("id", poId)
-        .eq("is_deleted", false)
+        .neq("status", "deactivated")
         .single();
 
       if (error) {
@@ -111,8 +111,8 @@ router.get(
   }
 );
 
-// ─── POST /api/purchase-orders ─────────────────────────────────────────
-// Create PO — UC49
+// --- POST /api/purchase-orders -----------------------------------------
+// Create PO � UC49
 // Roles: HM, POC, JS, R
 router.post(
   "/",
@@ -292,8 +292,8 @@ router.post(
   }
 );
 
-// ─── PUT /api/purchase-orders/:id ──────────────────────────────────────
-// Update PO — UC51 (only draft/submitted can be edited)
+// --- PUT /api/purchase-orders/:id --------------------------------------
+// Update PO � UC51 (only draft/submitted can be edited)
 // Roles: HM, POC, JS, R
 router.put(
   "/:id",
@@ -315,7 +315,7 @@ router.put(
         .from("purchase_orders")
         .select("*")
         .eq("id", poId)
-        .eq("is_deleted", false)
+        .neq("status", "deactivated")
         .single();
 
       if (fetchError) {
@@ -433,7 +433,7 @@ router.put(
       const headerChanges = filterUnchangedFields(updateData, existing);
 
       if (Object.keys(headerChanges).length === 0 && !itemsChanged) {
-        // No real changes — return existing data without triggering an update
+        // No real changes � return existing data without triggering an update
         const { data: currentPO } = await supabaseAdmin
           .from("purchase_orders")
           .select("*, suppliers(id, supplier_name), branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))")
@@ -491,8 +491,8 @@ router.put(
   }
 );
 
-// ─── PATCH /api/purchase-orders/:id/submit ─────────────────────────────
-// Transition PO from draft → submitted
+// --- PATCH /api/purchase-orders/:id/submit -----------------------------
+// Transition PO from draft ? submitted
 router.patch(
   "/:id/submit",
   requireRoles("HM", "POC", "JS", "R"),
@@ -504,7 +504,7 @@ router.patch(
         .from("purchase_orders")
         .select("*")
         .eq("id", poId)
-        .eq("is_deleted", false)
+        .neq("status", "deactivated")
         .single();
 
       if (fetchError) {
@@ -567,8 +567,8 @@ router.patch(
   }
 );
 
-// ─── PATCH /api/purchase-orders/:id/approve ────────────────────────────
-// Approve PO — submitted → approved (locks from editing)
+// --- PATCH /api/purchase-orders/:id/approve ----------------------------
+// Approve PO � submitted ? approved (locks from editing)
 // Roles: HM, POC
 router.patch(
   "/:id/approve",
@@ -581,7 +581,7 @@ router.patch(
         .from("purchase_orders")
         .select("*")
         .eq("id", poId)
-        .eq("is_deleted", false)
+        .neq("status", "deactivated")
         .single();
 
       if (fetchError) {
@@ -644,8 +644,8 @@ router.patch(
   }
 );
 
-// ─── PATCH /api/purchase-orders/:id/receive ────────────────────────────
-// Receive PO — stock-in logic (FR-6 stock-in rules)
+// --- PATCH /api/purchase-orders/:id/receive ----------------------------
+// Receive PO � stock-in logic (FR-6 stock-in rules)
 // Atomically increases on-hand quantity for each item
 router.patch(
   "/:id/receive",
@@ -659,7 +659,7 @@ router.patch(
         .from("purchase_orders")
         .select("*, purchase_order_items(*, inventory_items(id, item_name, reorder_threshold, branch_id))")
         .eq("id", poId)
-        .eq("is_deleted", false)
+        .neq("status", "deactivated")
         .single();
 
       if (fetchError) {
@@ -808,7 +808,7 @@ router.patch(
   }
 );
 
-// ─── PATCH /api/purchase-orders/:id/cancel ─────────────────────────────
+// --- PATCH /api/purchase-orders/:id/cancel -----------------------------
 // Cancel a PO (draft or submitted only)
 router.patch(
   "/:id/cancel",
@@ -821,7 +821,7 @@ router.patch(
         .from("purchase_orders")
         .select("*")
         .eq("id", poId)
-        .eq("is_deleted", false)
+        .neq("status", "deactivated")
         .single();
 
       if (fetchError) {
@@ -880,8 +880,8 @@ router.patch(
   }
 );
 
-// ─── DELETE /api/purchase-orders/:id ───────────────────────────────────
-// Soft-delete PO — UC52
+// --- DELETE /api/purchase-orders/:id -----------------------------------
+// Hard delete if draft, deactivate otherwise
 // Roles: HM, POC, JS, R
 router.delete(
   "/:id",
@@ -894,7 +894,7 @@ router.delete(
         .from("purchase_orders")
         .select("id, po_number, branch_id, status")
         .eq("id", poId)
-        .eq("is_deleted", false)
+        .neq("status", "deactivated")
         .single();
 
       if (fetchError) {
@@ -915,19 +915,52 @@ router.delete(
         return;
       }
 
-      // Only draft, submitted, and cancelled POs can be deleted
-      if (!["draft", "submitted", "cancelled"].includes(po.status)) {
-        res.status(400).json({
-          error: `Cannot delete a purchase order with status "${po.status}". Only draft, submitted, or cancelled POs can be deleted.`,
-        });
+      // Hard delete: if status is "draft"
+      if (po.status === "draft") {
+        // Delete PO items first
+        await supabaseAdmin
+          .from("purchase_order_items")
+          .delete()
+          .eq("purchase_order_id", poId);
+
+        // Delete the PO itself
+        const { error: deleteError } = await supabaseAdmin
+          .from("purchase_orders")
+          .delete()
+          .eq("id", poId);
+
+        if (deleteError) {
+          res.status(500).json({ error: deleteError.message });
+          return;
+        }
+
+        // Audit
+        try {
+          await supabaseAdmin.rpc("log_admin_action", {
+            p_action: "DELETE",
+            p_entity_type: "PURCHASE_ORDER",
+            p_entity_id: poId,
+            p_performed_by_user_id: req.user!.id,
+            p_performed_by_branch_id: req.user!.branchIds[0] || null,
+            p_new_values: {
+              po_number: po.po_number,
+              type: "hard_delete",
+              deleted_by: req.user!.id,
+              deleted_at: new Date().toISOString(),
+            },
+          });
+        } catch (auditErr) {
+          console.error("Audit log error:", auditErr);
+        }
+
+        res.json({ message: `Purchase order "${po.po_number}" deleted permanently` });
         return;
       }
 
-
-      // Soft delete
+      // Deactivate: PO has progressed beyond "draft"
       const { error: updateError } = await supabaseAdmin
         .from("purchase_orders")
-        .update({ is_deleted: true, status: "cancelled" })
+        .update({ status: "deactivated" as any })
         .eq("id", poId);
 
       if (updateError) {
@@ -938,22 +971,24 @@ router.delete(
       // Audit
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "DELETE",
+          p_action: "PO_DEACTIVATED",
           p_entity_type: "PURCHASE_ORDER",
           p_entity_id: poId,
           p_performed_by_user_id: req.user!.id,
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
           p_new_values: {
             po_number: po.po_number,
-            status: "cancelled",
-            is_deleted: true,
+            status: "deactivated",
+            type: "deactivation",
+            deactivated_by: req.user!.id,
+            deactivated_at: new Date().toISOString(),
           },
         });
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);
       }
 
-      res.json({ message: `Purchase order "${po.po_number}" has been deleted` });
+      res.json({ message: `Purchase order "${po.po_number}" deactivated (has progressed beyond draft)` });
     } catch (error) {
       console.error("Delete purchase order error:", error);
       await logFailedAction(

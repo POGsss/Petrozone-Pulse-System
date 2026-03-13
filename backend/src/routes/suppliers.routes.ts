@@ -402,7 +402,7 @@ router.delete(
         .from("purchase_orders")
         .select("id")
         .eq("supplier_id", supplierId)
-        .eq("is_deleted", false)
+        .neq("status", "deactivated")
         .limit(1);
 
       // Check if supplier has linked supplier products

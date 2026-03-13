@@ -704,6 +704,12 @@ export const jobOrdersApi = {
     });
   },
 
+  restore: async (id: string) => {
+    return fetchWithAuth<{ message: string }>(`/api/job-orders/${id}/restore`, {
+      method: "PATCH",
+    });
+  },
+
   requestApproval: async (id: string) => {
     return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/request-approval`, {
       method: "PATCH",
@@ -974,6 +980,22 @@ export const inventoryApi = {
       is_low_stock: boolean;
     }>(`/api/inventory/${id}/stock-in`, {
       method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  requestApproval: async (id: string) => {
+    return fetchWithAuth<import("../types").InventoryItem>(`/api/inventory/${id}/request-approval`, {
+      method: "PATCH",
+    });
+  },
+
+  recordApproval: async (
+    id: string,
+    data: { decision: "approved" | "rejected"; rejection_reason?: string }
+  ) => {
+    return fetchWithAuth<import("../types").InventoryItem>(`/api/inventory/${id}/record-approval`, {
+      method: "PATCH",
       body: JSON.stringify(data),
     });
   },
@@ -1283,6 +1305,8 @@ export const notificationsApi = {
     target_type: string;
     target_value: string;
     branch_id: string;
+    status?: string;
+    scheduled_at?: string | null;
   }) => {
     return fetchWithAuth<import("../types").Notification>("/api/notifications", {
       method: "POST",
@@ -1298,6 +1322,7 @@ export const notificationsApi = {
       target_type?: string;
       target_value?: string;
       status?: string;
+      scheduled_at?: string | null;
     }
   ) => {
     return fetchWithAuth<import("../types").Notification>(`/api/notifications/${id}`, {
@@ -1306,10 +1331,17 @@ export const notificationsApi = {
     });
   },
 
-  delete: async (id: string, hard?: boolean) => {
+  delete: async (id: string) => {
     return fetchWithAuth<{ message: string }>(
-      `/api/notifications/${id}${hard ? "?hard=true" : ""}`,
+      `/api/notifications/${id}`,
       { method: "DELETE" }
+    );
+  },
+
+  send: async (id: string) => {
+    return fetchWithAuth<{ message: string }>(
+      `/api/notifications/${id}/send`,
+      { method: "POST" }
     );
   },
 
@@ -1521,6 +1553,16 @@ export const staffPerformanceApi = {
 
   getById: async (id: string) => {
     return fetchWithAuth<import("../types").StaffPerformance>(`/api/staff-performance/${id}`);
+  },
+
+  recompute: async (data?: { branch_id?: string; period_start?: string; period_end?: string }) => {
+    return fetchWithAuth<{ message: string; inserted: number; period_start: string; period_end: string }>(
+      "/api/staff-performance/recompute",
+      {
+        method: "POST",
+        body: JSON.stringify(data || {}),
+      }
+    );
   },
 };
 

@@ -9,6 +9,9 @@ const router = Router();
 // All notification routes require authentication
 router.use(requireAuth);
 
+// Track scheduled notification timers so they can be cancelled on reschedule/delete
+const scheduledTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
 // Helper: create notification receipts for targeted users
 async function createReceipts(notificationId: string, targetType: string, targetValue: string, branchId: string): Promise<void> {
   let userIds: string[] = [];
@@ -274,7 +277,7 @@ router.post(
   requireRoles("HM", "POC", "JS"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { title, message, target_type, target_value, branch_id } = req.body;
+      const { title, message, target_type, target_value, branch_id, scheduled_at } = req.body;
 
       // Validation
       if (!title || !title.trim()) {
@@ -307,6 +310,10 @@ router.post(
         return;
       }
 
+      // Determine status: scheduled_at provided → "scheduled", otherwise → "draft"
+      const scheduledAtValue = scheduled_at ? new Date(scheduled_at).toISOString() : null;
+      const effectiveStatus = scheduledAtValue ? "scheduled" : "draft";
+
       // Create notification
       const { data: notification, error } = await supabaseAdmin
         .from("notifications")
@@ -315,10 +322,11 @@ router.post(
           message: message.trim(),
           target_type,
           target_value: target_value.trim(),
-          status: "active",
+          status: effectiveStatus,
           notification_type: "manual",
           branch_id,
           created_by: req.user!.id,
+          scheduled_at: scheduledAtValue,
         })
         .select(`*, branches(id, name, code)`)
         .single();
@@ -332,8 +340,34 @@ router.post(
       // Fix audit log user
       await fixAuditLogUser("NOTIFICATION", notification.id, "CREATE", req.user!.id, req.user!.branchIds[0]);
 
-      // Create receipts for targeted users
-      await createReceipts(notification.id, target_type, target_value, branch_id);
+      // If scheduled, set a timer to auto-send when the time arrives
+      if (scheduledAtValue) {
+        const delayMs = new Date(scheduledAtValue).getTime() - Date.now();
+        if (delayMs > 0) {
+          const timer = setTimeout(async () => {
+            scheduledTimers.delete(notification.id);
+            try {
+              // Check if still in "scheduled" status (not manually sent or deleted)
+              const { data: current } = await supabaseAdmin
+                .from("notifications")
+                .select("status")
+                .eq("id", notification.id)
+                .single();
+
+              if (current?.status === "scheduled") {
+                await supabaseAdmin
+                  .from("notifications")
+                  .update({ status: "active" })
+                  .eq("id", notification.id);
+                await createReceipts(notification.id, target_type, target_value, branch_id);
+              }
+            } catch (err) {
+              console.error(`Scheduled notification ${notification.id} delivery failed:`, err);
+            }
+          }, delayMs);
+          scheduledTimers.set(notification.id, timer);
+        }
+      }
 
       res.status(201).json(notification);
     } catch (error) {
@@ -354,7 +388,7 @@ router.put(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const notificationId = req.params.id as string;
-      const { title, message, target_type, target_value, status } = req.body;
+      const { title, message, target_type, target_value, status, scheduled_at } = req.body;
 
       // Fetch existing
       const { data: existing, error: fetchError } = await supabaseAdmin
@@ -394,11 +428,26 @@ router.put(
       }
       if (target_value !== undefined) updateData.target_value = target_value.trim();
       if (status !== undefined) {
-        if (!["active", "inactive"].includes(status)) {
-          res.status(400).json({ error: "Status must be 'active' or 'inactive'" });
+        if (!["draft", "scheduled", "active", "inactive"].includes(status)) {
+          res.status(400).json({ error: "Status must be 'draft', 'scheduled', 'active', or 'inactive'" });
           return;
         }
         updateData.status = status;
+      }
+      if (scheduled_at !== undefined) {
+        // Only allow schedule changes for draft/scheduled notifications
+        if (!["draft", "scheduled"].includes(existing.status)) {
+          res.status(400).json({ error: "Schedule can only be changed for draft or scheduled notifications" });
+          return;
+        }
+        const newScheduledAt = scheduled_at ? new Date(scheduled_at).toISOString() : null;
+        updateData.scheduled_at = newScheduledAt;
+        // Auto-update status based on schedule
+        if (newScheduledAt && !updateData.status) {
+          updateData.status = "scheduled";
+        } else if (!newScheduledAt && !updateData.status) {
+          updateData.status = "draft";
+        }
       }
 
       if (Object.keys(updateData).length === 0) {
@@ -419,6 +468,44 @@ router.put(
         return;
       }
 
+      // If schedule was changed, cancel old timer and set new one
+      if (scheduled_at !== undefined) {
+        // Cancel any existing timer
+        const existingTimer = scheduledTimers.get(notificationId);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+          scheduledTimers.delete(notificationId);
+        }
+
+        const newScheduledAt = updated.scheduled_at;
+        if (newScheduledAt && updated.status === "scheduled") {
+          const delayMs = new Date(newScheduledAt).getTime() - Date.now();
+          if (delayMs > 0) {
+            const timer = setTimeout(async () => {
+              scheduledTimers.delete(notificationId);
+              try {
+                const { data: current } = await supabaseAdmin
+                  .from("notifications")
+                  .select("*, branches(id, name, code)")
+                  .eq("id", notificationId)
+                  .single();
+
+                if (current?.status === "scheduled") {
+                  await supabaseAdmin
+                    .from("notifications")
+                    .update({ status: "active" })
+                    .eq("id", notificationId);
+                  await createReceipts(notificationId, current.target_type, current.target_value, current.branch_id);
+                }
+              } catch (err) {
+                console.error(`Rescheduled notification ${notificationId} delivery failed:`, err);
+              }
+            }, delayMs);
+            scheduledTimers.set(notificationId, timer);
+          }
+        }
+      }
+
       await fixAuditLogUser("NOTIFICATION", notificationId, "UPDATE", req.user!.id, req.user!.branchIds[0]);
 
       res.json(updated);
@@ -431,7 +518,7 @@ router.put(
 
 /**
  * DELETE /api/notifications/:id
- * Soft delete (set status to inactive). Only creator can hard delete.
+ * Draft/scheduled → hard delete. Active/inactive → deactivate (set inactive).
  * Roles: HM, POC, JS
  */
 router.delete(
@@ -440,7 +527,6 @@ router.delete(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const notificationId = req.params.id as string;
-      const { hard } = req.query;
 
       // Fetch existing
       const { data: existing, error: fetchError } = await supabaseAdmin
@@ -467,12 +553,20 @@ router.delete(
         return;
       }
 
-      if (hard === "true") {
-        // Hard delete – only the creator can do this
-        if (existing.created_by !== req.user!.id && !req.user!.roles.includes("HM")) {
-          res.status(403).json({ error: "Only the creator or HM can hard delete a notification" });
-          return;
+      if (["draft", "scheduled"].includes(existing.status)) {
+        // Cancel any scheduled timer
+        const existingTimer = scheduledTimers.get(notificationId);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+          scheduledTimers.delete(notificationId);
         }
+
+        // Hard delete – notification hasn't been sent yet
+        // Delete any receipts first (shouldn't exist but just in case)
+        await supabaseAdmin
+          .from("notification_receipts")
+          .delete()
+          .eq("notification_id", notificationId);
 
         const { error: deleteError } = await supabaseAdmin
           .from("notifications")
@@ -485,7 +579,6 @@ router.delete(
           return;
         }
 
-        // Audit log for hard delete
         try {
           await supabaseAdmin.rpc("log_admin_action", {
             p_action: "HARD_DELETE",
@@ -499,15 +592,13 @@ router.delete(
           console.error("Audit log error:", auditErr);
         }
 
-        res.json({ message: "Notification permanently deleted" });
+        res.json({ message: "Notification deleted permanently" });
       } else {
-        // Soft delete – set status to inactive
-        const { data: updated, error: updateError } = await supabaseAdmin
+        // Soft delete – notification has been sent (active/inactive)
+        const { error: updateError } = await supabaseAdmin
           .from("notifications")
           .update({ status: "inactive" })
-          .eq("id", notificationId)
-          .select(`*, branches(id, name, code)`)
-          .single();
+          .eq("id", notificationId);
 
         if (updateError) {
           await logFailedAction(req, "SOFT_DELETE", "NOTIFICATION", notificationId, updateError.message);
@@ -517,11 +608,83 @@ router.delete(
 
         await fixAuditLogUser("NOTIFICATION", notificationId, "UPDATE", req.user!.id, req.user!.branchIds[0]);
 
-        res.json({ message: "Notification deactivated", data: updated });
+        res.json({ message: "Notification deactivated (has been sent to users)" });
       }
     } catch (error) {
       console.error("Delete notification error:", error);
       res.status(500).json({ error: "Failed to delete notification" });
+    }
+  }
+);
+
+/**
+ * POST /api/notifications/:id/send
+ * Manually send a draft or scheduled notification (create receipts, set active)
+ * Roles: HM, POC, JS
+ */
+router.post(
+  "/:id/send",
+  requireRoles("HM", "POC", "JS"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const notificationId = req.params.id as string;
+
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("notifications")
+        .select("*")
+        .eq("id", notificationId)
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === "PGRST116") {
+          res.status(404).json({ error: "Notification not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError.message });
+        return;
+      }
+
+      // Branch access check
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(existing.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this notification's branch" });
+        return;
+      }
+
+      if (!["draft", "scheduled"].includes(existing.status)) {
+        res.status(400).json({ error: "Only draft or scheduled notifications can be sent" });
+        return;
+      }
+
+      // Cancel any scheduled timer
+      const existingTimer = scheduledTimers.get(notificationId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        scheduledTimers.delete(notificationId);
+      }
+
+      // Set status to active
+      const { error: updateError } = await supabaseAdmin
+        .from("notifications")
+        .update({ status: "active" })
+        .eq("id", notificationId);
+
+      if (updateError) {
+        res.status(500).json({ error: updateError.message });
+        return;
+      }
+
+      // Create receipts for targeted users
+      await createReceipts(notificationId, existing.target_type, existing.target_value, existing.branch_id);
+
+      await fixAuditLogUser("NOTIFICATION", notificationId, "UPDATE", req.user!.id, req.user!.branchIds[0]);
+
+      res.json({ message: "Notification sent successfully" });
+    } catch (error) {
+      console.error("Send notification error:", error);
+      res.status(500).json({ error: "Failed to send notification" });
     }
   }
 );

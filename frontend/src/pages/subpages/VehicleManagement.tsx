@@ -132,6 +132,7 @@ export function VehicleManagement() {
   const [deletingVehicle, setDeletingVehicle] = useState(false);
   const [vehicleToDelete, setVehicleToDelete] = useState<Vehicle | null>(null);
   const [vehicleHasReferences, setVehicleHasReferences] = useState(false);
+  const [checkingReferences, setCheckingReferences] = useState(false);
 
   // Filter groups for SearchFilter
   const filterGroups: FilterGroup[] = useMemo(() => {
@@ -415,6 +416,7 @@ export function VehicleManagement() {
   async function openDeleteConfirmModal(vehicle: Vehicle) {
     setVehicleToDelete(vehicle);
     setVehicleHasReferences(false);
+    setCheckingReferences(true);
     setShowDeleteConfirm(true);
     try {
       const result = await vehiclesApi.checkReferences(vehicle.id);
@@ -422,6 +424,8 @@ export function VehicleManagement() {
     } catch {
       // Default to deactivate (safer) if check fails
       setVehicleHasReferences(true);
+    } finally {
+      setCheckingReferences(false);
     }
   }
 
@@ -432,11 +436,13 @@ export function VehicleManagement() {
       const result = await vehiclesApi.delete(vehicleToDelete.id);
       setShowDeleteConfirm(false);
       setVehicleToDelete(null);
-      showToast.success(result.message || "Vehicle deleted successfully");
+      const isDeactivated = result.message?.toLowerCase().includes("deactivated");
+      showToast.success(isDeactivated ? "Vehicle deactivated successfully" : "Vehicle deleted successfully");
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete vehicle");
-      showToast.error(err instanceof Error ? err.message : "Failed to delete vehicle");
+      const failMsg = vehicleHasReferences ? "Failed to deactivate vehicle" : "Failed to delete vehicle";
+      setError(err instanceof Error ? err.message : failMsg);
+      showToast.error(err instanceof Error ? err.message : failMsg);
     } finally {
       setDeletingVehicle(false);
     }
@@ -931,7 +937,7 @@ export function VehicleManagement() {
         </form>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete / Deactivate Confirmation Modal */}
       <Modal
         isOpen={showDeleteConfirm && !!vehicleToDelete}
         onClose={() => setShowDeleteConfirm(false)}
@@ -942,17 +948,17 @@ export function VehicleManagement() {
           <div>
             <div className="bg-neutral-100 rounded-xl p-4 my-4">
               <p className="text-neutral-900">
-                Are you sure you want to {vehicleHasReferences ? "deactivate" : "delete"}{" "}
-                <strong className="text-neutral-950">
-                  {vehicleToDelete.plate_number}
-                </strong>{" "}
-                ({vehicleToDelete.model})?
+                {vehicleHasReferences
+                  ? <>Are you sure you want to deactivate <strong className="text-neutral-950">{vehicleToDelete.plate_number}</strong> ({vehicleToDelete.model})?</>
+                  : <>Are you sure you want to delete <strong className="text-neutral-950">{vehicleToDelete.plate_number}</strong> ({vehicleToDelete.model})?</>
+                }
               </p>
             </div>
             <p className="text-sm text-neutral-900 mb-2">
               {vehicleHasReferences
-                ? "The vehicle will be marked as inactive and hidden from active lists."
-                : "This vehicle will be permanently removed. This action cannot be undone."}
+                ? "This vehicle has existing job orders and will be set to inactive instead of deleted."
+                : "This action cannot be undone. The vehicle will be permanently removed."
+              }
             </p>
 
             <div className="flex gap-3 mt-6">
@@ -966,12 +972,15 @@ export function VehicleManagement() {
               <button
                 type="button"
                 onClick={handleDeleteVehicle}
-                disabled={deletingVehicle}
+                disabled={deletingVehicle || checkingReferences}
                 className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {deletingVehicle
-                  ? (vehicleHasReferences ? "Deactivating..." : "Deleting...")
-                  : (vehicleHasReferences ? "Deactivate" : "Delete")}
+                {checkingReferences
+                  ? "Checking..."
+                  : deletingVehicle
+                    ? (vehicleHasReferences ? "Deactivating..." : "Deleting...")
+                    : (vehicleHasReferences ? "Deactivate" : "Delete")
+                }
               </button>
             </div>
           </div>

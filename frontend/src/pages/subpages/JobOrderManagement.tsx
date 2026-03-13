@@ -77,6 +77,7 @@ function getStatusLabel(status: string): string {
     completed: "Completed",
     rejected: "Rejected",
     cancelled: "Cancelled",
+    deactivated: "Deactivated",
   };
   return labels[status] || status.charAt(0).toUpperCase() + status.slice(1);
 }
@@ -92,6 +93,7 @@ function getStatusColors(status: string): string {
     completed: "bg-positive-100 text-positive-950",
     rejected: "bg-negative-100 text-negative-950",
     cancelled: "bg-negative-100 text-negative-950",
+    deactivated: "bg-negative-100 text-negative-950",
   };
   return colors[status] || "bg-neutral-100 text-neutral-950";
 }
@@ -209,6 +211,7 @@ export function JobOrderManagement() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<JobOrder | null>(null);
+  const [orderHasReferences, setOrderHasReferences] = useState(false);
 
   // Third Party Repairs (view modal)
   const [repairs, setRepairs] = useState<ThirdPartyRepair[]>([]);
@@ -294,7 +297,7 @@ export function JobOrderManagement() {
           { value: "completed", label: "Completed" },
           { value: "rejected", label: "Rejected" },
           { value: "cancelled", label: "Cancelled" },
-          { value: "deleted", label: "Deleted" },
+          { value: "deactivated", label: "Deactivated" },
         ],
       },
       {
@@ -322,7 +325,7 @@ export function JobOrderManagement() {
 
       const statusFilter = activeFilters.status;
       const matchStatus =
-        !statusFilter || statusFilter === "all" || statusFilter === "deleted" || order.status === statusFilter;
+        !statusFilter || statusFilter === "all" || statusFilter === "deactivated" || order.status === statusFilter;
 
       return matchSearch && matchBranch && matchStatus;
     });
@@ -349,8 +352,8 @@ export function JobOrderManagement() {
       setError(null);
       const statusFilter = activeFilters.status;
       const apiParams: Parameters<typeof jobOrdersApi.getAll>[0] = { limit: 1000 };
-      if (statusFilter === "deleted") {
-        apiParams.status = "deleted";
+      if (statusFilter === "deactivated") {
+        apiParams.status = "deactivated";
       }
       const [ordersRes, branchesData] = await Promise.all([
         jobOrdersApi.getAll(apiParams),
@@ -1210,6 +1213,8 @@ export function JobOrderManagement() {
   // --- Delete ---
   function openDeleteConfirmModal(order: JobOrder) {
     setOrderToDelete(order);
+    // Draft orders will be hard deleted, non-draft will be deactivated
+    setOrderHasReferences(order.status !== "draft");
     setShowDeleteConfirm(true);
   }
 
@@ -1217,16 +1222,28 @@ export function JobOrderManagement() {
     if (!orderToDelete) return;
     try {
       setDeletingOrder(true);
-      await jobOrdersApi.delete(orderToDelete.id);
+      const result = await jobOrdersApi.delete(orderToDelete.id);
       setShowDeleteConfirm(false);
       setOrderToDelete(null);
-      showToast.success("Job order deleted successfully");
+      const isDeactivated = result.message?.toLowerCase().includes("deactivated");
+      showToast.success(isDeactivated ? "Job order deactivated successfully" : "Job order deleted successfully");
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete job order");
-      showToast.error(err instanceof Error ? err.message : "Failed to delete job order");
+      const failMsg = orderHasReferences ? "Failed to deactivate job order" : "Failed to delete job order";
+      setError(err instanceof Error ? err.message : failMsg);
+      showToast.error(err instanceof Error ? err.message : failMsg);
     } finally {
       setDeletingOrder(false);
+    }
+  }
+
+  async function handleRestoreOrder(order: JobOrder) {
+    try {
+      const result = await jobOrdersApi.restore(order.id);
+      showToast.success(result.message || "Job order restored successfully");
+      fetchData();
+    } catch (err) {
+      showToast.error(err instanceof Error ? err.message : "Failed to restore job order");
     }
   }
 
@@ -1464,18 +1481,16 @@ export function JobOrderManagement() {
       />
 
       {/* Search & Filter bar */}
-      {allOrders.length > 0 && (
-        <SearchFilter
-          searchValue={searchQuery}
-          onSearchChange={setSearchQuery}
-          searchPlaceholder="Search"
-          filters={filterGroups}
-          activeFilters={activeFilters}
-          onFilterChange={(key, value) =>
-            setActiveFilters((prev) => ({ ...prev, [key]: value }))
-          }
-        />
-      )}
+      <SearchFilter
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Search"
+        filters={filterGroups}
+        activeFilters={activeFilters}
+        onFilterChange={(key, value) =>
+          setActiveFilters((prev) => ({ ...prev, [key]: value }))
+        }
+      />
 
       {/* Order Cards Grid */}
       <CardGrid
@@ -1500,8 +1515,8 @@ export function JobOrderManagement() {
               ) : undefined
             }
             statusBadge={{
-              label: order.is_deleted ? "Deleted" : getStatusLabel(order.status),
-              className: order.is_deleted ? "bg-negative-100 text-negative-950" : getStatusColors(order.status),
+              label: getStatusLabel(order.status),
+              className: getStatusColors(order.status),
             }}
             details={
               <>
@@ -1512,12 +1527,12 @@ export function JobOrderManagement() {
               </>
             }
             actions={[
-              ...(!order.is_deleted && canUpdate ? [{
+              ...(order.status !== "deactivated" && canUpdate ? [{
                 label: "Edit",
                 icon: <LuPencil className="w-4 h-4" />,
                 onClick: (e: React.MouseEvent) => { e.stopPropagation(); openEditModal(order); },
               }] : []),
-              ...(!order.is_deleted && canDelete ? [{
+              ...(order.status !== "deactivated" && canDelete ? [{
                 label: "Delete",
                 icon: <LuTrash2 className="w-4 h-4" />,
                 onClick: (e: React.MouseEvent) => { e.stopPropagation(); openDeleteConfirmModal(order); },
@@ -1525,10 +1540,22 @@ export function JobOrderManagement() {
               }] : []),
             ]}
             extraActions={
-              <div className="relative" ref={openDropdownId === `card-${order.id}` ? dropdownRef : undefined}>
+              <div className="relative flex items-center gap-2" ref={openDropdownId === `card-${order.id}` ? dropdownRef : undefined}>
+                {canDelete && order.status === "deactivated" && (
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      await handleRestoreOrder(order);
+                    }}
+                    className="inline-flex items-center gap-1 text-sm text-positive hover:text-positive-950"
+                    title="Restore job order"
+                  >
+                    <LuRefreshCw className="w-4 h-4" /> Restore
+                  </button>
+                )}
                 <button
                   onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${order.id}` ? null : `card-${order.id}`); }}
-                  className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+                  className="inline-flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
                   title="More actions"
                 >
                   <LuEllipsisVertical className="w-4 h-4" /> More
@@ -2616,25 +2643,28 @@ export function JobOrderManagement() {
         </form>
       </Modal>
 
-      {/* --- Delete Confirmation Modal --- */}
+      {/* --- Delete / Deactivate Confirmation Modal --- */}
       <Modal
         isOpen={showDeleteConfirm && !!orderToDelete}
         onClose={() => setShowDeleteConfirm(false)}
-        title="Delete Job Order"
+        title={orderHasReferences ? "Deactivate Job Order" : "Delete Job Order"}
         maxWidth="sm"
       >
         {orderToDelete && (
           <div>
             <div className="bg-neutral-100 rounded-xl p-4 my-4">
               <p className="text-neutral-900">
-                Are you sure you want to delete{" "}
-                <strong className="text-neutral-950">{orderToDelete.order_number}</strong>?
+                {orderHasReferences
+                  ? <>Are you sure you want to deactivate <strong className="text-neutral-950">{orderToDelete.order_number}</strong>?</>
+                  : <>Are you sure you want to delete <strong className="text-neutral-950">{orderToDelete.order_number}</strong>?</>
+                }
               </p>
             </div>
             <p className="text-sm text-neutral-900 mb-2">
-              {orderToDelete.status === "draft"
-                ? "This will permanently remove the job order and all its items."
-                : "This job order will be soft-deleted and can be viewed under the Deleted filter."}
+              {orderHasReferences
+                ? "This job order has progressed beyond draft and will be set to deactivated instead of deleted."
+                : "This action cannot be undone. The job order and all its items will be permanently removed."
+              }
             </p>
             <div className="flex gap-3 mt-6">
               <button
@@ -2650,7 +2680,10 @@ export function JobOrderManagement() {
                 disabled={deletingOrder}
                 className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {deletingOrder ? "Deleting..." : "Delete"}
+                {deletingOrder
+                  ? (orderHasReferences ? "Deactivating..." : "Deleting...")
+                  : (orderHasReferences ? "Deactivate" : "Delete")
+                }
               </button>
             </div>
           </div>

@@ -217,7 +217,7 @@ export interface ResolvedPricing {
 }
 
 // Job Order types
-export type JobOrderStatus = "draft" | "pending_approval" | "approved" | "in_progress" | "ready_for_release" | "pending_payment" | "completed" | "rejected" | "cancelled";
+export type JobOrderStatus = "draft" | "pending_approval" | "approved" | "in_progress" | "ready_for_release" | "pending_payment" | "completed" | "rejected" | "cancelled" | "deactivated";
 
 export interface JobOrderItem {
   id: string;
@@ -340,7 +340,7 @@ export interface ThirdPartyRepair {
 }
 
 // Inventory types
-export type InventoryItemStatus = "active" | "inactive";
+export type InventoryItemStatus = "draft" | "pending_approval" | "active" | "inactive" | "rejected";
 
 export interface InventoryItem {
   id: string;
@@ -351,6 +351,12 @@ export interface InventoryItem {
   cost_price: number;
   reorder_threshold: number;
   status: InventoryItemStatus;
+  approval_status: string | null;
+  approval_requested_at: string | null;
+  approved_at: string | null;
+  approved_by: string | null;
+  rejection_reason: string | null;
+  initial_stock_pending: number;
   branch_id: string;
   created_by: string | null;
   created_at: string;
@@ -377,7 +383,7 @@ export interface StockMovement {
 }
 
 // Purchase Order types
-export type PurchaseOrderStatus = "draft" | "submitted" | "approved" | "received" | "cancelled";
+export type PurchaseOrderStatus = "draft" | "submitted" | "approved" | "received" | "cancelled" | "deactivated";
 
 // Supplier types
 export type SupplierStatus = "active" | "inactive";
@@ -472,7 +478,7 @@ export interface PurchaseOrder {
 // ─── Notification types ───
 export type NotificationTargetType = "role" | "user" | "branch";
 export type NotificationType = "manual" | "system";
-export type NotificationStatus = "active" | "inactive";
+export type NotificationStatus = "draft" | "scheduled" | "active" | "inactive";
 
 export interface Notification {
   id: string;
@@ -488,6 +494,7 @@ export interface Notification {
   created_by: string;
   created_at: string;
   updated_at: string;
+  scheduled_at: string | null;
   branches?: Branch;
 }
 

@@ -6,7 +6,7 @@ import {
   LuPackage,
   LuX,
 } from "react-icons/lu";
-import { catalogApi } from "../../lib/api";
+import { catalogApi, pricingApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
 import { useAuth } from "../../auth";
 import {
@@ -103,6 +103,8 @@ export function CatalogManagement() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingItem, setDeletingItem] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<CatalogItem | null>(null);
+  const [itemHasReferences, setItemHasReferences] = useState(false);
+  const [checkingReferences, setCheckingReferences] = useState(false);
 
   // Category select state for add modal
   const [addCategorySelect, setAddCategorySelect] = useState("");
@@ -251,9 +253,19 @@ export function CatalogManagement() {
   }
 
   // --- Delete ---
-  function openDeleteConfirmModal(item: CatalogItem) {
+  async function openDeleteConfirmModal(item: CatalogItem) {
     setItemToDelete(item);
+    setItemHasReferences(false);
+    setCheckingReferences(true);
     setShowDeleteConfirm(true);
+    try {
+      const pricingRes = await pricingApi.getAll({ catalog_item_id: item.id, limit: 1 });
+      setItemHasReferences((pricingRes.data?.length ?? 0) > 0);
+    } catch {
+      setItemHasReferences(true);
+    } finally {
+      setCheckingReferences(false);
+    }
   }
 
   async function handleDeleteItem() {
@@ -263,15 +275,13 @@ export function CatalogManagement() {
       const result = await catalogApi.delete(itemToDelete.id);
       setShowDeleteConfirm(false);
       setItemToDelete(null);
-      if (result.deactivated) {
-        showToast.info("Catalog item is referenced by job orders and has been deactivated instead");
-      } else {
-        showToast.success("Catalog item deleted successfully");
-      }
+      const isDeactivated = result.message?.toLowerCase().includes("deactivated");
+      showToast.success(isDeactivated ? "Catalog item deactivated successfully" : "Catalog item deleted successfully");
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete catalog item");
-      showToast.error(err instanceof Error ? err.message : "Failed to delete catalog item");
+      const failMsg = itemHasReferences ? "Failed to deactivate catalog item" : "Failed to delete catalog item";
+      setError(err instanceof Error ? err.message : failMsg);
+      showToast.error(err instanceof Error ? err.message : failMsg);
     } finally {
       setDeletingItem(false);
     }
@@ -612,25 +622,28 @@ export function CatalogManagement() {
         </form>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete / Deactivate Confirmation Modal */}
       <Modal
         isOpen={showDeleteConfirm && !!itemToDelete}
         onClose={() => setShowDeleteConfirm(false)}
-        title="Delete Catalog Item"
+        title={itemHasReferences ? "Deactivate Catalog Item" : "Delete Catalog Item"}
         maxWidth="sm"
       >
         {itemToDelete && (
           <div>
             <div className="bg-neutral-100 rounded-xl p-4 my-4">
               <p className="text-neutral-900">
-                Are you sure you want to delete{" "}
-                <strong className="text-neutral-950">
-                  {itemToDelete.name}
-                </strong>?
+                {itemHasReferences
+                  ? <>Are you sure you want to deactivate <strong className="text-neutral-950">{itemToDelete.name}</strong>?</>
+                  : <>Are you sure you want to delete <strong className="text-neutral-950">{itemToDelete.name}</strong>?</>
+                }
               </p>
             </div>
             <p className="text-sm text-neutral-900 mb-2">
-              This item will be permanently removed. If it is referenced by other records, it will be deactivated instead.
+              {itemHasReferences
+                ? "This catalog item has existing pricing records and will be set to inactive instead of deleted."
+                : "This action cannot be undone. All catalog item data will be permanently removed."
+              }
             </p>
 
             <div className="flex gap-3 mt-6">
@@ -644,10 +657,15 @@ export function CatalogManagement() {
               <button
                 type="button"
                 onClick={handleDeleteItem}
-                disabled={deletingItem}
+                disabled={deletingItem || checkingReferences}
                 className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {deletingItem ? "Deleting..." : "Delete"}
+                {checkingReferences
+                  ? "Checking..."
+                  : deletingItem
+                    ? (itemHasReferences ? "Deactivating..." : "Deleting...")
+                    : (itemHasReferences ? "Deactivate" : "Delete")
+                }
               </button>
             </div>
           </div>

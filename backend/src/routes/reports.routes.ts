@@ -423,8 +423,7 @@ async function generateSalesReport(
 ): Promise<Record<string, unknown>> {
   let query = supabaseAdmin
     .from("job_orders")
-    .select("id, order_number, total_amount, status, created_at, branches!job_orders_branch_id_fkey(name), customers!job_orders_customer_id_fkey(full_name)")
-    .eq("is_deleted", false)
+    .select("id, order_number, total_amount, status, is_deleted, created_at, branches!job_orders_branch_id_fkey(name), customers!job_orders_customer_id_fkey(full_name)")
     .in("status", ["completed", "pending_payment", "ready_for_release"]);
 
   if (branchId) query = query.eq("branch_id", branchId);
@@ -436,7 +435,11 @@ async function generateSalesReport(
   const { data, error } = await query;
   if (error) return { error: error.message, rows: [], summary: {} };
 
-  const rows = data || [];
+  const rows = (data || []).filter((r: any) => {
+    // Keep completed revenue even when soft-deactivated.
+    if (r.status === "completed") return true;
+    return !r.is_deleted;
+  });
   const totalRevenue = rows.reduce((sum, r) => sum + (r.total_amount || 0), 0);
   const avgOrderValue = rows.length > 0 ? totalRevenue / rows.length : 0;
 
@@ -487,11 +490,12 @@ async function generateJobOrderReport(
 ): Promise<Record<string, unknown>> {
   let query = supabaseAdmin
     .from("job_orders")
-    .select("id, order_number, total_amount, status, created_at, start_time, completion_time, branches!job_orders_branch_id_fkey(name), customers!job_orders_customer_id_fkey(full_name)")
-    .eq("is_deleted", false);
+    .select("id, order_number, total_amount, status, is_deleted, created_at, start_time, completion_time, branches!job_orders_branch_id_fkey(name), customers!job_orders_customer_id_fkey(full_name)");
 
   if (branchId) query = query.eq("branch_id", branchId);
-  if (filters.status) query = query.eq("status", filters.status as "draft" | "pending_approval" | "approved" | "in_progress" | "ready_for_release" | "pending_payment" | "completed" | "rejected" | "cancelled");
+  if (filters.status && filters.status !== "deactivated") {
+    query = query.eq("status", filters.status as "draft" | "pending_approval" | "approved" | "in_progress" | "ready_for_release" | "pending_payment" | "completed" | "rejected" | "cancelled");
+  }
   if (filters.date_from) query = query.gte("created_at", filters.date_from);
   if (filters.date_to) query = query.lte("created_at", filters.date_to);
 
@@ -500,7 +504,13 @@ async function generateJobOrderReport(
   const { data, error } = await query;
   if (error) return { error: error.message, rows: [], summary: {} };
 
-  const rows = data || [];
+  const rows = (data || [])
+    .filter((r: any) => {
+      if (filters.status === "deactivated") return !!r.is_deleted;
+      if (r.status === "completed") return true;
+      return !r.is_deleted;
+    })
+    .map((r: any) => (r.is_deleted ? { ...r, status: "deactivated" } : r));
   const statusCounts: Record<string, number> = {};
   rows.forEach(r => {
     statusCounts[r.status] = (statusCounts[r.status] || 0) + 1;

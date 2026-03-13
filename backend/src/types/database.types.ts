@@ -262,6 +262,7 @@ export type Database = {
           created_by: string
           created_at: string
           updated_at: string
+          scheduled_at: string | null
         }
         Insert: {
           id?: string
@@ -277,6 +278,7 @@ export type Database = {
           created_by: string
           created_at?: string
           updated_at?: string
+          scheduled_at?: string | null
         }
         Update: {
           id?: string
@@ -292,6 +294,7 @@ export type Database = {
           created_by?: string
           created_at?: string
           updated_at?: string
+          scheduled_at?: string | null
         }
         Relationships: [
           {
@@ -1303,6 +1306,12 @@ export type Database = {
           cost_price: number
           reorder_threshold: number
           status: Database["public"]["Enums"]["inventory_item_status"]
+          approval_status: string | null
+          approval_requested_at: string | null
+          approved_at: string | null
+          approved_by: string | null
+          rejection_reason: string | null
+          initial_stock_pending: number
           branch_id: string
           created_by: string | null
           created_at: string
@@ -1317,6 +1326,12 @@ export type Database = {
           cost_price: number
           reorder_threshold?: number
           status?: Database["public"]["Enums"]["inventory_item_status"]
+          approval_status?: string | null
+          approval_requested_at?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          rejection_reason?: string | null
+          initial_stock_pending?: number
           branch_id: string
           created_by?: string | null
           created_at?: string
@@ -1331,6 +1346,12 @@ export type Database = {
           cost_price?: number
           reorder_threshold?: number
           status?: Database["public"]["Enums"]["inventory_item_status"]
+          approval_status?: string | null
+          approval_requested_at?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          rejection_reason?: string | null
+          initial_stock_pending?: number
           branch_id?: string
           created_by?: string | null
           created_at?: string
@@ -1586,9 +1607,9 @@ export type Database = {
     Enums: {
       customer_status: "active" | "inactive"
       customer_type: "individual" | "company"
-      inventory_item_status: "active" | "inactive"
-      job_order_status: "draft" | "pending_approval" | "approved" | "in_progress" | "ready_for_release" | "pending_payment" | "completed" | "rejected" | "cancelled"
-      purchase_order_status: "draft" | "submitted" | "approved" | "received" | "cancelled"
+      inventory_item_status: "draft" | "pending_approval" | "active" | "inactive" | "rejected"
+      job_order_status: "draft" | "pending_approval" | "approved" | "in_progress" | "ready_for_release" | "pending_payment" | "completed" | "rejected" | "cancelled" | "deactivated"
+      purchase_order_status: "draft" | "submitted" | "approved" | "received" | "cancelled" | "deactivated"
       pricing_matrix_status: "active" | "inactive"
       pricing_type: "labor" | "packaging"
       report_type: "sales" | "inventory" | "job_order" | "staff_performance"
@@ -1739,8 +1760,8 @@ export const Constants = {
     Enums: {
       customer_status: ["active", "inactive"],
       customer_type: ["individual", "company"],
-      inventory_item_status: ["active", "inactive"],
-      job_order_status: ["draft", "pending_approval", "approved", "in_progress", "ready_for_release", "completed", "rejected", "cancelled"],
+      inventory_item_status: ["draft", "pending_approval", "active", "inactive", "rejected"],
+      job_order_status: ["draft", "pending_approval", "approved", "in_progress", "ready_for_release", "completed", "rejected", "cancelled", "deactivated"],
       pricing_matrix_status: ["active", "inactive"],
       pricing_type: ["labor", "packaging"],
       stock_movement_type: ["stock_in", "stock_out", "adjustment"],

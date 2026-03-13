@@ -49,6 +49,8 @@ export function BranchManagement() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingBranch, setDeletingBranch] = useState(false);
   const [branchToDelete, setBranchToDelete] = useState<Branch | null>(null);
+  const [branchHasReferences, setBranchHasReferences] = useState(false);
+  const [checkingReferences, setCheckingReferences] = useState(false);
 
   // View modal
   const [showViewModal, setShowViewModal] = useState(false);
@@ -249,9 +251,19 @@ export function BranchManagement() {
   }
 
   // Open delete confirmation
-  function openDeleteConfirm(branch: Branch) {
+  async function openDeleteConfirm(branch: Branch) {
     setBranchToDelete(branch);
+    setBranchHasReferences(false);
+    setCheckingReferences(true);
     setShowDeleteConfirm(true);
+    try {
+      const users = await branchesApi.getUsers(branch.id);
+      setBranchHasReferences((users?.length ?? 0) > 0);
+    } catch {
+      setBranchHasReferences(true);
+    } finally {
+      setCheckingReferences(false);
+    }
   }
 
   // Delete branch handler
@@ -265,12 +277,13 @@ export function BranchManagement() {
       setShowDeleteConfirm(false);
       setBranchToDelete(null);
 
-      // Refresh branches list — show backend message (deactivated vs deleted)
-      showToast.success(result.message || "Branch deleted successfully");
+      const isDeactivated = result.message?.toLowerCase().includes("deactivated");
+      showToast.success(isDeactivated ? "Branch deactivated successfully" : "Branch deleted successfully");
       fetchBranches();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete branch");
-      showToast.error(err instanceof Error ? err.message : "Failed to delete branch");
+      const failMsg = branchHasReferences ? "Failed to deactivate branch" : "Failed to delete branch";
+      setError(err instanceof Error ? err.message : failMsg);
+      showToast.error(err instanceof Error ? err.message : failMsg);
     } finally {
       setDeletingBranch(false);
     }
@@ -508,22 +521,28 @@ export function BranchManagement() {
         )}
       </Modal>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete / Deactivate Confirmation Modal */}
       <Modal
         isOpen={showDeleteConfirm && !!branchToDelete}
         onClose={() => setShowDeleteConfirm(false)}
-        title="Delete Branch"
+        title={branchHasReferences ? "Deactivate Branch" : "Delete Branch"}
         maxWidth="sm"
       >
         {branchToDelete && (
           <div>
             <div className="bg-neutral-100 rounded-xl p-4 my-4">
               <p className="text-neutral-900">
-                Are you sure you want to delete <strong className="text-neutral-950">{branchToDelete.name}</strong>?
+                {branchHasReferences
+                  ? <>Are you sure you want to deactivate <strong className="text-neutral-950">{branchToDelete.name}</strong>?</>
+                  : <>Are you sure you want to delete <strong className="text-neutral-950">{branchToDelete.name}</strong>?</>
+                }
               </p>
             </div>
             <p className="text-sm text-neutral-900 mb-2">
-              If users are assigned to this branch, it will be deactivated instead of deleted.
+              {branchHasReferences
+                ? "This branch has assigned users and will be set to inactive instead of deleted."
+                : "This action cannot be undone. The branch will be permanently removed."
+              }
             </p>
 
             <div className="flex gap-3 mt-6">
@@ -537,10 +556,15 @@ export function BranchManagement() {
               <button
                 type="button"
                 onClick={handleDeleteBranch}
-                disabled={deletingBranch}
+                disabled={deletingBranch || checkingReferences}
                 className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {deletingBranch ? "Deleting..." : "Delete"}
+                {checkingReferences
+                  ? "Checking..."
+                  : deletingBranch
+                    ? (branchHasReferences ? "Deactivating..." : "Deleting...")
+                    : (branchHasReferences ? "Deactivate" : "Delete")
+                }
               </button>
             </div>
           </div>

@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
@@ -46,11 +46,11 @@ router.get(
           { count: "exact" }
         );
 
-      // Filter by deletion status
+      // Filter by deletion/deactivation status
       if (include_deleted === "true") {
-        // Show all including deleted — no is_deleted filter
-      } else if (status === "deleted") {
-        // Show only soft-deleted
+        // Show all including soft-deactivated records
+      } else if (status === "deactivated") {
+        // Show only deactivated
         query = query.eq("is_deleted", true);
       } else {
         query = query.eq("is_deleted", false);
@@ -73,7 +73,7 @@ router.get(
       if (vehicle_id) {
         query = query.eq("vehicle_id", vehicle_id as string);
       }
-      if (status && status !== "deleted") {
+      if (status && status !== "deleted" && status !== "deactivated") {
         query = query.eq(
           "status",
           status as "draft" | "pending_approval" | "approved" | "in_progress" | "ready_for_release" | "completed" | "rejected" | "cancelled"
@@ -99,8 +99,12 @@ router.get(
         return;
       }
 
+      const normalizedOrders = (orders || []).map((order: any) =>
+        order.is_deleted ? { ...order, status: "deactivated" } : order
+      );
+
       res.json({
-        data: orders,
+        data: normalizedOrders,
         pagination: {
           total: count,
           limit: parseInt(limit as string),
@@ -139,7 +143,6 @@ router.get(
         `
         )
         .eq("id", orderId)
-        .eq("is_deleted", false)
         .single();
 
       if (error) {
@@ -160,7 +163,11 @@ router.get(
         return;
       }
 
-      res.json(order);
+      const normalizedOrder = order?.is_deleted
+        ? { ...order, status: "deactivated" }
+        : order;
+
+      res.json(normalizedOrder);
     } catch (error) {
       console.error("Get job order error:", error);
       res.status(500).json({ error: "Failed to fetch job order" });
@@ -601,7 +608,7 @@ router.put(
       // Check if notes actually changed
       const newNotes = notes?.trim() || null;
       if (newNotes === (existing as any).notes) {
-        // No real changes â€” return existing data without triggering an update
+        // No real changes — return existing data without triggering an update
         const { data: current } = await supabaseAdmin
           .from("job_orders")
           .select(`*, customers(id, full_name, contact_number, email), vehicles(id, plate_number, model, vehicle_type), branches(id, name, code), job_order_items(*, job_order_item_inventories(*))`)
@@ -670,7 +677,7 @@ router.put(
  * DELETE /api/job-orders/:id
  * Conditional delete:
  *   - Hard delete if status is "draft" — cascades items, snapshots, repairs
- *   - Soft delete (is_deleted, deleted_at, deleted_by) for all other statuses
+ *   - Soft-deactivate (is_deleted = true) for all other statuses
  * Roles: POC, JS, R (DRAFT only per spec)
  */
 router.delete(
@@ -763,11 +770,15 @@ router.delete(
         return;
       }
 
-      // Soft delete: JO has progressed beyond "draft"
+      // Deactivate: JO has progressed beyond "draft"
       const now = new Date().toISOString();
       const { error: updateError } = await supabaseAdmin
         .from("job_orders")
-        .update({ is_deleted: true, deleted_at: now, deleted_by: req.user!.id })
+        .update({
+          is_deleted: true,
+          deleted_at: now,
+          deleted_by: req.user!.id,
+        })
         .eq("id", orderId);
 
       if (updateError) {
@@ -775,25 +786,112 @@ router.delete(
         return;
       }
 
-      // Log soft delete
+      // Log deactivation
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "JO_SOFT_DELETED",
+          p_action: "JO_DEACTIVATED",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
-          p_new_values: { order_number: existing.order_number, is_deleted: true, type: "soft_delete", deleted_by: req.user!.id, deleted_at: now },
+          p_new_values: {
+            order_number: existing.order_number,
+            status: existing.status,
+            is_deleted: true,
+            type: "deactivation",
+            deactivated_by: req.user!.id,
+            deactivated_at: now,
+          },
         });
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);
       }
 
-      res.json({ message: `Job order ${existing.order_number} deleted successfully` });
+      res.json({ message: `Job order ${existing.order_number} deactivated (has progressed beyond draft)` });
     } catch (error) {
       console.error("Delete job order error:", error);
       await logFailedAction(req, "JO_SOFT_DELETED", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to delete job order");
       res.status(500).json({ error: "Failed to delete job order" });
+    }
+  }
+);
+
+/**
+ * PATCH /api/job-orders/:id/restore
+ * Restore a soft-deactivated job order by setting is_deleted=false
+ * Roles: POC, JS, R
+ */
+router.patch(
+  "/:id/restore",
+  requireRoles("POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const orderId = req.params.id as string;
+
+      // Get existing order (must be soft-deactivated)
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select("id, branch_id, order_number, status, is_deleted")
+        .eq("id", orderId)
+        .eq("is_deleted", true)
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === "PGRST116") {
+          res.status(404).json({ error: "Deactivated job order not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError.message });
+        return;
+      }
+
+      // Branch access check
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(existing.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this job order's branch" });
+        return;
+      }
+
+      const { error: restoreError } = await supabaseAdmin
+        .from("job_orders")
+        .update({
+          is_deleted: false,
+          deleted_at: null,
+          deleted_by: null,
+        })
+        .eq("id", orderId);
+
+      if (restoreError) {
+        res.status(500).json({ error: restoreError.message });
+        return;
+      }
+
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "JO_RESTORED",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: orderId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: {
+            order_number: existing.order_number,
+            status: existing.status,
+            is_deleted: false,
+            restored_by: req.user!.id,
+            restored_at: new Date().toISOString(),
+          },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      res.json({ message: `Job order ${existing.order_number} restored successfully` });
+    } catch (error) {
+      console.error("Restore job order error:", error);
+      await logFailedAction(req, "JO_RESTORED", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to restore job order");
+      res.status(500).json({ error: "Failed to restore job order" });
     }
   }
 );
@@ -838,7 +936,7 @@ router.patch(
         return;
       }
 
-      // Validate status transition: "created" or "rejected" â†’ "pending"
+      // Validate status transition: "created" or "rejected" → "pending"
       // Idempotent: if already pending_approval with REQUESTED status, allow resend
       if (existing.status === "pending_approval" && existing.approval_status === "REQUESTED") {
         const { data: current } = await supabaseAdmin
@@ -1155,7 +1253,7 @@ router.patch(
 
 /**
  * PATCH /api/job-orders/:id/cancel
- * Cancel a job order (status â†’ "cancelled")
+ * Cancel a job order (status → "cancelled")
  * Only "created", "pending", or "rejected" orders can be cancelled
  * Roles: POC, JS, R
  */
@@ -1677,7 +1775,7 @@ router.put(
           );
         }
       } else {
-        // No inventory_quantities provided — just scale existing snapshots proportionally
+        // No inventory_quantities provided - just scale existing snapshots proportionally
         const { data: existingSnapshots } = await supabaseAdmin
           .from("job_order_item_inventories")
           .select("*")
@@ -1804,7 +1902,7 @@ router.delete(
         return;
       }
 
-      // Check item count â€” must have at least 1 remaining
+      // Check item count — must have at least 1 remaining
       const { count } = await supabaseAdmin
         .from("job_order_items")
         .select("id", { count: "exact", head: true })
@@ -2135,7 +2233,7 @@ router.patch(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const orderId = req.params.id as string;
-      // No form fields required — just a confirmation action
+      // No form fields required - just a confirmation action
 
       // Get existing order
       const { data: existing, error: fetchError } = await supabaseAdmin
@@ -2407,3 +2505,4 @@ router.get(
 );
 
 export default router;
+

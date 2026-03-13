@@ -75,6 +75,8 @@ function statusBadge(status: string) {
       return "bg-positive-100 text-positive-950";
     case "cancelled":
       return "bg-negative-100 text-negative-950";
+    case "deactivated":
+      return "bg-negative-100 text-negative-950";
     default:
       return "bg-neutral-100 text-neutral-950";
   }
@@ -164,6 +166,7 @@ export function PurchaseOrderManagement() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<PurchaseOrder | null>(null);
+  const [orderHasReferences, setOrderHasReferences] = useState(false);
 
   // Submit confirmation modal
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
@@ -563,6 +566,7 @@ export function PurchaseOrderManagement() {
   // ─── Delete ──────────────────────────────────────────────────────────
   function openDeleteModal(order: PurchaseOrder) {
     setOrderToDelete(order);
+    setOrderHasReferences(order.status !== "draft");
     setShowDeleteConfirm(true);
   }
 
@@ -726,6 +730,7 @@ export function PurchaseOrderManagement() {
               { value: "approved", label: "Approved" },
               { value: "received", label: "Received" },
               { value: "cancelled", label: "Cancelled" },
+              { value: "deactivated", label: "Deactivated" },
             ],
             onChange: (v) => { setFilterStatus(v); setCurrentPage(1); },
           }}
@@ -1273,18 +1278,23 @@ export function PurchaseOrderManagement() {
         )}
       </Modal>
 
-      {/* ═══════════════════ DELETE CONFIRM MODAL ═══════════════════ */}
-      <Modal isOpen={showDeleteConfirm && !!orderToDelete} onClose={() => setShowDeleteConfirm(false)} title="Delete Purchase Order" maxWidth="sm">
+      {/* ═══════════════════ DELETE / DEACTIVATE CONFIRM MODAL ═══════════════════ */}
+      <Modal isOpen={showDeleteConfirm && !!orderToDelete} onClose={() => setShowDeleteConfirm(false)} title={orderHasReferences ? "Deactivate Purchase Order" : "Delete Purchase Order"} maxWidth="sm">
         {orderToDelete && (
           <div>
             <div className="bg-neutral-100 rounded-xl p-4 my-4">
               <p className="text-neutral-900">
-                Are you sure you want to delete{" "}
-                <strong className="text-neutral-950">{orderToDelete.po_number}</strong>?
+                {orderHasReferences
+                  ? <>Are you sure you want to deactivate <strong className="text-neutral-950">{orderToDelete.po_number}</strong>?</>
+                  : <>Are you sure you want to delete <strong className="text-neutral-950">{orderToDelete.po_number}</strong>?</>
+                }
               </p>
             </div>
             <p className="text-sm text-neutral-900 mb-2">
-              This will permanently remove the purchase order and all its items.
+              {orderHasReferences
+                ? "This purchase order has progressed beyond draft and will be set to deactivated instead of deleted."
+                : "This action cannot be undone. The purchase order and all its items will be permanently removed."
+              }
             </p>
             <div className="flex gap-3 mt-6">
               <button
@@ -1300,7 +1310,10 @@ export function PurchaseOrderManagement() {
                 disabled={deleteLoading}
                 className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {deleteLoading ? "Deleting..." : "Delete"}
+                {deleteLoading
+                  ? (orderHasReferences ? "Deactivating..." : "Deleting...")
+                  : (orderHasReferences ? "Deactivate" : "Delete")
+                }
               </button>
             </div>
           </div>

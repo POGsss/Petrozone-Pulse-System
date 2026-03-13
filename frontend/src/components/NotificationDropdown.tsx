@@ -47,7 +47,16 @@ export function NotificationDropdown({ onViewAll }: NotificationDropdownProps) {
   useEffect(() => {
     fetchUnreadCount();
     const interval = setInterval(fetchUnreadCount, 30000); // Poll every 30s
-    return () => clearInterval(interval);
+    // Listen for scheduled notification completions to refresh immediately
+    const handleScheduleComplete = () => {
+      fetchUnreadCount();
+      if (isOpen) fetchNotifications();
+    };
+    window.addEventListener("notification-schedule-complete", handleScheduleComplete);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("notification-schedule-complete", handleScheduleComplete);
+    };
   }, [fetchUnreadCount]);
 
   useEffect(() => {

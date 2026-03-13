@@ -260,7 +260,7 @@ router.put(
 
 /**
  * DELETE /api/catalog/:itemId
- * Delete a catalog item permanently, or deactivate if referenced
+ * Hard-delete if no references exist, soft-delete (deactivate) if referenced
  * HM, POC, JS can delete
  */
 router.delete(
@@ -286,64 +286,80 @@ router.delete(
         return;
       }
 
-      // Try hard delete first
-      const { data: deletedRows, error: deleteError } = await supabaseAdmin
-        .from("catalog_items")
-        .delete()
-        .eq("id", itemId)
-        .select();
+      // Check if referenced by job_order_items or pricing_matrices
+      const { count: joiCount } = await supabaseAdmin
+        .from("job_order_items")
+        .select("id", { count: "exact", head: true })
+        .eq("catalog_item_id", itemId);
 
-      if (deleteError) {
-        console.error("Delete error:", deleteError.code, deleteError.message);
-        if (deleteError.code === "23503") {
-          const { error: updateError } = await supabaseAdmin
-            .from("catalog_items")
-            .update({ status: "inactive" as "active" | "inactive" })
-            .eq("id", itemId);
+      const { count: pmCount } = await supabaseAdmin
+        .from("pricing_matrices")
+        .select("id", { count: "exact", head: true })
+        .eq("catalog_item_id", itemId);
 
-          if (updateError) {
-            res.status(500).json({ error: updateError.message });
-            return;
-          }
+      const hasReferences = ((joiCount ?? 0) + (pmCount ?? 0)) > 0;
 
-          try {
-            await supabaseAdmin.rpc("log_admin_action", {
-              p_action: "UPDATE",
-              p_entity_type: "CATALOG_ITEM",
-              p_entity_id: itemId,
-              p_performed_by_user_id: req.user!.id,
-              p_performed_by_branch_id: req.user!.branchIds[0] || null,
-              p_new_values: { status: "inactive", reason: "soft_delete" },
-            });
-          } catch (auditErr) {
-            console.error("Audit log error:", auditErr);
-          }
+      if (hasReferences) {
+        // Soft delete: set status to inactive
+        const { error: updateError } = await supabaseAdmin
+          .from("catalog_items")
+          .update({ status: "inactive" as "active" | "inactive" })
+          .eq("id", itemId);
 
-          res.json({
-            message: "Catalog item is referenced by other records and has been deactivated instead",
-            deactivated: true,
-          });
+        if (updateError) {
+          res.status(500).json({ error: updateError.message });
           return;
         }
 
-        res.status(500).json({ error: deleteError.message });
-        return;
-      }
+        try {
+          await supabaseAdmin.rpc("log_admin_action", {
+            p_action: "UPDATE",
+            p_entity_type: "CATALOG_ITEM",
+            p_entity_id: itemId,
+            p_performed_by_user_id: req.user!.id,
+            p_performed_by_branch_id: req.user!.branchIds[0] || null,
+            p_new_values: { status: "inactive", reason: "soft_delete" },
+          });
+        } catch (auditErr) {
+          console.error("Audit log error:", auditErr);
+        }
 
-      try {
-        await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "DELETE",
-          p_entity_type: "CATALOG_ITEM",
-          p_entity_id: itemId,
-          p_performed_by_user_id: req.user!.id,
-          p_performed_by_branch_id: req.user!.branchIds[0] || null,
-          p_new_values: { name: existing.name, deleted: true },
+        res.json({
+          message: "Catalog item deactivated (referenced by other records)",
+          deactivated: true,
         });
-      } catch (auditErr) {
-        console.error("Audit log error:", auditErr);
-      }
+      } else {
+        // Hard delete: remove inventory links first, then the item
+        await supabaseAdmin
+          .from("catalog_inventory_links")
+          .delete()
+          .eq("catalog_item_id", itemId);
 
-      res.json({ message: "Catalog item deleted successfully" });
+        const { error: deleteError } = await supabaseAdmin
+          .from("catalog_items")
+          .delete()
+          .eq("id", itemId);
+
+        if (deleteError) {
+          res.status(500).json({ error: deleteError.message });
+          return;
+        }
+
+        try {
+          await supabaseAdmin.rpc("log_admin_action", {
+            p_action: "DELETE",
+            p_entity_type: "CATALOG_ITEM",
+            p_entity_id: itemId,
+            p_performed_by_user_id: req.user!.id,
+            p_performed_by_branch_id: req.user!.branchIds[0] || null,
+            p_new_values: { name: existing.name, deleted: true },
+          });
+        } catch (auditErr) {
+          console.error("Audit log error:", auditErr);
+        }
+
+        res.json({ message: "Catalog item deleted successfully" });
+      }
     } catch (error) {
       console.error("Delete catalog item error:", error);
       await logFailedAction(req, "DELETE", "CATALOG_ITEM", (req.params.itemId as string) || null, error instanceof Error ? error.message : "Failed to delete catalog item");

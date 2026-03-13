@@ -58,6 +58,8 @@ export function SupplierManagement() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingSupplier, setDeletingSupplier] = useState(false);
   const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
+  const [supplierHasReferences, setSupplierHasReferences] = useState(false);
+  const [checkingReferences, setCheckingReferences] = useState(false);
 
   // View modal
   const [showViewModal, setShowViewModal] = useState(false);
@@ -324,9 +326,19 @@ export function SupplierManagement() {
   }
 
   // Open delete confirmation
-  function openDeleteConfirm(supplier: Supplier) {
+  async function openDeleteConfirm(supplier: Supplier) {
     setSupplierToDelete(supplier);
+    setSupplierHasReferences(false);
+    setCheckingReferences(true);
     setShowDeleteConfirm(true);
+    try {
+      const spRes = await supplierProductsApi.getAll({ supplier_id: supplier.id, limit: 1 });
+      setSupplierHasReferences((spRes.data?.length ?? 0) > 0);
+    } catch {
+      setSupplierHasReferences(true);
+    } finally {
+      setCheckingReferences(false);
+    }
   }
 
   // Delete supplier handler
@@ -335,16 +347,18 @@ export function SupplierManagement() {
 
     try {
       setDeletingSupplier(true);
-      await suppliersApi.delete(supplierToDelete.id);
+      const result = await suppliersApi.delete(supplierToDelete.id);
 
       setShowDeleteConfirm(false);
       setSupplierToDelete(null);
 
-      showToast.success("Supplier deleted successfully");
+      const isDeactivated = result.message?.toLowerCase().includes("deactivated");
+      showToast.success(isDeactivated ? "Supplier deactivated successfully" : "Supplier deleted successfully");
       fetchSuppliers();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete supplier");
-      showToast.error(err instanceof Error ? err.message : "Failed to delete supplier");
+      const failMsg = supplierHasReferences ? "Failed to deactivate supplier" : "Failed to delete supplier";
+      setError(err instanceof Error ? err.message : failMsg);
+      showToast.error(err instanceof Error ? err.message : failMsg);
     } finally {
       setDeletingSupplier(false);
     }
@@ -744,22 +758,28 @@ export function SupplierManagement() {
         )}
       </Modal>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete / Deactivate Confirmation Modal */}
       <Modal
         isOpen={showDeleteConfirm && !!supplierToDelete}
         onClose={() => setShowDeleteConfirm(false)}
-        title="Delete Supplier"
+        title={supplierHasReferences ? "Deactivate Supplier" : "Delete Supplier"}
         maxWidth="sm"
       >
         {supplierToDelete && (
           <div>
             <div className="bg-neutral-100 rounded-xl p-4 my-4">
               <p className="text-neutral-900">
-                Are you sure you want to delete <strong className="text-neutral-950">{supplierToDelete.supplier_name}</strong>?
+                {supplierHasReferences
+                  ? <>Are you sure you want to deactivate <strong className="text-neutral-950">{supplierToDelete.supplier_name}</strong>?</>
+                  : <>Are you sure you want to delete <strong className="text-neutral-950">{supplierToDelete.supplier_name}</strong>?</>
+                }
               </p>
             </div>
             <p className="text-sm text-neutral-900 mb-2">
-              If this supplier is referenced by purchase orders, it will be deactivated instead of deleted.
+              {supplierHasReferences
+                ? "This supplier has linked products or purchase orders and will be set to inactive instead of deleted."
+                : "This action cannot be undone. The supplier will be permanently removed."
+              }
             </p>
 
             <div className="flex gap-3 mt-6">
@@ -773,10 +793,15 @@ export function SupplierManagement() {
               <button
                 type="button"
                 onClick={handleDeleteSupplier}
-                disabled={deletingSupplier}
+                disabled={deletingSupplier || checkingReferences}
                 className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {deletingSupplier ? "Deleting..." : "Delete"}
+                {checkingReferences
+                  ? "Checking..."
+                  : deletingSupplier
+                    ? (supplierHasReferences ? "Deactivating..." : "Deleting...")
+                    : (supplierHasReferences ? "Deactivate" : "Delete")
+                }
               </button>
             </div>
           </div>

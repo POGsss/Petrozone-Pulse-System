@@ -9,6 +9,7 @@ import {
   LuTriangleAlert,
   LuPackageCheck,
   LuEllipsisVertical,
+  LuSend,
 } from "react-icons/lu";
 import { inventoryApi, branchesApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
@@ -35,6 +36,8 @@ import type { StatCard, DesktopTableColumn } from "../../components";
 import type { InventoryItem, Branch, StockMovement } from "../../types";
 
 const ITEMS_PER_PAGE = 20;
+const MAX_ITEM_NAME_LENGTH = 100;
+const ITEM_NAME_SANITIZE_REGEX = /[^A-Za-z0-9 ]+/g;
 
 const CATEGORY_PRESETS = [
   { value: "Oil & Lubricants", label: "Oil & Lubricants" },
@@ -101,6 +104,44 @@ function referenceTypeLabel(type: string): string {
   }
 }
 
+function getInventoryStatusLabel(status: InventoryItem["status"]): string {
+  switch (status) {
+    case "draft":
+      return "Draft";
+    case "pending_approval":
+      return "Pending Approval";
+    case "rejected":
+      return "Rejected";
+    case "active":
+      return "Active";
+    case "inactive":
+      return "Inactive";
+    default:
+      return status;
+  }
+}
+
+function getInventoryStatusColors(status: InventoryItem["status"]): string {
+  switch (status) {
+    case "draft":
+      return "bg-neutral-100 text-neutral-950";
+    case "pending_approval":
+      return "bg-primary-100 text-primary-950";
+    case "rejected":
+      return "bg-negative-100 text-negative-950";
+    case "active":
+      return "bg-positive-100 text-positive-950";
+    case "inactive":
+      return "bg-neutral-200 text-neutral-950";
+    default:
+      return "bg-neutral-100 text-neutral-950";
+  }
+}
+
+function sanitizeItemNameInput(value: string): string {
+  return value.replace(ITEM_NAME_SANITIZE_REGEX, "").slice(0, MAX_ITEM_NAME_LENGTH);
+}
+
 export function InventoryManagement() {
   const { user } = useAuth();
   const userRoles = user?.roles || [];
@@ -112,6 +153,7 @@ export function InventoryManagement() {
   const canDelete = canCreate;
   const canAdjust = userRoles.some((r) => ["HM", "POC"].includes(r));
   const canStockIn = canCreate;
+  const canApprove = userRoles.some((r) => ["HM", "POC"].includes(r));
 
   // Data state
   const [allItems, setAllItems] = useState<InventoryItem[]>([]);
@@ -164,6 +206,8 @@ export function InventoryManagement() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingItem, setDeletingItem] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<InventoryItem | null>(null);
+  const [itemHasReferences, setItemHasReferences] = useState(false);
+  const [checkingReferences, setCheckingReferences] = useState(false);
 
   // Adjust modal
   const [showAdjustModal, setShowAdjustModal] = useState(false);
@@ -191,6 +235,16 @@ export function InventoryManagement() {
   const [movementsItem, setMovementsItem] = useState<InventoryItem | null>(null);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [movementsLoading, setMovementsLoading] = useState(false);
+
+  // Approval modal
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const [approvalItem, setApprovalItem] = useState<InventoryItem | null>(null);
+  const [processingApproval, setProcessingApproval] = useState(false);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
+
+  // Reject reason modal
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
 
   // Actions overflow dropdown
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
@@ -321,6 +375,14 @@ export function InventoryManagement() {
     setAddError(null);
 
     if (!addForm.item_name.trim()) { setAddError("Item name is required"); return; }
+    if (addForm.item_name.trim().length > MAX_ITEM_NAME_LENGTH) {
+      setAddError(`Item name must be at most ${MAX_ITEM_NAME_LENGTH} characters`);
+      return;
+    }
+    if (/[^A-Za-z0-9 ]/.test(addForm.item_name.trim())) {
+      setAddError("Item name can only contain letters, numbers, and spaces");
+      return;
+    }
     if (!addForm.sku_code.trim()) { setAddError("SKU code is required"); return; }
     if (!addForm.category) { setAddError("Category is required"); return; }
     if (!addForm.cost_price || isNaN(parseFloat(addForm.cost_price)) || parseFloat(addForm.cost_price) < 0) {
@@ -341,7 +403,7 @@ export function InventoryManagement() {
         initial_stock: addForm.initial_stock ? parseInt(addForm.initial_stock) : undefined,
       });
       setShowAddModal(false);
-      showToast.success("Inventory item created successfully");
+      showToast.success("Inventory item created as draft. Submit it for approval to activate.");
       fetchData();
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Failed to create inventory item");
@@ -379,6 +441,14 @@ export function InventoryManagement() {
     setEditError(null);
 
     if (!editForm.item_name.trim()) { setEditError("Item name cannot be empty"); return; }
+    if (editForm.item_name.trim().length > MAX_ITEM_NAME_LENGTH) {
+      setEditError(`Item name must be at most ${MAX_ITEM_NAME_LENGTH} characters`);
+      return;
+    }
+    if (/[^A-Za-z0-9 ]/.test(editForm.item_name.trim())) {
+      setEditError("Item name can only contain letters, numbers, and spaces");
+      return;
+    }
     if (!editForm.sku_code.trim()) { setEditError("SKU code cannot be empty"); return; }
     if (!editForm.cost_price || isNaN(parseFloat(editForm.cost_price)) || parseFloat(editForm.cost_price) < 0) {
       setEditError("Cost price must be a valid non-negative number"); return;
@@ -386,15 +456,28 @@ export function InventoryManagement() {
 
     try {
       setEditingItem(true);
-      await inventoryApi.update(selectedItem.id, {
+      const payload: {
+        item_name: string;
+        sku_code: string;
+        category: string;
+        unit_of_measure: string;
+        cost_price: number;
+        reorder_threshold: number;
+        status?: string;
+      } = {
         item_name: editForm.item_name.trim(),
         sku_code: editForm.sku_code.trim(),
         category: editForm.category,
         unit_of_measure: editForm.unit_of_measure,
         cost_price: parseFloat(editForm.cost_price),
         reorder_threshold: parseInt(editForm.reorder_threshold) || 0,
-        status: editForm.status,
-      });
+      };
+
+      if (selectedItem.status === "active" || selectedItem.status === "inactive") {
+        payload.status = editForm.status;
+      }
+
+      await inventoryApi.update(selectedItem.id, payload);
       setShowEditModal(false);
       setSelectedItem(null);
       showToast.success("Inventory item updated successfully");
@@ -407,23 +490,35 @@ export function InventoryManagement() {
     }
   }
 
-  // --- Delete (soft) ---
-  function openDeleteConfirmModal(item: InventoryItem) {
+  // --- Delete ---
+  async function openDeleteConfirmModal(item: InventoryItem) {
     setItemToDelete(item);
+    setItemHasReferences(false);
+    setCheckingReferences(true);
     setShowDeleteConfirm(true);
+    try {
+      const movRes = await inventoryApi.getMovements(item.id, { limit: 1 });
+      setItemHasReferences((movRes.data?.length ?? 0) > 0);
+    } catch {
+      setItemHasReferences(true);
+    } finally {
+      setCheckingReferences(false);
+    }
   }
 
   async function handleDeleteItem() {
     if (!itemToDelete) return;
     try {
       setDeletingItem(true);
-      await inventoryApi.delete(itemToDelete.id);
+      const result = await inventoryApi.delete(itemToDelete.id);
       setShowDeleteConfirm(false);
       setItemToDelete(null);
-      showToast.success("Inventory item deactivated successfully");
+      const isDeactivated = result.message?.toLowerCase().includes("deactivated");
+      showToast.success(isDeactivated ? "Inventory item deactivated successfully" : "Inventory item deleted successfully");
       fetchData();
     } catch (err) {
-      showToast.error(err instanceof Error ? err.message : "Failed to delete inventory item");
+      const failMsg = itemHasReferences ? "Failed to deactivate inventory item" : "Failed to delete inventory item";
+      showToast.error(err instanceof Error ? err.message : failMsg);
     } finally {
       setDeletingItem(false);
     }
@@ -497,6 +592,66 @@ export function InventoryManagement() {
     }
   }
 
+  function openApprovalModal(item: InventoryItem) {
+    setApprovalItem(item);
+    setApprovalError(null);
+    setRejectReason("");
+    setShowApprovalModal(true);
+  }
+
+  async function handleApprove() {
+    if (!approvalItem) return;
+    try {
+      setProcessingApproval(true);
+      setApprovalError(null);
+      const pendingInitialStock = approvalItem.initial_stock_pending || 0;
+      await inventoryApi.recordApproval(approvalItem.id, { decision: "approved" });
+      setShowApprovalModal(false);
+      setApprovalItem(null);
+      if (pendingInitialStock > 0) {
+        showToast.success(`Inventory item approved and activated. Initial stock-in posted: ${pendingInitialStock}.`);
+      } else {
+        showToast.success("Inventory item approved and activated with 0 initial stock.");
+      }
+      fetchData();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to approve inventory item";
+      setApprovalError(msg);
+      showToast.error(msg);
+    } finally {
+      setProcessingApproval(false);
+    }
+  }
+
+  async function handleReject() {
+    if (!approvalItem) return;
+    if (!rejectReason.trim()) {
+      setApprovalError("Rejection reason is required");
+      return;
+    }
+
+    try {
+      setProcessingApproval(true);
+      setApprovalError(null);
+      await inventoryApi.recordApproval(approvalItem.id, {
+        decision: "rejected",
+        rejection_reason: rejectReason.trim(),
+      });
+      setShowRejectModal(false);
+      setShowApprovalModal(false);
+      setApprovalItem(null);
+      setRejectReason("");
+      showToast.success("Inventory item rejected");
+      fetchData();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to reject inventory item";
+      setApprovalError(msg);
+      showToast.error(msg);
+    } finally {
+      setProcessingApproval(false);
+    }
+  }
+
   if (loading) {
     return <SkeletonLoader showHeader showStats statsCount={3} rows={5} />;
   }
@@ -538,6 +693,9 @@ export function InventoryManagement() {
             value: filterStatus,
             options: [
               { value: "all", label: "All Status" },
+              { value: "draft", label: "Draft" },
+              { value: "pending_approval", label: "Pending Approval" },
+              { value: "rejected", label: "Rejected" },
               { value: "active", label: "Active" },
               { value: "inactive", label: "Inactive" },
             ],
@@ -588,8 +746,8 @@ export function InventoryManagement() {
                 title={item.item_name}
                 subtitle={item.branches?.code}
                 statusBadge={{
-                  label: item.status === "active" ? "Active" : "Inactive",
-                  className: item.status === "active" ? "bg-positive-100 text-positive" : "bg-negative-100 text-negative",
+                  label: getInventoryStatusLabel(item.status),
+                  className: getInventoryStatusColors(item.status),
                 }}
                 details={
                   <>
@@ -642,6 +800,14 @@ export function InventoryManagement() {
                                 >
                                   <LuHistory className="w-4 h-4" /> Movement History
                                 </button>
+                                {canApprove && (item.status === "draft" || item.status === "rejected" || item.status === "pending_approval") && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); closeDropdown(); openApprovalModal(item); }}
+                                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                  >
+                                    <LuSend className="w-4 h-4" /> Approved Item
+                                  </button>
+                                )}
                                 {canStockIn && item.status === "active" && (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); closeDropdown(); openStockInModal(item); }}
@@ -715,8 +881,8 @@ export function InventoryManagement() {
                     </span>
                   </td>
                   <td className="py-3 px-4 whitespace-nowrap">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${item.status === "active" ? "bg-positive-100 text-positive-950" : "bg-negative-100 text-negative-950"}`}>
-                      {item.status === "active" ? "Active" : "Inactive"}
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getInventoryStatusColors(item.status)}`}>
+                      {getInventoryStatusLabel(item.status)}
                     </span>
                   </td>
                   <td className="py-3 px-4 whitespace-nowrap">
@@ -757,6 +923,14 @@ export function InventoryManagement() {
                               >
                                 <LuHistory className="w-4 h-4" /> Movement History
                               </button>
+                              {canApprove && (item.status === "draft" || item.status === "rejected" || item.status === "pending_approval") && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); closeDropdown(); openApprovalModal(item); }}
+                                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                >
+                                  <LuSend className="w-4 h-4" /> Approved Item
+                                </button>
+                              )}
                               {canStockIn && item.status === "active" && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); closeDropdown(); openStockInModal(item); }}
@@ -805,7 +979,7 @@ export function InventoryManagement() {
       >
         <form onSubmit={handleAddItem}>
           <ModalSection title="Item Information">
-            <ModalInput type="text" value={addForm.item_name} onChange={(v) => setAddForm(p => ({ ...p, item_name: v }))} placeholder="Item Name *" required />
+            <ModalInput type="text" value={addForm.item_name} onChange={(v) => setAddForm(p => ({ ...p, item_name: sanitizeItemNameInput(v) }))} placeholder="Item Name *" required />
             <ModalInput type="text" value={addForm.sku_code} onChange={(v) => setAddForm(p => ({ ...p, sku_code: v.toUpperCase() }))} placeholder="SKU Code * (unique per branch)" required />
             <div className="grid grid-cols-2 gap-4">
               <ModalSelect value={addForm.category} onChange={(v) => setAddForm(p => ({ ...p, category: v }))} placeholder="Category *" options={CATEGORY_PRESETS} />
@@ -818,7 +992,7 @@ export function InventoryManagement() {
           </ModalSection>
           <ModalSection title="Branch & Initial Stock">
             <ModalSelect value={addForm.branch_id} onChange={(v) => setAddForm(p => ({ ...p, branch_id: v }))} placeholder="Select Branch *" options={branchOptions} />
-            <ModalInput type="number" value={addForm.initial_stock} onChange={(v) => setAddForm(p => ({ ...p, initial_stock: v }))} placeholder="Initial Stock Quantity (optional)" />
+            <ModalInput type="number" value={addForm.initial_stock} onChange={(v) => setAddForm(p => ({ ...p, initial_stock: v }))} placeholder="Initial Stock Quantity (applied after approval)" />
           </ModalSection>
           <ModalError message={addError} />
           <ModalButtons onCancel={() => setShowAddModal(false)} submitText={addingItem ? "Creating..." : "Create Inventory"} loading={addingItem} />
@@ -846,8 +1020,8 @@ export function InventoryManagement() {
                 </div>
                 <div className="bg-neutral-100 rounded-xl px-4 py-3.5 text-center">
                   <p className="text-xs text-neutral-900">Status</p>
-                  <p className={`text-lg font-bold ${viewItem.status === "active" ? "text-positive" : "text-negative"}`}>
-                    {viewItem.status === "active" ? "Active" : "Inactive"}
+                  <p className={`text-lg font-bold ${viewItem.status === "active" ? "text-positive" : viewItem.status === "pending_approval" ? "text-primary" : "text-neutral-950"}`}>
+                    {getInventoryStatusLabel(viewItem.status)}
                   </p>
                 </div>
               </div>
@@ -891,7 +1065,7 @@ export function InventoryManagement() {
       >
         <form onSubmit={handleEditItem}>
           <ModalSection title="Item Information">
-            <ModalInput type="text" value={editForm.item_name} onChange={(v) => setEditForm(p => ({ ...p, item_name: v }))} placeholder="Item Name *" required />
+            <ModalInput type="text" value={editForm.item_name} onChange={(v) => setEditForm(p => ({ ...p, item_name: sanitizeItemNameInput(v) }))} placeholder="Item Name *" required />
             <ModalInput type="text" value={editForm.sku_code} onChange={(v) => setEditForm(p => ({ ...p, sku_code: v.toUpperCase() }))} placeholder="SKU Code *" required />
             <div className="grid grid-cols-2 gap-4">
               <ModalSelect value={editForm.category} onChange={(v) => setEditForm(p => ({ ...p, category: v }))} placeholder="Category *" options={CATEGORY_PRESETS} />
@@ -901,45 +1075,56 @@ export function InventoryManagement() {
               <ModalInput type="number" value={editForm.cost_price} onChange={(v) => setEditForm(p => ({ ...p, cost_price: v }))} placeholder="Cost Price *" required />
               <ModalInput type="number" value={editForm.reorder_threshold} onChange={(v) => setEditForm(p => ({ ...p, reorder_threshold: v }))} placeholder="Reorder Threshold" />
             </div>
-            <ModalSelect
-              value={editForm.status}
-              onChange={(v) => setEditForm(p => ({ ...p, status: v }))}
-              options={[
-                { value: "active", label: "Active" },
-                { value: "inactive", label: "Inactive" },
-              ]}
-            />
+            {(selectedItem?.status === "active" || selectedItem?.status === "inactive") && (
+              <ModalSelect
+                value={editForm.status}
+                onChange={(v) => setEditForm(p => ({ ...p, status: v }))}
+                options={[
+                  { value: "active", label: "Active" },
+                  { value: "inactive", label: "Inactive" },
+                ]}
+              />
+            )}
           </ModalSection>
           <ModalError message={editError} />
           <ModalButtons onCancel={() => setShowEditModal(false)} submitText={editingItem ? "Saving..." : "Save Changes"} loading={editingItem} />
         </form>
       </Modal>
 
-      {/* ───── Delete Confirmation Modal ───── */}
+      {/* ───── Delete / Deactivate Confirmation Modal ───── */}
       <Modal
         isOpen={showDeleteConfirm && !!itemToDelete}
         onClose={() => setShowDeleteConfirm(false)}
-        title="Deactivate Inventory Item"
+        title={itemHasReferences ? "Deactivate Inventory Item" : "Delete Inventory Item"}
         maxWidth="sm"
       >
         {itemToDelete && (
           <div>
             <div className="bg-neutral-100 rounded-xl p-4 my-4">
               <p className="text-neutral-900">
-                Are you sure you want to deactivate{" "}
-                <strong className="text-neutral-950">{itemToDelete.item_name}</strong>{" "}
-                ({itemToDelete.sku_code})?
+                {itemHasReferences
+                  ? <>Are you sure you want to deactivate <strong className="text-neutral-950">{itemToDelete.item_name}</strong> ({itemToDelete.sku_code})?</>
+                  : <>Are you sure you want to delete <strong className="text-neutral-950">{itemToDelete.item_name}</strong> ({itemToDelete.sku_code})?</>
+                }
               </p>
             </div>
             <p className="text-sm text-neutral-900 mb-2">
-              This item will be set to inactive and cannot be selected in new transactions.
+              {itemHasReferences
+                ? "This inventory item has existing stock movements and will be set to inactive instead of deleted."
+                : "This action cannot be undone. All inventory item data will be permanently removed."
+              }
             </p>
             <div className="flex gap-3 mt-6">
               <button type="button" onClick={() => setShowDeleteConfirm(false)} className="flex-1 px-4 py-3.5 border-2 border-negative text-negative rounded-xl font-semibold hover:bg-negative-200 transition-colors">
                 Cancel
               </button>
-              <button type="button" onClick={handleDeleteItem} disabled={deletingItem} className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                {deletingItem ? "Deactivating..." : "Deactivate"}
+              <button type="button" onClick={handleDeleteItem} disabled={deletingItem || checkingReferences} className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                {checkingReferences
+                  ? "Checking..."
+                  : deletingItem
+                    ? (itemHasReferences ? "Deactivating..." : "Deleting...")
+                    : (itemHasReferences ? "Deactivate" : "Delete")
+                }
               </button>
             </div>
           </div>
@@ -1011,6 +1196,101 @@ export function InventoryManagement() {
             <ModalButtons onCancel={() => { setShowStockInModal(false) }} submitText={stockInLoading ? "Adding..." : "Add Stock"} loading={stockInLoading} />
           </form>
         )}
+      </Modal>
+
+      {/* ───── Approval Action Modal ───── */}
+      <Modal
+        isOpen={showApprovalModal && !!approvalItem}
+        onClose={() => {
+          setShowApprovalModal(false);
+          setApprovalItem(null);
+          setApprovalError(null);
+        }}
+        title="Inventory Approval"
+        maxWidth="sm"
+      >
+        {approvalItem && (
+          <div>
+            <div className="bg-neutral-100 rounded-xl p-4 my-4">
+              <p className="text-neutral-900">
+                Record approval decision for <strong className="text-neutral-950">{approvalItem.item_name}</strong> ({approvalItem.sku_code})?
+              </p>
+            </div>
+            <p className="text-sm text-neutral-900 mb-2">
+              Select whether to approve or reject this inventory item. Initial stock on approval: <strong className="text-neutral-950">{approvalItem.initial_stock_pending || 0}</strong>
+            </p>
+            <ModalError message={approvalError} />
+
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                disabled={processingApproval}
+                onClick={() => {
+                  setShowApprovalModal(false);
+                  setShowRejectModal(true);
+                  setRejectReason("");
+                  setApprovalError(null);
+                }}
+                className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Reject
+              </button>
+              <button
+                type="button"
+                disabled={processingApproval}
+                onClick={handleApprove}
+                className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {processingApproval ? "Processing..." : "Approve"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ───── Reject Reason Modal ───── */}
+      <Modal
+        isOpen={showRejectModal && !!approvalItem}
+        onClose={() => {
+          if (!processingApproval) {
+            setShowRejectModal(false);
+            setRejectReason("");
+          }
+        }}
+        title="Reject Inventory Item"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <textarea
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            placeholder="Provide reason for rejection..."
+            rows={4}
+            className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
+          />
+          <ModalError message={approvalError} />
+          <div className="flex gap-3 mt-6">
+            <button
+              type="button"
+              onClick={() => {
+                setShowRejectModal(false);
+                setRejectReason("");
+              }}
+              disabled={processingApproval}
+              className="flex-1 px-4 py-3.5 border-2 border-neutral-300 text-neutral-950 rounded-xl font-semibold hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleReject}
+              disabled={processingApproval}
+              className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {processingApproval ? "Processing..." : "Confirm Reject"}
+            </button>
+          </div>
+        </div>
       </Modal>
 
       {/* ───── Movement History Modal ───── */}

@@ -30,7 +30,6 @@ router.get(
       let salesQuery = supabaseAdmin
         .from("job_orders")
         .select("total_amount", { count: "exact" })
-        .eq("is_deleted", false)
         .eq("status", "completed");
 
       if (branch_id) salesQuery = salesQuery.eq("branch_id", branch_id as string);
@@ -135,7 +134,6 @@ router.get(
       let query = supabaseAdmin
         .from("job_orders")
         .select("total_amount, created_at")
-        .eq("is_deleted", false)
         .eq("status", "completed")
         .gte("created_at", startDate.toISOString())
         .lte("created_at", endDate.toISOString())
@@ -197,7 +195,6 @@ router.get(
       let joQuery = supabaseAdmin
         .from("job_orders")
         .select("id")
-        .eq("is_deleted", false)
         .eq("status", "completed");
 
       if (branch_id) joQuery = joQuery.eq("branch_id", branch_id as string);
@@ -299,7 +296,6 @@ router.get(
       let query = supabaseAdmin
         .from("job_orders")
         .select("branch_id, total_amount, branches(id, name, code)")
-        .eq("is_deleted", false)
         .eq("status", "completed");
 
       if (branchScope) query = query.in("branch_id", branchScope);

@@ -95,7 +95,16 @@ export function StaffPerformanceAnalytics() {
       const params: Record<string, string | number> = { limit: 500, offset: 0 };
       if (selectedBranch !== "all") params.branch_id = selectedBranch;
 
-      const res = await staffPerformanceApi.getAll(params as Parameters<typeof staffPerformanceApi.getAll>[0]);
+      let res = await staffPerformanceApi.getAll(params as Parameters<typeof staffPerformanceApi.getAll>[0]);
+
+      // Self-heal empty dataset by generating snapshots from completed job orders.
+      if (!res.data || res.data.length === 0) {
+        await staffPerformanceApi.recompute(
+          selectedBranch !== "all" ? { branch_id: selectedBranch } : {}
+        );
+        res = await staffPerformanceApi.getAll(params as Parameters<typeof staffPerformanceApi.getAll>[0]);
+      }
+
       setRecords(res.data || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load records");
