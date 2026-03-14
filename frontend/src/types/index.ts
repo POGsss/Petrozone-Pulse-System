@@ -340,7 +340,7 @@ export interface ThirdPartyRepair {
 }
 
 // Inventory types
-export type InventoryItemStatus = "draft" | "pending_approval" | "active" | "inactive" | "rejected";
+export type InventoryItemStatus = "draft" | "active" | "inactive";
 
 export interface InventoryItem {
   id: string;
@@ -355,7 +355,6 @@ export interface InventoryItem {
   approval_requested_at: string | null;
   approved_at: string | null;
   approved_by: string | null;
-  rejection_reason: string | null;
   initial_stock_pending: number;
   branch_id: string;
   created_by: string | null;

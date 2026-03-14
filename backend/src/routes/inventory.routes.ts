@@ -11,7 +11,7 @@ const router = Router();
 router.use(requireAuth);
 
 const MAX_ITEM_NAME_LENGTH = 100;
-const ITEM_NAME_REGEX = /^[A-Za-z0-9 ]+$/;
+const ITEM_NAME_REGEX = /^[A-Za-z0-9()\- ]+$/;
 
 // Helpers
 
@@ -32,7 +32,7 @@ function normalizeAndValidateItemName(rawName: unknown): { valid: boolean; value
   if (!ITEM_NAME_REGEX.test(itemName)) {
     return {
       valid: false,
-      error: "Item name can only contain letters, numbers, and spaces",
+      error: "Item name can only contain letters, numbers, spaces, hyphens, and parentheses",
     };
   }
 
@@ -341,7 +341,6 @@ router.post(
           approval_requested_at: null,
           approved_at: null,
           approved_by: null,
-          rejection_reason: null,
           initial_stock_pending: Math.max(0, parseInt(initial_stock, 10) || 0),
           branch_id,
           created_by: req.user!.id,
@@ -557,7 +556,7 @@ router.put(
 );
 
 // PATCH /api/inventory/:id/request-approval
-// Submit draft/rejected item for HM/POC approval
+// Legacy endpoint: approval is now recorded directly from draft
 // Roles: HM, POC, JS
 router.patch(
   "/:id/request-approval",
@@ -589,21 +588,19 @@ router.patch(
         return;
       }
 
-      if (!["draft", "rejected"].includes(existing.status)) {
+      if (existing.status !== "draft") {
         res.status(400).json({
           error: `Cannot request approval for item with status "${existing.status}".`,
         });
         return;
       }
 
-      const now = new Date().toISOString();
       const { error: updateError } = await supabaseAdmin
         .from("inventory_items")
         .update({
-          status: "pending_approval",
-          approval_status: "REQUESTED",
-          approval_requested_at: now,
-          rejection_reason: null,
+          status: "draft",
+          approval_status: "DRAFT",
+          approval_requested_at: null,
         })
         .eq("id", itemId);
 
@@ -632,9 +629,9 @@ router.patch(
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
           p_new_values: {
             item_name: existing.item_name,
-            status: "pending_approval",
-            approval_status: "REQUESTED",
-            approval_requested_at: now,
+            status: "draft",
+            approval_status: "DRAFT",
+            approval_requested_at: null,
           },
         });
       } catch (auditErr) {
@@ -662,7 +659,7 @@ router.patch(
 );
 
 // PATCH /api/inventory/:id/record-approval
-// Record HM/POC approval decision for draft/rejected/pending item
+// Record HM/POC approval decision directly for draft item
 // Roles: HM, POC
 router.patch(
   "/:id/record-approval",
@@ -670,15 +667,10 @@ router.patch(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const itemId = req.params.id as string;
-      const { decision, rejection_reason } = req.body;
+      const { decision } = req.body;
 
-      if (!decision || !["approved", "rejected"].includes(decision)) {
-        res.status(400).json({ error: 'Decision must be either "approved" or "rejected"' });
-        return;
-      }
-
-      if (decision === "rejected" && (!rejection_reason || !rejection_reason.trim())) {
-        res.status(400).json({ error: "Provide rejection reason." });
+      if (decision !== "approved") {
+        res.status(400).json({ error: 'Decision must be "approved"' });
         return;
       }
 
@@ -705,9 +697,9 @@ router.patch(
         return;
       }
 
-      if (!["draft", "rejected", "pending_approval"].includes(existing.status)) {
+      if (existing.status !== "draft") {
         res.status(400).json({
-          error: `Cannot record approval for status "${existing.status}". Only draft, rejected, or pending_approval is allowed.`,
+          error: `Cannot record approval for status "${existing.status}". Only draft is allowed.`,
         });
         return;
       }
@@ -715,16 +707,13 @@ router.patch(
       const now = new Date().toISOString();
 
       const updatePayload: Database["public"]["Tables"]["inventory_items"]["Update"] = {
-        status: decision === "approved" ? "active" : "rejected",
-        approval_status: decision === "approved" ? "APPROVED" : "REJECTED",
+        status: "active",
+        approval_status: "APPROVED",
+        approval_requested_at: null,
         approved_at: now,
         approved_by: req.user!.id,
-        rejection_reason: decision === "rejected" ? rejection_reason.trim() : null,
+        initial_stock_pending: 0,
       };
-
-      if (decision === "approved") {
-        updatePayload.initial_stock_pending = 0;
-      }
 
       const { error: updateError } = await supabaseAdmin
         .from("inventory_items")
@@ -736,7 +725,7 @@ router.patch(
         return;
       }
 
-      if (decision === "approved" && (existing.initial_stock_pending ?? 0) > 0) {
+      if ((existing.initial_stock_pending ?? 0) > 0) {
         const { error: moveError } = await supabaseAdmin.from("stock_movements").insert({
           inventory_item_id: itemId,
           movement_type: "stock_in",
@@ -773,9 +762,9 @@ router.patch(
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
           p_new_values: {
             item_name: existing.item_name,
-            status: decision === "approved" ? "active" : "rejected",
-            approval_status: decision === "approved" ? "APPROVED" : "REJECTED",
-            rejection_reason: decision === "rejected" ? rejection_reason.trim() : null,
+            status: "active",
+            approval_status: "APPROVED",
+            decision: "approved",
           },
         });
       } catch (auditErr) {

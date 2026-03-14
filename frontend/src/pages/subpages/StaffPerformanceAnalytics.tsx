@@ -16,6 +16,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { staffPerformanceApi, branchesApi } from "../../lib/api";
+import { useAuth } from "../../auth";
 import {
   PageHeader,
   ErrorAlert,
@@ -66,6 +67,10 @@ function formatCurrency(value: number): string {
 }
 
 export function StaffPerformanceAnalytics() {
+  const { user } = useAuth();
+  const userRoles = user?.roles || [];
+  const canRecompute = userRoles.some((r) => ["HM", "POC", "JS"].includes(r));
+
   // Data state
   const [records, setRecords] = useState<StaffPerformance[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -98,7 +103,7 @@ export function StaffPerformanceAnalytics() {
       let res = await staffPerformanceApi.getAll(params as Parameters<typeof staffPerformanceApi.getAll>[0]);
 
       // Self-heal empty dataset by generating snapshots from completed job orders.
-      if (!res.data || res.data.length === 0) {
+      if ((!res.data || res.data.length === 0) && canRecompute) {
         await staffPerformanceApi.recompute(
           selectedBranch !== "all" ? { branch_id: selectedBranch } : {}
         );
@@ -111,7 +116,7 @@ export function StaffPerformanceAnalytics() {
     } finally {
       setLoading(false);
     }
-  }, [selectedBranch]);
+  }, [selectedBranch, canRecompute]);
 
   useEffect(() => {
     fetchRecords();

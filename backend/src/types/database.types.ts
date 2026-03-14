@@ -1310,7 +1310,6 @@ export type Database = {
           approval_requested_at: string | null
           approved_at: string | null
           approved_by: string | null
-          rejection_reason: string | null
           initial_stock_pending: number
           branch_id: string
           created_by: string | null
@@ -1330,7 +1329,6 @@ export type Database = {
           approval_requested_at?: string | null
           approved_at?: string | null
           approved_by?: string | null
-          rejection_reason?: string | null
           initial_stock_pending?: number
           branch_id: string
           created_by?: string | null
@@ -1350,7 +1348,6 @@ export type Database = {
           approval_requested_at?: string | null
           approved_at?: string | null
           approved_by?: string | null
-          rejection_reason?: string | null
           initial_stock_pending?: number
           branch_id?: string
           created_by?: string | null
@@ -1607,7 +1604,7 @@ export type Database = {
     Enums: {
       customer_status: "active" | "inactive"
       customer_type: "individual" | "company"
-      inventory_item_status: "draft" | "pending_approval" | "active" | "inactive" | "rejected"
+      inventory_item_status: "draft" | "active" | "inactive"
       job_order_status: "draft" | "pending_approval" | "approved" | "in_progress" | "ready_for_release" | "pending_payment" | "completed" | "rejected" | "cancelled" | "deactivated"
       purchase_order_status: "draft" | "submitted" | "approved" | "received" | "cancelled" | "deactivated"
       pricing_matrix_status: "active" | "inactive"
@@ -1760,7 +1757,7 @@ export const Constants = {
     Enums: {
       customer_status: ["active", "inactive"],
       customer_type: ["individual", "company"],
-      inventory_item_status: ["draft", "pending_approval", "active", "inactive", "rejected"],
+      inventory_item_status: ["draft", "active", "inactive"],
       job_order_status: ["draft", "pending_approval", "approved", "in_progress", "ready_for_release", "completed", "rejected", "cancelled", "deactivated"],
       pricing_matrix_status: ["active", "inactive"],
       pricing_type: ["labor", "packaging"],

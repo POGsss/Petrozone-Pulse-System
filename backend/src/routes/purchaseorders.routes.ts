@@ -5,6 +5,7 @@ import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
 import { logFailedAction, fixAuditLogUser, filterUnchangedFields } from "../lib/auditLogger.js";
 
 const router = Router();
+const PO_NUMBER_PATTERN = /^PO-[A-Z0-9]+-[0-9]{1,6}$/;
 
 // All purchase-order routes require authentication
 router.use(requireAuth);
@@ -28,7 +29,6 @@ router.get(
       let query = supabaseAdmin
         .from("purchase_orders")
         .select("*, suppliers(id, supplier_name), branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))", { count: "exact" })
-        .neq("status", "deactivated")
         .order("created_at", { ascending: false });
 
       // Branch scoping
@@ -37,7 +37,11 @@ router.get(
       }
 
       if (branch_id) query = query.eq("branch_id", branch_id as string);
-      if (status) query = query.eq("status", status as string);
+      if (status) {
+        query = query.eq("status", status as string);
+      } else {
+        query = query.neq("status", "deactivated");
+      }
       if (search) {
         const s = `%${search}%`;
         query = query.or(`po_number.ilike.${s},supplier_name.ilike.${s}`);
@@ -144,6 +148,12 @@ router.post(
         return;
       }
 
+      const manualPoNumber = typeof po_number === "string" ? po_number.trim().toUpperCase() : "";
+      if (manualPoNumber && !PO_NUMBER_PATTERN.test(manualPoNumber)) {
+        res.status(400).json({ error: "PO number must follow PO-BRANCH-123456 format (max 6 digits)." });
+        return;
+      }
+
       // Branch access
       if (
         !req.user!.roles.includes("HM") &&
@@ -223,7 +233,7 @@ router.post(
       const { data: po, error: poError } = await supabaseAdmin
         .from("purchase_orders")
         .insert({
-          po_number: po_number?.trim() || "", // trigger will auto-generate if empty
+          po_number: manualPoNumber || "", // trigger auto-generates if empty
           supplier_id: supplier_id || null,
           supplier_name: resolvedSupplierName,
           status: "draft",

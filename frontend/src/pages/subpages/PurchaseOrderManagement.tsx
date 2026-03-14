@@ -37,6 +37,7 @@ import type { StatCard, DesktopTableColumn } from "../../components";
 import type { PurchaseOrder, Branch, Supplier, SupplierProduct } from "../../types";
 
 const ITEMS_PER_PAGE = 20;
+const MANUAL_PO_SUFFIX_PATTERN = /^\d{1,6}$/;
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-US", {
@@ -238,7 +239,13 @@ export function PurchaseOrderManagement() {
     };
   }, [allOrders, searchQuery, filterStatus, filterBranch, currentPage]);
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    if (filterStatus === "deactivated") {
+      fetchData("deactivated");
+      return;
+    }
+    fetchData("all");
+  }, [filterStatus]);
   useEffect(() => { setCurrentPage(1); }, [searchQuery, filterStatus, filterBranch]);
 
   function handleResetFilters() {
@@ -248,12 +255,12 @@ export function PurchaseOrderManagement() {
     setCurrentPage(1);
   }
 
-  async function fetchData() {
+  async function fetchData(statusFilter: string = "all") {
     try {
       setLoading(true);
       setError(null);
       const [poRes, branchesData, suppliersRes, spRes] = await Promise.all([
-        purchaseOrdersApi.getAll({ limit: 1000 }),
+        purchaseOrdersApi.getAll({ limit: 1000, status: statusFilter === "all" ? undefined : statusFilter }),
         branchesApi.getAll(),
         suppliersApi.getAll({ limit: 1000, status: "active" }),
         supplierProductsApi.getAll({ limit: 1000, status: "active" }),
@@ -301,6 +308,15 @@ export function PurchaseOrderManagement() {
       value: s.id,
       label: s.supplier_name,
     }));
+  }
+
+  function getBranchCode(branchId: string): string {
+    if (!branchId) return "";
+    if (!isHM && user?.branches) {
+      const match = user.branches.find((b) => b.branch_id === branchId);
+      return match?.branches.code || "";
+    }
+    return branches.find((b) => b.id === branchId)?.code || "";
   }
 
   // Supplier products filtered by supplier (and optionally branch)
@@ -413,9 +429,21 @@ export function PurchaseOrderManagement() {
     e.preventDefault();
     setAddError(null);
 
+    const poSuffix = addForm.po_number.trim();
+
     if (!addForm.branch_id) { setAddError("Branch is required"); return; }
     if (!addForm.order_date) { setAddError("Order date is required"); return; }
     if (draftItems.length === 0) { setAddError("At least one item is required"); return; }
+    if (poSuffix && !MANUAL_PO_SUFFIX_PATTERN.test(poSuffix)) {
+      setAddError("PO number suffix must be numeric and up to 6 digits.");
+      return;
+    }
+
+    const branchCode = getBranchCode(addForm.branch_id);
+    if (poSuffix && !branchCode) { setAddError("Unable to resolve branch code for PO number."); return; }
+
+    const normalizedSuffix = poSuffix ? poSuffix.padStart(6, "0") : "";
+    const manualPoNumber = normalizedSuffix ? `PO-${branchCode.toUpperCase()}-${normalizedSuffix}` : "";
 
     for (let i = 0; i < draftItems.length; i++) {
       const item = draftItems[i];
@@ -426,7 +454,7 @@ export function PurchaseOrderManagement() {
     try {
       setAddLoading(true);
       await purchaseOrdersApi.create({
-        po_number: addForm.po_number.trim() || undefined,
+        po_number: manualPoNumber || undefined,
         supplier_id: addForm.supplier_id || undefined,
         order_date: addForm.order_date,
         expected_delivery_date: addForm.expected_delivery_date || undefined,
@@ -937,7 +965,12 @@ export function PurchaseOrderManagement() {
       <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Create Purchase Order" maxWidth="lg">
         <form onSubmit={handleAdd}>
           <ModalSection title="Purchase Information">
-            <ModalInput value={addForm.po_number} onChange={(v) => setAddForm({ ...addForm, po_number: v })} placeholder="PO Number (auto if blank)" />
+            <ModalInput
+              type="number"
+              value={addForm.po_number}
+              onChange={(v) => setAddForm({ ...addForm, po_number: v.replace(/\D/g, "").slice(0, 6) })}
+              placeholder="PO Number Suffix (max 6 digits; auto if blank)"
+            />
             <div className="grid grid-cols-2 gap-4">
               <ModalSelect
                 value={addForm.branch_id}

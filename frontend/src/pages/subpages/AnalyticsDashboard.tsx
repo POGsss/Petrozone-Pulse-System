@@ -412,7 +412,7 @@ export function AnalyticsDashboard() {
               </div>
             </div>
           ) : (
-            <div className="h-[200px] flex items-center justify-center text-sm text-neutral-900">
+            <div className="h-50 flex items-center justify-center text-sm text-neutral-900">
               No job order data available
             </div>
           )}
@@ -466,7 +466,7 @@ export function AnalyticsDashboard() {
         {/* Right column: Recent Orders — spans 2 rows */}
         <DashboardCard className="lg:col-span-1 lg:row-span-2">
           <h4 className="text-sm font-semibold text-neutral-950 mb-4">Recent Orders</h4>
-          <div className="max-h-[620px] overflow-y-auto">
+          <div className="max-h-155 overflow-y-auto">
             {recentOrders.length > 0 ? (
               recentOrders.map((order) => {
                 const firstItem = order.job_order_items?.[0];
@@ -480,7 +480,7 @@ export function AnalyticsDashboard() {
                         {formatCurrency(order.total_amount)} &middot; {firstItem ? `${firstItem.catalog_item_name} x${firstItem.quantity}` : order.order_number}
                       </p>
                     </div>
-                    <div className="text-right flex-shrink-0">
+                    <div className="text-right shrink-0">
                       <p className="text-xs text-neutral-900">{formatDateTime(order.created_at)}</p>
                       <StatusBadge status={order.status} />
                     </div>
@@ -540,7 +540,7 @@ export function AnalyticsDashboard() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-[300px] flex items-center justify-center text-sm text-neutral-900">
+            <div className="h-75 flex items-center justify-center text-sm text-neutral-900">
               No service data available for this period
             </div>
           )}
@@ -581,7 +581,7 @@ export function AnalyticsDashboard() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-[300px] flex items-center justify-center text-sm text-neutral-900">
+            <div className="h-75 flex items-center justify-center text-sm text-neutral-900">
               No sales data available for this period
             </div>
           )}
@@ -635,7 +635,7 @@ export function AnalyticsDashboard() {
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-[300px] flex items-center justify-center text-sm text-neutral-900">
+            <div className="h-75 flex items-center justify-center text-sm text-neutral-900">
               No branch revenue data available for this period
             </div>
           )}

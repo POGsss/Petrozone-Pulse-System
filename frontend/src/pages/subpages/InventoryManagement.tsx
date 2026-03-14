@@ -37,7 +37,7 @@ import type { InventoryItem, Branch, StockMovement } from "../../types";
 
 const ITEMS_PER_PAGE = 20;
 const MAX_ITEM_NAME_LENGTH = 100;
-const ITEM_NAME_SANITIZE_REGEX = /[^A-Za-z0-9 ]+/g;
+const ITEM_NAME_SANITIZE_REGEX = /[^A-Za-z0-9()\- ]+/g;
 
 const CATEGORY_PRESETS = [
   { value: "Oil & Lubricants", label: "Oil & Lubricants" },
@@ -108,10 +108,6 @@ function getInventoryStatusLabel(status: InventoryItem["status"]): string {
   switch (status) {
     case "draft":
       return "Draft";
-    case "pending_approval":
-      return "Pending Approval";
-    case "rejected":
-      return "Rejected";
     case "active":
       return "Active";
     case "inactive":
@@ -125,10 +121,6 @@ function getInventoryStatusColors(status: InventoryItem["status"]): string {
   switch (status) {
     case "draft":
       return "bg-neutral-100 text-neutral-950";
-    case "pending_approval":
-      return "bg-primary-100 text-primary-950";
-    case "rejected":
-      return "bg-negative-100 text-negative-950";
     case "active":
       return "bg-positive-100 text-positive-950";
     case "inactive":
@@ -241,10 +233,6 @@ export function InventoryManagement() {
   const [approvalItem, setApprovalItem] = useState<InventoryItem | null>(null);
   const [processingApproval, setProcessingApproval] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
-
-  // Reject reason modal
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [rejectReason, setRejectReason] = useState("");
 
   // Actions overflow dropdown
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
@@ -379,8 +367,8 @@ export function InventoryManagement() {
       setAddError(`Item name must be at most ${MAX_ITEM_NAME_LENGTH} characters`);
       return;
     }
-    if (/[^A-Za-z0-9 ]/.test(addForm.item_name.trim())) {
-      setAddError("Item name can only contain letters, numbers, and spaces");
+    if (/[^A-Za-z0-9()\- ]/.test(addForm.item_name.trim())) {
+      setAddError("Item name can only contain letters, numbers, spaces, hyphens, and parentheses");
       return;
     }
     if (!addForm.sku_code.trim()) { setAddError("SKU code is required"); return; }
@@ -445,8 +433,8 @@ export function InventoryManagement() {
       setEditError(`Item name must be at most ${MAX_ITEM_NAME_LENGTH} characters`);
       return;
     }
-    if (/[^A-Za-z0-9 ]/.test(editForm.item_name.trim())) {
-      setEditError("Item name can only contain letters, numbers, and spaces");
+    if (/[^A-Za-z0-9()\- ]/.test(editForm.item_name.trim())) {
+      setEditError("Item name can only contain letters, numbers, spaces, hyphens, and parentheses");
       return;
     }
     if (!editForm.sku_code.trim()) { setEditError("SKU code cannot be empty"); return; }
@@ -595,7 +583,6 @@ export function InventoryManagement() {
   function openApprovalModal(item: InventoryItem) {
     setApprovalItem(item);
     setApprovalError(null);
-    setRejectReason("");
     setShowApprovalModal(true);
   }
 
@@ -616,35 +603,6 @@ export function InventoryManagement() {
       fetchData();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to approve inventory item";
-      setApprovalError(msg);
-      showToast.error(msg);
-    } finally {
-      setProcessingApproval(false);
-    }
-  }
-
-  async function handleReject() {
-    if (!approvalItem) return;
-    if (!rejectReason.trim()) {
-      setApprovalError("Rejection reason is required");
-      return;
-    }
-
-    try {
-      setProcessingApproval(true);
-      setApprovalError(null);
-      await inventoryApi.recordApproval(approvalItem.id, {
-        decision: "rejected",
-        rejection_reason: rejectReason.trim(),
-      });
-      setShowRejectModal(false);
-      setShowApprovalModal(false);
-      setApprovalItem(null);
-      setRejectReason("");
-      showToast.success("Inventory item rejected");
-      fetchData();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to reject inventory item";
       setApprovalError(msg);
       showToast.error(msg);
     } finally {
@@ -694,8 +652,6 @@ export function InventoryManagement() {
             options: [
               { value: "all", label: "All Status" },
               { value: "draft", label: "Draft" },
-              { value: "pending_approval", label: "Pending Approval" },
-              { value: "rejected", label: "Rejected" },
               { value: "active", label: "Active" },
               { value: "inactive", label: "Inactive" },
             ],
@@ -761,7 +717,7 @@ export function InventoryManagement() {
                 extraActions={
                   (() => {
                     const canEditThis = canUpdate;
-                    const canDeleteThis = canDelete && item.status === "active";
+                    const canDeleteThis = canDelete && (item.status === "active" || item.status === "draft");
                     const showDots = true;
                     const hasActions = canEditThis || canDeleteThis || showDots;
                     if (!hasActions) return null;
@@ -800,12 +756,12 @@ export function InventoryManagement() {
                                 >
                                   <LuHistory className="w-4 h-4" /> Movement History
                                 </button>
-                                {canApprove && (item.status === "draft" || item.status === "rejected" || item.status === "pending_approval") && (
+                                {canApprove && (item.status === "draft") && (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); closeDropdown(); openApprovalModal(item); }}
                                     className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
                                   >
-                                    <LuSend className="w-4 h-4" /> Approved Item
+                                    <LuSend className="w-4 h-4" /> Approve Item
                                   </button>
                                 )}
                                 {canStockIn && item.status === "active" && (
@@ -855,7 +811,7 @@ export function InventoryManagement() {
         >
               {paginatedItems.map((item) => {
                 const canEditThis = canUpdate;
-                const canDeleteThis = canDelete && item.status === "active";
+                const canDeleteThis = canDelete && (item.status === "active" || item.status === "draft");
                 const showDots = true; // always show for Movement History
                 return (
                 <DesktopTableRow key={item.id} onClick={() => openViewModal(item)}>
@@ -923,12 +879,12 @@ export function InventoryManagement() {
                               >
                                 <LuHistory className="w-4 h-4" /> Movement History
                               </button>
-                              {canApprove && (item.status === "draft" || item.status === "rejected" || item.status === "pending_approval") && (
+                              {canApprove && item.status === "draft" && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); closeDropdown(); openApprovalModal(item); }}
                                   className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
                                 >
-                                  <LuSend className="w-4 h-4" /> Approved Item
+                                  <LuSend className="w-4 h-4" /> Approve Item
                                 </button>
                               )}
                               {canStockIn && item.status === "active" && (
@@ -1020,7 +976,7 @@ export function InventoryManagement() {
                 </div>
                 <div className="bg-neutral-100 rounded-xl px-4 py-3.5 text-center">
                   <p className="text-xs text-neutral-900">Status</p>
-                  <p className={`text-lg font-bold ${viewItem.status === "active" ? "text-positive" : viewItem.status === "pending_approval" ? "text-primary" : "text-neutral-950"}`}>
+                  <p className={`text-lg font-bold ${viewItem.status === "active" ? "text-positive" : "text-neutral-950"}`}>
                     {getInventoryStatusLabel(viewItem.status)}
                   </p>
                 </div>
@@ -1028,7 +984,7 @@ export function InventoryManagement() {
               {viewItem.is_low_stock && (
                 <div className="bg-negative-200 border border-negative rounded-xl p-3 flex items-center gap-2">
                   <LuTriangleAlert className="w-4 h-4 text-negative-950" />
-                  <span className="text-sm text-negative-950">This item is below the reorder threshold!</span>
+                  <p className="text-sm text-negative-950">This item is below the reorder threshold!</p>
                 </div>
               )}
             </ModalSection>
@@ -1217,7 +1173,7 @@ export function InventoryManagement() {
               </p>
             </div>
             <p className="text-sm text-neutral-900 mb-2">
-              Select whether to approve or reject this inventory item. Initial stock on approval: <strong className="text-neutral-950">{approvalItem.initial_stock_pending || 0}</strong>
+              Approving this inventory item will activate it. Initial stock on approval: <strong className="text-neutral-950">{approvalItem.initial_stock_pending || 0}</strong>
             </p>
             <ModalError message={approvalError} />
 
@@ -1227,13 +1183,12 @@ export function InventoryManagement() {
                 disabled={processingApproval}
                 onClick={() => {
                   setShowApprovalModal(false);
-                  setShowRejectModal(true);
-                  setRejectReason("");
+                  setApprovalItem(null);
                   setApprovalError(null);
                 }}
-                className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                Reject
+                Cancel
               </button>
               <button
                 type="button"
@@ -1246,51 +1201,6 @@ export function InventoryManagement() {
             </div>
           </div>
         )}
-      </Modal>
-
-      {/* ───── Reject Reason Modal ───── */}
-      <Modal
-        isOpen={showRejectModal && !!approvalItem}
-        onClose={() => {
-          if (!processingApproval) {
-            setShowRejectModal(false);
-            setRejectReason("");
-          }
-        }}
-        title="Reject Inventory Item"
-        maxWidth="sm"
-      >
-        <div className="space-y-4">
-          <textarea
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
-            placeholder="Provide reason for rejection..."
-            rows={4}
-            className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
-          />
-          <ModalError message={approvalError} />
-          <div className="flex gap-3 mt-6">
-            <button
-              type="button"
-              onClick={() => {
-                setShowRejectModal(false);
-                setRejectReason("");
-              }}
-              disabled={processingApproval}
-              className="flex-1 px-4 py-3.5 border-2 border-neutral-300 text-neutral-950 rounded-xl font-semibold hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleReject}
-              disabled={processingApproval}
-              className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {processingApproval ? "Processing..." : "Confirm Reject"}
-            </button>
-          </div>
-        </div>
       </Modal>
 
       {/* ───── Movement History Modal ───── */}

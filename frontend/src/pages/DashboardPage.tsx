@@ -110,9 +110,12 @@ function getNavItemsForRole(roles: string[]): NavItem[] {
   const hasRole = (role: string) => roles.includes(role);
   const hasAnyRole = (...checkRoles: string[]) => checkRoles.some(r => roles.includes(r));
   
-  const items: NavItem[] = [
-    { id: "dashboard", label: "Dashboard", icon: <NavIcons.Dashboard /> },
-  ];
+  const items: NavItem[] = [];
+
+  // Dashboard: HM, POC, JS, R
+  if (hasAnyRole("HM", "POC", "JS", "R")) {
+    items.push({ id: "dashboard", label: "Dashboard", icon: <NavIcons.Dashboard /> });
+  }
 
   // Staff Performance: HM, POC, JS, R, T (view)
   if (hasAnyRole("HM", "POC", "JS", "R", "T")) {
@@ -203,6 +206,14 @@ export function DashboardPage() {
 
   const userRoles = user.roles || [];
   const navItems = getNavItemsForRole(userRoles);
+
+  // Keep active nav aligned to items the current role can access.
+  useEffect(() => {
+    if (navItems.length === 0) return;
+    if (!navItems.some((item) => item.id === activeNav)) {
+      setActiveNav(navItems[0].id);
+    }
+  }, [navItems, activeNav]);
   
   // Permission helpers based on user stories
   const hasAnyRole = (...roles: string[]) => roles.some(r => userRoles.includes(r as typeof userRoles[number]));

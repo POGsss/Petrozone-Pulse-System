@@ -216,7 +216,7 @@ export function DashboardLayout({
               <div className="relative" ref={profileDropdownRef}>
                 <button
                   onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-                  className="w-10 h-10 bg-gradient-to-br from-primary-900 to-primary rounded-full flex items-center justify-center text-white font-medium hover:ring-2 hover:ring-primary-200 transition-all"
+                  className="w-10 h-10 bg-linear-to-br from-primary-900 to-primary rounded-full flex items-center justify-center text-white font-medium hover:ring-2 hover:ring-primary-200 transition-all"
                 >
                   {user?.profile?.full_name?.charAt(0) || user?.email?.charAt(0) || "U"}
                 </button>

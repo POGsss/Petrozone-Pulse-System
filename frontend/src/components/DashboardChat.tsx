@@ -67,7 +67,7 @@ export function DashboardChat({ context }: DashboardChatProps) {
     <>
       {/* Chat Panel */}
       {open && (
-        <div className="fixed bottom-16 right-6 z-50 w-[380px] max-h-[520px] bg-white rounded-xl border border-neutral-200 flex flex-col overflow-hidden">
+        <div className="fixed bottom-16 right-6 z-50 w-95 max-h-130 bg-white rounded-xl border border-neutral-200 flex flex-col overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-4 bg-primary text-white rounded-t-xl">
             <div className="flex items-center gap-2">
@@ -83,10 +83,10 @@ export function DashboardChat({ context }: DashboardChatProps) {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[300px] max-h-[380px] bg-neutral-100">
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-75 max-h-95 bg-neutral-100">
             {messages.length === 0 && (
               <div className="text-center py-8 space-y-2">
-                <LuSparkles className="w-10 h-10 text-neutral-300 mx-auto" />
+                <LuSparkles className="w-10 h-10 text-primary mx-auto" />
                 <p className="text-sm text-neutral-900">
                   Ask me anything about your dashboard data!
                 </p>

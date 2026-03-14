@@ -992,7 +992,7 @@ export const inventoryApi = {
 
   recordApproval: async (
     id: string,
-    data: { decision: "approved" | "rejected"; rejection_reason?: string }
+    data: { decision: "approved" }
   ) => {
     return fetchWithAuth<import("../types").InventoryItem>(`/api/inventory/${id}/record-approval`, {
       method: "PATCH",
