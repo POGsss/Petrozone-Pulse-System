@@ -210,7 +210,12 @@ export function DashboardPage() {
   // Keep active nav aligned to items the current role can access.
   useEffect(() => {
     if (navItems.length === 0) return;
-    if (!navItems.some((item) => item.id === activeNav)) {
+    const allowedNonNavViews = ["profile"];
+    const isActiveNavAllowed =
+      navItems.some((item) => item.id === activeNav) ||
+      allowedNonNavViews.includes(activeNav);
+
+    if (!isActiveNavAllowed) {
       setActiveNav(navItems[0].id);
     }
   }, [navItems, activeNav]);

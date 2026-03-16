@@ -747,6 +747,11 @@ export function JobOrderManagement() {
     if (!addBranchId) { setAddError("Branch is required"); return; }
     if (!addCustomerId) { setAddError("Customer is required"); return; }
     if (!addVehicleId) { setAddError("Vehicle is required"); return; }
+    if (!addOdometer.trim()) { setAddError("Odometer reading is required"); return; }
+    if (isNaN(parseInt(addOdometer, 10)) || parseInt(addOdometer, 10) < 0) {
+      setAddError("Odometer reading must be a non-negative number");
+      return;
+    }
     if (!addVehicleBay) { setAddError("Vehicle bay is required"); return; }
     if (draftItems.length === 0) { setAddError("Add at least one item"); return; }
 
@@ -758,7 +763,7 @@ export function JobOrderManagement() {
         branch_id: addBranchId,
         vehicle_class: addVehicleClass,
         notes: addNotes.trim() || undefined,
-        odometer_reading: addOdometer ? parseInt(addOdometer) : undefined,
+        odometer_reading: parseInt(addOdometer, 10),
         vehicle_bay: addVehicleBay,
         items: draftItems.map((d) => ({
           catalog_item_id: d.catalog_item_id,
@@ -1715,7 +1720,8 @@ export function JobOrderManagement() {
                 type="number"
                 value={addOdometer}
                 onChange={setAddOdometer}
-                placeholder="Odometer Reading (km)"
+                placeholder="Odometer Reading (km) *"
+                required
               />
               <ModalSelect
                 value={addVehicleBay}

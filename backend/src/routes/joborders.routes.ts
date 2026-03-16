@@ -200,8 +200,18 @@ router.post(
         res.status(400).json({ error: "Branch is required" });
         return;
       }
+      if (odometer_reading === undefined || odometer_reading === null || String(odometer_reading).trim() === "") {
+        res.status(400).json({ error: "Odometer reading is required" });
+        return;
+      }
       if (!items || !Array.isArray(items) || items.length === 0) {
         res.status(400).json({ error: "At least one item is required" });
+        return;
+      }
+
+      const parsedOdometerReading = parseInt(String(odometer_reading), 10);
+      if (isNaN(parsedOdometerReading) || parsedOdometerReading < 0) {
+        res.status(400).json({ error: "Odometer reading must be a non-negative number" });
         return;
       }
 
@@ -443,7 +453,7 @@ router.post(
           vehicle_class,
           notes: notes?.trim() || null,
           total_amount: totalAmount,
-          odometer_reading: odometer_reading ? parseInt(odometer_reading) : null,
+          odometer_reading: parsedOdometerReading,
           vehicle_bay: vehicle_bay?.trim() || null,
           created_by: req.user!.id,
         })
