@@ -110,7 +110,7 @@ export type Database = {
         }
         Relationships: []
       }
-      catalog_items: {
+      package_items: {
         Row: {
           created_at: string
           created_by: string | null
@@ -143,7 +143,7 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "catalog_items_created_by_fkey"
+            foreignKeyName: "package_items_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "user_profiles"
@@ -151,35 +151,35 @@ export type Database = {
           },
         ]
       }
-      catalog_inventory_links: {
+      package_inventory_links: {
         Row: {
           id: string
-          catalog_item_id: string
+          package_item_id: string
           inventory_item_id: string
           created_at: string
         }
         Insert: {
           id?: string
-          catalog_item_id: string
+          package_item_id: string
           inventory_item_id: string
           created_at?: string
         }
         Update: {
           id?: string
-          catalog_item_id?: string
+          package_item_id?: string
           inventory_item_id?: string
           created_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "catalog_inventory_links_catalog_item_id_fkey"
-            columns: ["catalog_item_id"]
+            foreignKeyName: "package_inventory_links_package_item_id_fkey"
+            columns: ["package_item_id"]
             isOneToOne: false
-            referencedRelation: "catalog_items"
+            referencedRelation: "package_items"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "catalog_inventory_links_inventory_item_id_fkey"
+            foreignKeyName: "package_inventory_links_inventory_item_id_fkey"
             columns: ["inventory_item_id"]
             isOneToOne: false
             referencedRelation: "inventory_items"
@@ -497,9 +497,9 @@ export type Database = {
       }
       job_order_items: {
         Row: {
-          catalog_item_id: string
-          catalog_item_name: string
-          catalog_item_type: string
+          package_item_id: string
+          package_item_name: string
+          package_item_type: string
           created_at: string
           id: string
           inventory_cost: number
@@ -509,9 +509,9 @@ export type Database = {
           quantity: number
         }
         Insert: {
-          catalog_item_id: string
-          catalog_item_name: string
-          catalog_item_type: string
+          package_item_id: string
+          package_item_name: string
+          package_item_type: string
           created_at?: string
           id?: string
           inventory_cost?: number
@@ -521,9 +521,9 @@ export type Database = {
           quantity?: number
         }
         Update: {
-          catalog_item_id?: string
-          catalog_item_name?: string
-          catalog_item_type?: string
+          package_item_id?: string
+          package_item_name?: string
+          package_item_type?: string
           created_at?: string
           id?: string
           inventory_cost?: number
@@ -534,10 +534,10 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "job_order_items_catalog_item_id_fkey"
-            columns: ["catalog_item_id"]
+            foreignKeyName: "job_order_items_package_item_id_fkey"
+            columns: ["package_item_id"]
             isOneToOne: false
-            referencedRelation: "catalog_items"
+            referencedRelation: "package_items"
             referencedColumns: ["id"]
           },
           {
@@ -847,7 +847,7 @@ export type Database = {
       }
       pricing_matrices: {
         Row: {
-          catalog_item_id: string
+          package_item_id: string
           created_at: string
           created_by: string | null
           extra_heavy_price: number
@@ -858,7 +858,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          catalog_item_id: string
+          package_item_id: string
           created_at?: string
           created_by?: string | null
           extra_heavy_price?: number
@@ -869,7 +869,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          catalog_item_id?: string
+          package_item_id?: string
           created_at?: string
           created_by?: string | null
           extra_heavy_price?: number
@@ -881,10 +881,10 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "pricing_matrices_catalog_item_id_fkey"
-            columns: ["catalog_item_id"]
+            foreignKeyName: "pricing_matrices_package_item_id_fkey"
+            columns: ["package_item_id"]
             isOneToOne: false
-            referencedRelation: "catalog_items"
+            referencedRelation: "package_items"
             referencedColumns: ["id"]
           },
           {

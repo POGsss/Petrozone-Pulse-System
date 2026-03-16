@@ -262,9 +262,9 @@ router.post(
       // Validate items and compute totals
       let totalAmount = 0;
       const orderItems: Array<{
-        catalog_item_id: string;
-        catalog_item_name: string;
-        catalog_item_type: string;
+        package_item_id: string;
+        package_item_name: string;
+        package_item_type: string;
         quantity: number;
         labor_price: number;
         inventory_cost: number;
@@ -278,8 +278,8 @@ router.post(
       }> = [];
 
       for (const item of items) {
-        if (!item.catalog_item_id) {
-          res.status(400).json({ error: "Catalog item ID is required for each item" });
+        if (!item.package_item_id) {
+          res.status(400).json({ error: "Package item ID is required for each item" });
           return;
         }
         const qty = item.quantity || 1;
@@ -288,23 +288,23 @@ router.post(
           return;
         }
 
-        // Resolve catalog item
-        const { data: catalogItem, error: catError } = await supabaseAdmin
-          .from("catalog_items")
+        // Resolve package item
+        const { data: packageItem, error: catError } = await supabaseAdmin
+          .from("package_items")
           .select("id, name")
-          .eq("id", item.catalog_item_id)
+          .eq("id", item.package_item_id)
           .single();
 
-        if (catError || !catalogItem) {
-          res.status(400).json({ error: `Catalog item not found: ${item.catalog_item_id}` });
+        if (catError || !packageItem) {
+          res.status(400).json({ error: `Package item not found: ${item.package_item_id}` });
           return;
         }
 
-        // Get active pricing matrix for this catalog item
+        // Get active pricing matrix for this package item
         const { data: pricingMatrix } = await supabaseAdmin
           .from("pricing_matrices")
           .select("*")
-          .eq("catalog_item_id", item.catalog_item_id)
+          .eq("package_item_id", item.package_item_id)
           .eq("status", "active")
           .maybeSingle();
 
@@ -315,23 +315,23 @@ router.post(
           laborPrice = pricingMatrix[priceKey] || 0;
         }
 
-        // Fetch catalog inventory template links (legacy support)
+        // Fetch package inventory template links (legacy support)
         const { data: templateLinks } = await supabaseAdmin
-          .from("catalog_inventory_links")
+          .from("package_inventory_links")
           .select("inventory_item_id, inventory_items(id, item_name, cost_price, branch_id, status)")
-          .eq("catalog_item_id", item.catalog_item_id);
+          .eq("package_item_id", item.package_item_id);
 
-        const catalogTemplateIds = (templateLinks ?? []).map((l: any) => l.inventory_item_id);
+        const packageTemplateIds = (templateLinks ?? []).map((l: any) => l.inventory_item_id);
 
         // User-provided inventory quantities
         const userInventoryQuantities: Array<{ inventory_item_id: string; quantity: number }> =
           item.inventory_quantities || [];
 
-        // Check if catalog uses inventory_types (new flow) or template links (legacy flow)
+        // Check if package uses inventory_types (new flow) or template links (legacy flow)
         const { data: catItemFull } = await supabaseAdmin
-          .from("catalog_items")
+          .from("package_items")
           .select("inventory_types")
-          .eq("id", item.catalog_item_id)
+          .eq("id", item.package_item_id)
           .single();
 
         const hasInventoryTypes = catItemFull?.inventory_types && catItemFull.inventory_types.length > 0;
@@ -354,28 +354,28 @@ router.post(
             }
             if (!catItemFull.inventory_types.includes(invItem.category)) {
               res.status(400).json({
-                error: `Inventory item category "${invItem.category}" is not required by catalog "${catalogItem.name}". Required categories: ${catItemFull.inventory_types.join(", ")}`,
+                error: `Inventory item category "${invItem.category}" is not required by package "${packageItem.name}". Required categories: ${catItemFull.inventory_types.join(", ")}`,
               });
               return;
             }
           }
         } else {
-          // Legacy flow: validate against catalog_inventory_links template
+          // Legacy flow: validate against package_inventory_links template
           for (const uiq of userInventoryQuantities) {
-            if (!catalogTemplateIds.includes(uiq.inventory_item_id)) {
+            if (!packageTemplateIds.includes(uiq.inventory_item_id)) {
               res.status(400).json({
-                error: `Inventory item ${uiq.inventory_item_id} is not in the catalog template for ${catalogItem.name}`,
+                error: `Inventory item ${uiq.inventory_item_id} is not in the package template for ${packageItem.name}`,
               });
               return;
             }
           }
 
           // Validate: all template items must be present
-          for (const templateId of catalogTemplateIds) {
+          for (const templateId of packageTemplateIds) {
             const found = userInventoryQuantities.find((uiq: any) => uiq.inventory_item_id === templateId);
             if (!found) {
               res.status(400).json({
-                error: `Missing inventory quantity for template item ${templateId} in catalog ${catalogItem.name}. All template items must be included.`,
+                error: `Missing inventory quantity for template item ${templateId} in package ${packageItem.name}. All template items must be included.`,
               });
               return;
             }
@@ -429,9 +429,9 @@ router.post(
         const lineTotal = (laborPrice + inventoryCost) * qty;
 
         orderItems.push({
-          catalog_item_id: catalogItem.id,
-          catalog_item_name: catalogItem.name,
-          catalog_item_type: "labor_package",
+          package_item_id: packageItem.id,
+          package_item_name: packageItem.name,
+          package_item_type: "labor_package",
           quantity: qty,
           labor_price: laborPrice,
           inventory_cost: inventoryCost,
@@ -987,14 +987,14 @@ router.patch(
       // Precondition: all matrix-priced items must have resolved pricing
       const { data: unresolvedItems } = await supabaseAdmin
         .from("job_order_items")
-        .select("id, catalog_item_name, labor_price, inventory_cost")
+        .select("id, package_item_name, labor_price, inventory_cost")
         .eq("job_order_id", orderId)
         .eq("labor_price", 0)
         .eq("inventory_cost", 0);
 
       if (unresolvedItems && unresolvedItems.length > 0) {
         res.status(400).json({
-          error: `Missing scope/total/contact or unresolved pricing. Items with zero pricing: ${unresolvedItems.map((i: any) => i.catalog_item_name).join(", ")}`,
+          error: `Missing scope/total/contact or unresolved pricing. Items with zero pricing: ${unresolvedItems.map((i: any) => i.package_item_name).join(", ")}`,
         });
         return;
       }
@@ -1148,7 +1148,7 @@ router.patch(
         // Fetch JO items to check stock
         const { data: joItems } = await supabaseAdmin
           .from("job_order_items")
-          .select("catalog_item_id, catalog_item_name, catalog_item_type, quantity")
+          .select("package_item_id, package_item_name, package_item_type, quantity")
           .eq("job_order_id", orderId);
 
         if (joItems && joItems.length > 0) {
@@ -1416,10 +1416,10 @@ router.post(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const orderId = req.params.id as string;
-      const { catalog_item_id, quantity, inventory_quantities } = req.body;
+      const { package_item_id, quantity, inventory_quantities } = req.body;
 
-      if (!catalog_item_id) {
-        res.status(400).json({ error: "Catalog item ID is required" });
+      if (!package_item_id) {
+        res.status(400).json({ error: "Package item ID is required" });
         return;
       }
       const qty = quantity || 1;
@@ -1462,15 +1462,15 @@ router.post(
         return;
       }
 
-      // Resolve catalog item
-      const { data: catalogItem, error: catError } = await supabaseAdmin
-        .from("catalog_items")
+      // Resolve package item
+      const { data: packageItem, error: catError } = await supabaseAdmin
+        .from("package_items")
         .select("id, name")
-        .eq("id", catalog_item_id)
+        .eq("id", package_item_id)
         .single();
 
-      if (catError || !catalogItem) {
-        res.status(400).json({ error: `Catalog item not found: ${catalog_item_id}` });
+      if (catError || !packageItem) {
+        res.status(400).json({ error: `Package item not found: ${package_item_id}` });
         return;
       }
 
@@ -1486,7 +1486,7 @@ router.post(
       const { data: pricingMatrix } = await supabaseAdmin
         .from("pricing_matrices")
         .select("*")
-        .eq("catalog_item_id", catalog_item_id)
+        .eq("package_item_id", package_item_id)
         .eq("status", "active")
         .maybeSingle();
 
@@ -1496,23 +1496,23 @@ router.post(
         laborPrice = pricingMatrix[priceKey] || 0;
       }
 
-      // Fetch catalog inventory template links (legacy support)
+      // Fetch package inventory template links (legacy support)
       const { data: templateLinks } = await supabaseAdmin
-        .from("catalog_inventory_links")
+        .from("package_inventory_links")
         .select("inventory_item_id, inventory_items(id, item_name, cost_price, branch_id, status)")
-        .eq("catalog_item_id", catalog_item_id);
+        .eq("package_item_id", package_item_id);
 
-      const catalogTemplateIds = (templateLinks ?? []).map((l: any) => l.inventory_item_id);
+      const packageTemplateIds = (templateLinks ?? []).map((l: any) => l.inventory_item_id);
 
       // User-provided inventory quantities
       const userInventoryQuantities: Array<{ inventory_item_id: string; quantity: number }> =
         inventory_quantities || [];
 
-      // Check if catalog uses inventory_types (new flow) or template links (legacy flow)
+      // Check if package uses inventory_types (new flow) or template links (legacy flow)
       const { data: catItemFull } = await supabaseAdmin
-        .from("catalog_items")
+        .from("package_items")
         .select("inventory_types")
-        .eq("id", catalog_item_id)
+        .eq("id", package_item_id)
         .single();
 
       const hasInventoryTypes = catItemFull?.inventory_types && catItemFull.inventory_types.length > 0;
@@ -1534,24 +1534,24 @@ router.post(
           }
           if (!catItemFull.inventory_types.includes(invItem.category)) {
             res.status(400).json({
-              error: `Inventory item category "${invItem.category}" is not required by catalog "${catalogItem.name}"`,
+              error: `Inventory item category "${invItem.category}" is not required by package "${packageItem.name}"`,
             });
             return;
           }
         }
       } else {
         for (const uiq of userInventoryQuantities) {
-          if (!catalogTemplateIds.includes(uiq.inventory_item_id)) {
+          if (!packageTemplateIds.includes(uiq.inventory_item_id)) {
             res.status(400).json({
-              error: `Inventory item ${uiq.inventory_item_id} is not in the catalog template for ${catalogItem.name}`,
+              error: `Inventory item ${uiq.inventory_item_id} is not in the package template for ${packageItem.name}`,
             });
             return;
           }
         }
-        for (const templateId of catalogTemplateIds) {
+        for (const templateId of packageTemplateIds) {
           if (!userInventoryQuantities.find((uiq: any) => uiq.inventory_item_id === templateId)) {
             res.status(400).json({
-              error: `Missing inventory quantity for template item ${templateId} in catalog ${catalogItem.name}`,
+              error: `Missing inventory quantity for template item ${templateId} in package ${packageItem.name}`,
             });
             return;
           }
@@ -1605,9 +1605,9 @@ router.post(
         .from("job_order_items")
         .insert({
           job_order_id: orderId,
-          catalog_item_id: catalogItem.id,
-          catalog_item_name: catalogItem.name,
-          catalog_item_type: "labor_package",
+          package_item_id: packageItem.id,
+          package_item_name: packageItem.name,
+          package_item_type: "labor_package",
           quantity: qty,
           labor_price: laborPrice,
           inventory_cost: inventoryCost,

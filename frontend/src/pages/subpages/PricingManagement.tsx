@@ -6,7 +6,7 @@ import {
   LuCheck,
   LuX,
 } from "react-icons/lu";
-import { pricingApi, catalogApi } from "../../lib/api";
+import { pricingApi, packagesApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
 import { useAuth } from "../../auth";
 import {
@@ -28,7 +28,7 @@ import {
   DesktopTableRow,
 } from "../../components";
 import type { StatCard, MobileCardAction, DesktopTableColumn } from "../../components";
-import type { PricingMatrix, CatalogItem } from "../../types";
+import type { PricingMatrix, PackageItem } from "../../types";
 
 const ITEMS_PER_PAGE = 20;
 
@@ -63,7 +63,7 @@ export function PricingManagement() {
 
   // Data state
   const [allPricingMatrices, setAllPricingMatrices] = useState<PricingMatrix[]>([]);
-  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
+  const [packageItems, setPackageItems] = useState<PackageItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,7 +80,7 @@ export function PricingManagement() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addingItem, setAddingItem] = useState(false);
   const [addForm, setAddForm] = useState({
-    catalog_item_id: "",
+    package_item_id: "",
     light_price: "",
     heavy_price: "",
     extra_heavy_price: "",
@@ -93,7 +93,7 @@ export function PricingManagement() {
   const [editingItem, setEditingItem] = useState(false);
   const [selectedItem, setSelectedItem] = useState<PricingMatrix | null>(null);
   const [editForm, setEditForm] = useState({
-    catalog_item_id: "",
+    package_item_id: "",
     light_price: "",
     heavy_price: "",
     extra_heavy_price: "",
@@ -120,7 +120,7 @@ export function PricingManagement() {
     const filtered = allPricingMatrices.filter((p) => {
       const matchSearch =
         !q ||
-        p.catalog_items?.name?.toLowerCase().includes(q);
+        p.package_items?.name?.toLowerCase().includes(q);
 
       const matchStatus = filterStatus === "all" || p.status === filterStatus;
 
@@ -150,12 +150,12 @@ export function PricingManagement() {
 
       const fetches: [Promise<any>, Promise<any> | null] = [
         pricingApi.getAll({ limit: 1000 }),
-        canCreate ? catalogApi.getAll({ limit: 1000 }) : Promise.resolve(null),
+        canCreate ? packagesApi.getAll({ limit: 1000 }) : Promise.resolve(null),
       ];
 
-      const [pricingRes, catalogRes] = await Promise.all(fetches);
+      const [pricingRes, packageRes] = await Promise.all(fetches);
       setAllPricingMatrices(pricingRes.data);
-      if (catalogRes?.data) setCatalogItems(catalogRes.data);
+      if (packageRes?.data) setPackageItems(packageRes.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch data");
     } finally {
@@ -172,7 +172,7 @@ export function PricingManagement() {
   // Open add modal
   function openAddModal() {
     setAddForm({
-      catalog_item_id: "",
+      package_item_id: "",
       light_price: "",
       heavy_price: "",
       extra_heavy_price: "",
@@ -187,8 +187,8 @@ export function PricingManagement() {
     e.preventDefault();
     setAddError(null);
 
-    if (!addForm.catalog_item_id) {
-      setAddError("Please select a catalog item");
+    if (!addForm.package_item_id) {
+      setAddError("Please select a Package item");
       return;
     }
     const lp = parseFloat(addForm.light_price);
@@ -202,7 +202,7 @@ export function PricingManagement() {
     try {
       setAddingItem(true);
       await pricingApi.create({
-        catalog_item_id: addForm.catalog_item_id,
+        package_item_id: addForm.package_item_id,
         light_price: lp,
         heavy_price: hp,
         extra_heavy_price: ehp,
@@ -223,7 +223,7 @@ export function PricingManagement() {
   function openEditModal(item: PricingMatrix) {
     setSelectedItem(item);
     setEditForm({
-      catalog_item_id: item.catalog_item_id,
+      package_item_id: item.package_item_id,
       light_price: String(item.light_price),
       heavy_price: String(item.heavy_price),
       extra_heavy_price: String(item.extra_heavy_price),
@@ -239,8 +239,8 @@ export function PricingManagement() {
     if (!selectedItem) return;
     setEditError(null);
 
-    if (!editForm.catalog_item_id) {
-      setEditError("Please select a catalog item");
+    if (!editForm.package_item_id) {
+      setEditError("Please select a Package item");
       return;
     }
     const lp = parseFloat(editForm.light_price);
@@ -254,7 +254,7 @@ export function PricingManagement() {
     try {
       setEditingItem(true);
       await pricingApi.update(selectedItem.id, {
-        catalog_item_id: editForm.catalog_item_id,
+        package_item_id: editForm.package_item_id,
         light_price: lp,
         heavy_price: hp,
         extra_heavy_price: ehp,
@@ -300,9 +300,9 @@ export function PricingManagement() {
     setCurrentPage(1);
   }
 
-  // Get active catalog items for forms
-  function getActiveCatalogItems() {
-    return catalogItems.filter((c) => c.status === "active");
+  // Get active Package items for forms
+  function getActivePackageItems() {
+    return packageItems.filter((c) => c.status === "active");
   }
 
   if (loading && allPricingMatrices.length === 0) {
@@ -372,7 +372,7 @@ export function PricingManagement() {
                 key={item.id}
                 onClick={() => openViewModal(item)}
                 icon={<LuDollarSign className="w-5 h-5 text-primary" />}
-                title={item.catalog_items?.name || "Unknown Item"}
+                title={item.package_items?.name || "Unknown Item"}
                 statusBadge={{
                   label: item.status === "active" ? "Active" : "Inactive",
                   className: item.status === "active" ? "bg-positive-100 text-positive" : "bg-negative-100 text-negative",
@@ -393,7 +393,7 @@ export function PricingManagement() {
         {/* Desktop Table View */}
         <DesktopTable
           columns={[
-            { label: "Catalog Item" },
+            { label: "Package item" },
             { label: "Light" },
             { label: "Heavy" },
             { label: "Extra Heavy" },
@@ -409,7 +409,7 @@ export function PricingManagement() {
                   onClick={() => openViewModal(item)}
                 >
                   <td className="py-3 px-4 text-sm text-neutral-900">
-                    <span className="font-medium">{item.catalog_items?.name || "Unknown"}</span>
+                    <span className="font-medium">{item.package_items?.name || "Unknown"}</span>
                   </td>
                   <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap font-medium">
                     {formatCurrency(item.light_price)}
@@ -482,9 +482,9 @@ export function PricingManagement() {
             <ModalSection title="Pricing Information">
               <ModalInput
                 type="text"
-                value={viewItem.catalog_items?.name || "Unknown Item"}
+                value={viewItem.package_items?.name || "Unknown Item"}
                 onChange={() => { }}
-                placeholder="Catalog Item"
+                placeholder="Package item"
                 disabled
               />
               <ModalInput
@@ -551,11 +551,11 @@ export function PricingManagement() {
         <form onSubmit={handleAdd}>
           <ModalSection title="Pricing Information">
             <ModalSelect
-              value={addForm.catalog_item_id}
-              onChange={(v) => setAddForm((prev) => ({ ...prev, catalog_item_id: v }))}
+              value={addForm.package_item_id}
+              onChange={(v) => setAddForm((prev) => ({ ...prev, package_item_id: v }))}
               options={[
-                { value: "", label: "Select Catalog Item" },
-                ...getActiveCatalogItems().map((c) => ({
+                { value: "", label: "Select Package item" },
+                ...getActivePackageItems().map((c) => ({
                   value: c.id,
                   label: c.name,
                 })),
@@ -613,11 +613,11 @@ export function PricingManagement() {
         <form onSubmit={handleEdit}>
           <ModalSection title="Pricing Information">
             <ModalSelect
-              value={editForm.catalog_item_id}
-              onChange={(v) => setEditForm((prev) => ({ ...prev, catalog_item_id: v }))}
+              value={editForm.package_item_id}
+              onChange={(v) => setEditForm((prev) => ({ ...prev, package_item_id: v }))}
               options={[
-                { value: "", label: "Select Catalog Item" },
-                ...getActiveCatalogItems().map((c) => ({
+                { value: "", label: "Select Package item" },
+                ...getActivePackageItems().map((c) => ({
                   value: c.id,
                   label: c.name,
                 })),
@@ -678,7 +678,7 @@ export function PricingManagement() {
               <p className="text-neutral-900">
                 Are you sure you want to delete the pricing rule for{" "}
                 <strong className="text-neutral-950">
-                  {itemToDelete.catalog_items?.name || "Unknown Item"}
+                  {itemToDelete.package_items?.name || "Unknown Item"}
                 </strong>
                 ?
               </p>

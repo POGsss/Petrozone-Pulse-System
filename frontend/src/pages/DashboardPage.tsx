@@ -11,7 +11,7 @@ import { ProfileSettings } from "./subpages/ProfileSettings";
 import { AuditLogs } from "./subpages/AuditLogs";
 import { CustomerManagement } from "./subpages/CustomerManagement";
 import { VehicleManagement } from "./subpages/VehicleManagement";
-import { CatalogManagement } from "./subpages/CatalogManagement";
+import { PackagesManagement } from "./subpages/PackagesManagement";
 import { PricingManagement } from "./subpages/PricingManagement";
 import { JobOrderManagement } from "./subpages/JobOrderManagement";
 import { InventoryManagement } from "./subpages/InventoryManagement";
@@ -46,8 +46,8 @@ const pageData: Record<string, { title: string; description: string }> = {
     title: "Vehicles",
     description: "Manage vehicle records and service history.",
   },
-  catalog: {
-    title: "Catalog",
+  packages: {
+    title: "Packages",
     description: "Manage services, products, and packages.",
   },
   "job-orders": {
@@ -56,7 +56,7 @@ const pageData: Record<string, { title: string; description: string }> = {
   },
   pricing: {
     title: "Pricing Matrices",
-    description: "Define and manage pricing rules for catalog items.",
+    description: "Define and manage pricing rules for package items.",
   },
   inventory: {
     title: "Inventory",
@@ -143,9 +143,9 @@ function getNavItemsForRole(roles: string[]): NavItem[] {
   // Pricing Matrices: All roles can view; HM, POC, JS, R can manage
   items.push({ id: "pricing", label: "Pricing Matrices", icon: <NavIcons.Pricing /> });
 
-  // Catalog: HM, POC, JS, R (view); HM/POC/JS can manage
+  // Packages: HM, POC, JS, R (view); HM/POC/JS can manage
   if (hasAnyRole("HM", "POC", "JS", "R")) {
-    items.push({ id: "catalog", label: "Catalog", icon: <NavIcons.Catalog /> });
+    items.push({ id: "packages", label: "Packages", icon: <NavIcons.Packages /> });
   }
 
   // Inventory: HM, POC, JS
@@ -227,7 +227,7 @@ export function DashboardPage() {
   const canViewAuditLogs = hasAnyRole("HM", "POC");
   const canViewCustomers = hasAnyRole("HM", "POC", "JS", "R", "T");
   const canViewVehicles = hasAnyRole("HM", "POC", "JS", "R");
-  const canViewCatalog = hasAnyRole("HM", "POC", "JS", "R");
+  const canViewPackages = hasAnyRole("HM", "POC", "JS", "R");
   const canViewInventory = hasAnyRole("HM", "POC", "JS");
   const canViewPurchaseOrders = hasAnyRole("HM", "POC", "JS", "R");
   const canViewSuppliers = hasAnyRole("HM", "POC", "JS");
@@ -274,9 +274,9 @@ export function DashboardPage() {
           <VehicleManagement />
       )}
 
-      {/* Catalog Management - HM, POC, JS, R */}
-      {activeNav === "catalog" && canViewCatalog && (
-          <CatalogManagement />
+        {/* Packages Management - HM, POC, JS, R */}
+        {activeNav === "packages" && canViewPackages && (
+          <PackagesManagement />
       )}
 
       {/* Inventory Management - HM, POC, JS */}
@@ -325,7 +325,7 @@ export function DashboardPage() {
       )}
 
       {/* Empty state for upcoming pages (Settings) */}
-      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && activeNav !== "vehicles" && activeNav !== "catalog" && activeNav !== "inventory" && activeNav !== "purchase-orders" && activeNav !== "suppliers" && activeNav !== "job-orders" && activeNav !== "pricing" && activeNav !== "notifications" && activeNav !== "service-reminders" && activeNav !== "staff-performance" && activeNav !== "reports" && (
+      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && activeNav !== "vehicles" && activeNav !== "packages" && activeNav !== "inventory" && activeNav !== "purchase-orders" && activeNav !== "suppliers" && activeNav !== "job-orders" && activeNav !== "pricing" && activeNav !== "notifications" && activeNav !== "service-reminders" && activeNav !== "staff-performance" && activeNav !== "reports" && (
         <div className="bg-white rounded-xl p-6 border border-neutral-100">
           <p className="text-neutral-900">This feature is coming in the next phase.</p>
         </div>

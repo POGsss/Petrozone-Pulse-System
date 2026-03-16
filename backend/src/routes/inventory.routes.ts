@@ -879,7 +879,7 @@ router.delete(
       } else {
         // Hard delete: remove links first, then the item
         await supabaseAdmin
-          .from("catalog_inventory_links")
+          .from("package_inventory_links")
           .delete()
           .eq("inventory_item_id", itemId);
 
@@ -1238,9 +1238,9 @@ export async function deductStockForJobOrder(
   jobOrderId: string,
   branchId: string,
   items: Array<{
-    catalog_item_id: string;
-    catalog_item_name: string;
-    catalog_item_type: string;
+    package_item_id: string;
+    package_item_name: string;
+    package_item_type: string;
     quantity: number;
   }>,
   userId: string
@@ -1248,7 +1248,7 @@ export async function deductStockForJobOrder(
   // 1. Fetch all JO items with their inventory snapshots
   const { data: joItems } = await supabaseAdmin
     .from("job_order_items")
-    .select("id, catalog_item_name, catalog_item_type, quantity, job_order_item_inventories(*)")
+    .select("id, package_item_name, package_item_type, quantity, job_order_item_inventories(*)")
     .eq("job_order_id", jobOrderId);
 
   if (!joItems || joItems.length === 0) {

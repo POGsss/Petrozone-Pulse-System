@@ -1,14 +1,14 @@
-# Copilot Implementation Prompt – Job Order Revision (Catalog + Inventory + Additional Fields)
+# Copilot Implementation Prompt – Job Order Revision (Package + Inventory + Additional Fields)
 
 Scan the entire codebase first to understand the current implementation of the following modules:
 
 * Job Orders
-* Catalog
+* Package
 * Inventory
 * Job Order Items / Materials
 * Related UI forms
 
-Do not redesign the architecture. Only modify the necessary parts to support the revised catalog and job order behavior.
+Do not redesign the architecture. Only modify the necessary parts to support the revised Package and job order behavior.
 
 The job order status updates have already been implemented, so do not modify status logic.
 
@@ -35,25 +35,25 @@ coolant
 brake_fluid
 ```
 
-This column will allow catalog items to define **required inventory type instead of a specific inventory item**.
+This column will allow Package items to define **required inventory type instead of a specific inventory item**.
 
 Do not remove existing inventory relationships.
 
 ---
 
-# 2. Catalog Item Inventory Type Reference
+# 2. Package Item Inventory Type Reference
 
-Update catalog items so they define **inventory requirements by type** instead of referencing a specific inventory item.
+Update Package items so they define **inventory requirements by type** instead of referencing a specific inventory item.
 
-If the catalog currently stores `inventory_item_id`, modify or extend the structure so the catalog can store:
+If the Package currently stores `inventory_item_id`, modify or extend the structure so the Package can store:
 
 ```
 inventory_type
 ```
 
-Example catalog definition:
+Example Package definition:
 
-Catalog: Oil Change
+Package: Oil Change
 
 Required Materials:
 
@@ -62,7 +62,7 @@ lube
 filter
 ```
 
-The catalog should not enforce a specific inventory product.
+The Package should not enforce a specific inventory product.
 
 ---
 
@@ -72,13 +72,13 @@ Modify the job order item/material selection logic.
 
 Current behavior:
 
-* Catalog defines specific inventory items
+* Package defines specific inventory items
 * Job order only changes quantity
 
 New behavior:
 
-1. User selects a catalog item.
-2. System loads the required inventory types from the catalog.
+1. User selects a Package item.
+2. System loads the required inventory types from the Package.
 3. For each required type, fetch available inventory items using:
 
 ```
@@ -88,11 +88,11 @@ SELECT * FROM inventory_items WHERE type = :inventory_type
 4. The user selects the specific inventory item from the filtered list.
 5. The user sets the quantity.
 
-This allows the system to support multiple inventory brands for the same catalog requirement.
+This allows the system to support multiple inventory brands for the same Package requirement.
 
 Example:
 
-Catalog requires `lube`.
+Package requires `lube`.
 
 Job order may select:
 
@@ -189,4 +189,4 @@ When selecting materials for a job order:
 * Do not introduce new architectural patterns.
 * Follow the current coding style of the repository.
 * Ensure existing functionality remains unchanged.
-* Only extend the system to support the revised catalog and job order logic.
+* Only extend the system to support the revised Package and job order logic.

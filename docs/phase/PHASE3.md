@@ -53,7 +53,7 @@ Stock quantity computation:
 
 Stock Deduction rules (FR-3):
 - Deduction occurs when a Job Order status changes to "approved" via deductStockForJobOrder()
-- Matches catalog "product" items to inventory items by name (ilike) in the same branch
+- Matches Package "product" items to inventory items by name (ilike) in the same branch
 - If insufficient stock, approval is blocked with 400 error
 - Every deduction creates a stock_movement record with reference_type = "job_order"
 - Reversible: cancellation of approved orders restores stock via restoreStockForJobOrder()
@@ -128,7 +128,7 @@ Tasks:
 8. Implement low-stock endpoint for all roles
 9. Apply Supabase RLS policies for branch isolation
 10. Build Inventory Management page with stats cards (All Items, Active, Low Stock)
-11. Add Inventory sidebar item after Catalog
+11. Add Inventory sidebar item after Package
 12. Audit log all mutations
 13. Maintain consistent styling and use available modal components
 ```

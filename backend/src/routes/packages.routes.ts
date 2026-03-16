@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
@@ -6,15 +6,15 @@ import { logFailedAction, fixAuditLogUser, filterUnchangedFields } from "../lib/
 
 const router = Router();
 
-// All catalog routes require authentication
+// All package routes require authentication
 router.use(requireAuth);
 
 const VALID_STATUSES = ["active", "inactive"];
 
 /**
- * GET /api/catalog
- * Get catalog items with filtering and pagination
- * All catalog items are global - all authenticated users see all items
+ * GET /api/packages
+ * Get Package items with filtering and pagination
+ * All Package items are global - all authenticated users see all items
  */
 router.get(
   "/",
@@ -29,7 +29,7 @@ router.get(
       } = req.query;
 
       let query = supabaseAdmin
-        .from("catalog_items")
+        .from("package_items")
         .select("*", { count: "exact" })
         .order("created_at", { ascending: false });
 
@@ -66,15 +66,15 @@ router.get(
         },
       });
     } catch (error) {
-      console.error("Get catalog items error:", error);
-      res.status(500).json({ error: "Failed to fetch catalog items" });
+      console.error("Get Package items error:", error);
+      res.status(500).json({ error: "Failed to fetch Package items" });
     }
   }
 );
 
 /**
- * GET /api/catalog/:itemId
- * Get a single catalog item by ID
+ * GET /api/packages/:itemId
+ * Get a single Package item by ID
  */
 router.get(
   "/:itemId",
@@ -84,14 +84,14 @@ router.get(
       const itemId = req.params.itemId as string;
 
       const { data: item, error } = await supabaseAdmin
-        .from("catalog_items")
+        .from("package_items")
         .select("*")
         .eq("id", itemId)
         .single();
 
       if (error) {
         if (error.code === "PGRST116") {
-          res.status(404).json({ error: "Catalog item not found" });
+          res.status(404).json({ error: "Package item not found" });
           return;
         }
         res.status(500).json({ error: error.message });
@@ -100,15 +100,15 @@ router.get(
 
       res.json(item);
     } catch (error) {
-      console.error("Get catalog item error:", error);
-      res.status(500).json({ error: "Failed to fetch catalog item" });
+      console.error("Get Package item error:", error);
+      res.status(500).json({ error: "Failed to fetch Package item" });
     }
   }
 );
 
 /**
- * POST /api/catalog
- * Create a new catalog item (labor package template)
+ * POST /api/packages
+ * Create a new Package item (labor package template)
  * HM, POC, JS can create
  */
 router.post(
@@ -131,7 +131,7 @@ router.post(
       }
 
       const { data: item, error } = await supabaseAdmin
-        .from("catalog_items")
+        .from("package_items")
         .insert({
           name: name.trim(),
           description: description?.trim() || null,
@@ -148,20 +148,20 @@ router.post(
       }
 
       // Fix audit log user_id
-      await fixAuditLogUser("CATALOG_ITEM", item.id, "CREATE", req.user!.id, req.user!.branchIds[0] || null);
+      await fixAuditLogUser("PACKAGE_ITEM", item.id, "CREATE", req.user!.id, req.user!.branchIds[0] || null);
 
       res.status(201).json(item);
     } catch (error) {
-      console.error("Create catalog item error:", error);
-      await logFailedAction(req, "CREATE", "CATALOG_ITEM", null, error instanceof Error ? error.message : "Failed to create catalog item");
-      res.status(500).json({ error: "Failed to create catalog item" });
+      console.error("Create Package item error:", error);
+      await logFailedAction(req, "CREATE", "PACKAGE_ITEM", null, error instanceof Error ? error.message : "Failed to create Package item");
+      res.status(500).json({ error: "Failed to create Package item" });
     }
   }
 );
 
 /**
- * PUT /api/catalog/:itemId
- * Update a catalog item
+ * PUT /api/packages/:itemId
+ * Update a Package item
  * HM, POC, JS can update
  */
 router.put(
@@ -174,14 +174,14 @@ router.put(
 
       // Get existing item
       const { data: existing, error: fetchError } = await supabaseAdmin
-        .from("catalog_items")
+        .from("package_items")
         .select("*")
         .eq("id", itemId)
         .single();
 
       if (fetchError) {
         if (fetchError.code === "PGRST116") {
-          res.status(404).json({ error: "Catalog item not found" });
+          res.status(404).json({ error: "Package item not found" });
           return;
         }
         res.status(500).json({ error: fetchError.message });
@@ -226,7 +226,7 @@ router.put(
       const actualChanges = filterUnchangedFields(updateData, existing);
       if (Object.keys(actualChanges).length === 0) {
         const { data: current } = await supabaseAdmin
-          .from("catalog_items")
+          .from("package_items")
           .select("*")
           .eq("id", itemId)
           .single();
@@ -235,7 +235,7 @@ router.put(
       }
 
       const { data: item, error } = await supabaseAdmin
-        .from("catalog_items")
+        .from("package_items")
         .update(actualChanges)
         .eq("id", itemId)
         .select("*")
@@ -247,19 +247,19 @@ router.put(
       }
 
       // Fix audit log user_id
-      await fixAuditLogUser("CATALOG_ITEM", itemId, "UPDATE", req.user!.id, req.user!.branchIds[0] || null);
+      await fixAuditLogUser("PACKAGE_ITEM", itemId, "UPDATE", req.user!.id, req.user!.branchIds[0] || null);
 
       res.json(item);
     } catch (error) {
-      console.error("Update catalog item error:", error);
-      await logFailedAction(req, "UPDATE", "CATALOG_ITEM", (req.params.itemId as string) || null, error instanceof Error ? error.message : "Failed to update catalog item");
-      res.status(500).json({ error: "Failed to update catalog item" });
+      console.error("Update Package item error:", error);
+      await logFailedAction(req, "UPDATE", "PACKAGE_ITEM", (req.params.itemId as string) || null, error instanceof Error ? error.message : "Failed to update Package item");
+      res.status(500).json({ error: "Failed to update Package item" });
     }
   }
 );
 
 /**
- * DELETE /api/catalog/:itemId
+ * DELETE /api/packages/:itemId
  * Hard-delete if no references exist, soft-delete (deactivate) if referenced
  * HM, POC, JS can delete
  */
@@ -272,14 +272,14 @@ router.delete(
 
       // Get existing item
       const { data: existing, error: fetchError } = await supabaseAdmin
-        .from("catalog_items")
+        .from("package_items")
         .select("*")
         .eq("id", itemId)
         .single();
 
       if (fetchError) {
         if (fetchError.code === "PGRST116") {
-          res.status(404).json({ error: "Catalog item not found" });
+          res.status(404).json({ error: "Package item not found" });
           return;
         }
         res.status(500).json({ error: fetchError.message });
@@ -290,19 +290,19 @@ router.delete(
       const { count: joiCount } = await supabaseAdmin
         .from("job_order_items")
         .select("id", { count: "exact", head: true })
-        .eq("catalog_item_id", itemId);
+        .eq("package_item_id", itemId);
 
       const { count: pmCount } = await supabaseAdmin
         .from("pricing_matrices")
         .select("id", { count: "exact", head: true })
-        .eq("catalog_item_id", itemId);
+        .eq("package_item_id", itemId);
 
       const hasReferences = ((joiCount ?? 0) + (pmCount ?? 0)) > 0;
 
       if (hasReferences) {
         // Soft delete: set status to inactive
         const { error: updateError } = await supabaseAdmin
-          .from("catalog_items")
+          .from("package_items")
           .update({ status: "inactive" as "active" | "inactive" })
           .eq("id", itemId);
 
@@ -314,7 +314,7 @@ router.delete(
         try {
           await supabaseAdmin.rpc("log_admin_action", {
             p_action: "UPDATE",
-            p_entity_type: "CATALOG_ITEM",
+            p_entity_type: "PACKAGE_ITEM",
             p_entity_id: itemId,
             p_performed_by_user_id: req.user!.id,
             p_performed_by_branch_id: req.user!.branchIds[0] || null,
@@ -325,18 +325,18 @@ router.delete(
         }
 
         res.json({
-          message: "Catalog item deactivated (referenced by other records)",
+          message: "Package item deactivated (referenced by other records)",
           deactivated: true,
         });
       } else {
         // Hard delete: remove inventory links first, then the item
         await supabaseAdmin
-          .from("catalog_inventory_links")
+          .from("package_inventory_links")
           .delete()
-          .eq("catalog_item_id", itemId);
+          .eq("package_item_id", itemId);
 
         const { error: deleteError } = await supabaseAdmin
-          .from("catalog_items")
+          .from("package_items")
           .delete()
           .eq("id", itemId);
 
@@ -348,7 +348,7 @@ router.delete(
         try {
           await supabaseAdmin.rpc("log_admin_action", {
             p_action: "DELETE",
-            p_entity_type: "CATALOG_ITEM",
+            p_entity_type: "PACKAGE_ITEM",
             p_entity_id: itemId,
             p_performed_by_user_id: req.user!.id,
             p_performed_by_branch_id: req.user!.branchIds[0] || null,
@@ -358,19 +358,19 @@ router.delete(
           console.error("Audit log error:", auditErr);
         }
 
-        res.json({ message: "Catalog item deleted successfully" });
+        res.json({ message: "Package item deleted successfully" });
       }
     } catch (error) {
-      console.error("Delete catalog item error:", error);
-      await logFailedAction(req, "DELETE", "CATALOG_ITEM", (req.params.itemId as string) || null, error instanceof Error ? error.message : "Failed to delete catalog item");
-      res.status(500).json({ error: "Failed to delete catalog item" });
+      console.error("Delete Package item error:", error);
+      await logFailedAction(req, "DELETE", "PACKAGE_ITEM", (req.params.itemId as string) || null, error instanceof Error ? error.message : "Failed to delete Package item");
+      res.status(500).json({ error: "Failed to delete Package item" });
     }
   }
 );
 
 /**
- * GET /api/catalog/:itemId/inventory-links
- * Get all inventory items linked to a catalog item
+ * GET /api/packages/:itemId/inventory-links
+ * Get all inventory items linked to a Package item
  * Roles: HM, POC, JS, R
  */
 router.get(
@@ -380,15 +380,15 @@ router.get(
     try {
       const itemId = req.params.itemId as string;
 
-      const { data: catalogItem, error: catError } = await supabaseAdmin
-        .from("catalog_items")
+      const { data: packageItem, error: catError } = await supabaseAdmin
+        .from("package_items")
         .select("id")
         .eq("id", itemId)
         .single();
 
       if (catError) {
         if (catError.code === "PGRST116") {
-          res.status(404).json({ error: "Catalog item not found" });
+          res.status(404).json({ error: "Package item not found" });
           return;
         }
         res.status(500).json({ error: catError.message });
@@ -396,12 +396,12 @@ router.get(
       }
 
       const { data: links, error } = await supabaseAdmin
-        .from("catalog_inventory_links")
+        .from("package_inventory_links")
         .select(`
           *,
           inventory_items(id, item_name, sku_code, cost_price, unit_of_measure, branch_id)
         `)
-        .eq("catalog_item_id", itemId)
+        .eq("package_item_id", itemId)
         .order("created_at", { ascending: true });
 
       if (error) {
@@ -411,15 +411,15 @@ router.get(
 
       res.json(links || []);
     } catch (error) {
-      console.error("Get catalog inventory links error:", error);
+      console.error("Get package inventory links error:", error);
       res.status(500).json({ error: "Failed to fetch inventory links" });
     }
   }
 );
 
 /**
- * POST /api/catalog/:itemId/inventory-links
- * Add an inventory item link to a catalog item (template association only, no quantity)
+ * POST /api/packages/:itemId/inventory-links
+ * Add an inventory item link to a Package item (template association only, no quantity)
  * Roles: HM, POC, JS
  */
 router.post(
@@ -435,15 +435,15 @@ router.post(
         return;
       }
 
-      const { data: catalogItem, error: catError } = await supabaseAdmin
-        .from("catalog_items")
+      const { data: packageItem, error: catError } = await supabaseAdmin
+        .from("package_items")
         .select("id")
         .eq("id", itemId)
         .single();
 
       if (catError) {
         if (catError.code === "PGRST116") {
-          res.status(404).json({ error: "Catalog item not found" });
+          res.status(404).json({ error: "Package item not found" });
           return;
         }
         res.status(500).json({ error: catError.message });
@@ -466,21 +466,21 @@ router.post(
       }
 
       const { data: existing } = await supabaseAdmin
-        .from("catalog_inventory_links")
+        .from("package_inventory_links")
         .select("id")
-        .eq("catalog_item_id", itemId)
+        .eq("package_item_id", itemId)
         .eq("inventory_item_id", inventory_item_id)
         .maybeSingle();
 
       if (existing) {
-        res.status(409).json({ error: "This inventory item is already linked to this catalog item" });
+        res.status(409).json({ error: "This inventory item is already linked to this Package item" });
         return;
       }
 
       const { data: link, error: insertError } = await supabaseAdmin
-        .from("catalog_inventory_links")
+        .from("package_inventory_links")
         .insert({
-          catalog_item_id: itemId,
+          package_item_id: itemId,
           inventory_item_id,
         })
         .select(`
@@ -496,15 +496,15 @@ router.post(
 
       res.status(201).json(link);
     } catch (error) {
-      console.error("Add catalog inventory link error:", error);
+      console.error("Add package inventory link error:", error);
       res.status(500).json({ error: "Failed to add inventory link" });
     }
   }
 );
 
 /**
- * DELETE /api/catalog/:itemId/inventory-links/:linkId
- * Remove an inventory item link from a catalog item
+ * DELETE /api/packages/:itemId/inventory-links/:linkId
+ * Remove an inventory item link from a Package item
  * Roles: HM, POC, JS
  */
 router.delete(
@@ -515,15 +515,15 @@ router.delete(
       const itemId = req.params.itemId as string;
       const linkId = req.params.linkId as string;
 
-      const { data: catalogItem, error: catError } = await supabaseAdmin
-        .from("catalog_items")
+      const { data: packageItem, error: catError } = await supabaseAdmin
+        .from("package_items")
         .select("id")
         .eq("id", itemId)
         .single();
 
       if (catError) {
         if (catError.code === "PGRST116") {
-          res.status(404).json({ error: "Catalog item not found" });
+          res.status(404).json({ error: "Package item not found" });
           return;
         }
         res.status(500).json({ error: catError.message });
@@ -531,10 +531,10 @@ router.delete(
       }
 
       const { error: deleteError } = await supabaseAdmin
-        .from("catalog_inventory_links")
+        .from("package_inventory_links")
         .delete()
         .eq("id", linkId)
-        .eq("catalog_item_id", itemId);
+        .eq("package_item_id", itemId);
 
       if (deleteError) {
         res.status(500).json({ error: deleteError.message });
@@ -543,7 +543,7 @@ router.delete(
 
       res.json({ message: "Inventory link removed successfully" });
     } catch (error) {
-      console.error("Delete catalog inventory link error:", error);
+      console.error("Delete package inventory link error:", error);
       res.status(500).json({ error: "Failed to remove inventory link" });
     }
   }

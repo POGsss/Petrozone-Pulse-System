@@ -77,19 +77,19 @@ Validate that vehicle deletion follows system rules (deactivate/soft delete) and
 
 # Test Case 05
 **Description:**  
-Create Catalog Item  
-Validate that an authorized user can create a global catalog item with optional inventory links.
+Create Package Item  
+Validate that an authorized user can create a global Package item with optional inventory links.
 
 **Test Steps:**
 1. Log in as authorized role (HM/POC/JS).
-2. Navigate to Catalog.
-3. Click "Add New Catalog".
+2. Navigate to Packages.
+3. Click "Add New Package".
 4. Enter required fields (Name) and optional fields (Description).
 5. Optionally add inventory items from the dropdown (draft list).
-6. Click "Create Catalog".
+6. Click "Create Package".
 
 **Expected Result:**
-- Catalog item is created successfully (global, no branch scoping)
+- Package item is created successfully (global, no branch scoping)
 - Card appears in the grid with name, status badge, and inventory count
 - Linked inventory items (if any) are saved correctly
 
@@ -97,30 +97,30 @@ Validate that an authorized user can create a global catalog item with optional 
 
 # Test Case 06
 **Description:**  
-View Catalog Item  
-Validate that authorized roles can view catalog item details including linked inventory.
+View Package Item  
+Validate that authorized roles can view Package item details including linked inventory.
 
 **Test Steps:**
 1. Log in as authorized role (HM/POC/JS/R).
-2. Navigate to Catalog.
-3. Click on a catalog item card to open the View modal.
+2. Navigate to Packages.
+3. Click on a Package item card to open the View modal.
 
 **Expected Result:**
 - View modal shows item name, status, description (all read-only)
 - Linked inventory section displays associated items (name, SKU, cost/unit)
 - Timestamps (created/updated) are displayed
-- R role: no Edit/Delete buttons visible. T role: no access to Catalog page
+- R role: no Edit/Delete buttons visible. T role: no access to Packages page
 
 ---
 
 # Test Case 07
 **Description:**  
-Update Catalog Item  
-Validate that authorized users can update catalog item details and manage inventory links.
+Update Package Item  
+Validate that authorized users can update Package item details and manage inventory links.
 
 **Test Steps:**
 1. Log in as authorized role (HM/POC/JS).
-2. Click the Edit (pencil) button on a catalog card.
+2. Click the Edit (pencil) button on a Package card.
 3. Modify fields (Name, Status, Description).
 4. Add or remove inventory links (live API calls per action).
 5. Click "Save Changes".
@@ -134,12 +134,12 @@ Validate that authorized users can update catalog item details and manage invent
 
 # Test Case 08
 **Description:**  
-Delete/Deactivate Catalog Item  
-Validate that deleting a catalog item uses hard delete with FK fallback to deactivation.
+Delete/Deactivate Package Item  
+Validate that deleting a Package item uses hard delete with FK fallback to deactivation.
 
 **Test Steps:**
 1. Log in as authorized role (HM/POC/JS).
-2. Click the Delete (trash) button on a catalog card.
+2. Click the Delete (trash) button on a Package card.
 3. Confirm the action in the modal.
 4. Attempt to add the deactivated item in Job Order creation.
 
@@ -154,19 +154,19 @@ Validate that deleting a catalog item uses hard delete with FK fallback to deact
 # Test Case 09
 **Description:**  
 Create Pricing Matrix  
-Validate that authorized users can create a vehicle-class-based pricing matrix for a catalog item.
+Validate that authorized users can create a vehicle-class-based pricing matrix for a Package item.
 
 **Test Steps:**
 1. Log in as authorized role (HM/POC/JS/R).
 2. Navigate to Pricing Matrix.
 3. Click "Add Pricing Rule".
-4. Select a catalog item, enter Light Vehicle Price, Heavy Vehicle Price, Extra Heavy Vehicle Price.
+4. Select a Package item, enter Light Vehicle Price, Heavy Vehicle Price, Extra Heavy Vehicle Price.
 5. Set status (Active/Inactive) and save.
 
 **Expected Result:**
 - Pricing matrix is created successfully
 - Entry appears in the table with 3 price columns
-- If an active matrix already exists for the same catalog item, a 409 conflict error is shown
+- If an active matrix already exists for the same Package item, a 409 conflict error is shown
 - Data is stored accurately and usable in Job Order pricing resolution
 
 ---
@@ -179,7 +179,7 @@ Validate that roles can view pricing matrix entries with 3-tier vehicle class pr
 **Test Steps:**
 1. Log in as authorized role (HM/POC/JS/R/T where applicable).
 2. Navigate to Pricing Matrix list.
-3. View the table: Catalog Item, Light Price, Heavy Price, Extra Heavy Price, Status.
+3. View the table: Package Item, Light Price, Heavy Price, Extra Heavy Price, Status.
 4. Click on an entry to view details.
 
 **Expected Result:**
@@ -199,7 +199,7 @@ Validate that authorized users can update pricing values (light/heavy/extra heav
 2. Open an existing pricing entry and click Edit.
 3. Modify one or more price values (light/heavy/extra heavy) or status.
 4. Save.
-5. Create a new Job Order using the affected catalog item.
+5. Create a new Job Order using the affected Package item.
 
 **Expected Result:**
 - Pricing entry updates successfully
@@ -217,11 +217,11 @@ Validate that removing a pricing entry prevents pricing resolution for new JOs.
 1. Log in as authorized role.
 2. Open an existing pricing entry.
 3. Click Delete and confirm.
-4. Attempt to add the affected catalog item to a new Job Order.
+4. Attempt to add the affected Package item to a new Job Order.
 
 **Expected Result:**
 - Entry is permanently deleted
-- When the catalog item is added to a JO, the resolve endpoint returns `pricing: null`
+- When the Package item is added to a JO, the resolve endpoint returns `pricing: null`
 - Labor price defaults to 0 in the JO, with a warning toast shown to the user
 - Existing JO records with this pricing are not affected
 
@@ -238,8 +238,8 @@ Validate end-to-end creation of a Job Order including cascading lookups, vehicle
 3. Click "Create Job Order".
 4. Select Branch → Customer (filtered by branch) → Vehicle (filtered by customer).
 5. Select Vehicle Class (Light / Heavy / Extra Heavy).
-6. Add catalog items — pricing resolves automatically (labor price from vehicle class column).
-7. Verify inventory items load from catalog template, with editable quantities.
+6. Add Package items — pricing resolves automatically (labor price from vehicle class column).
+7. Verify inventory items load from Package template, with editable quantities.
 8. Review line totals: (labor_price + inventory_cost) × quantity.
 9. Optionally add third-party repairs.
 10. Click "Create Job Order".
@@ -265,7 +265,7 @@ Validate that users can view Job Order details including items, inventory breakd
 
 **Expected Result:**
 - JO details load correctly (order #, status, customer, vehicle, branch, vehicle class, notes)
-- Items list shows: catalog item name, quantity, labor price, inventory cost, line total
+- Items list shows: Package item name, quantity, labor price, inventory cost, line total
 - Expandable inventory sub-rows show: inventory item name, qty per unit, unit cost
 - Third-party repairs section displays if any exist
 - History timeline shows status changes and actions
@@ -576,8 +576,8 @@ Validate totals are computed correctly using the formula: (labor_price + invento
 
 **Test Steps:**
 1. Create a Job Order with a known vehicle class (e.g., Light).
-2. Add a catalog item with a known pricing matrix (e.g., light_price = 500).
-3. Verify inventory items load from the catalog template (e.g., 2 items totaling ₱930).
+2. Add a Package item with a known pricing matrix (e.g., light_price = 500).
+3. Verify inventory items load from the Package template (e.g., 2 items totaling ₱930).
 4. Save Job Order.
 5. Review pricing breakdown and totals.
 
@@ -648,10 +648,10 @@ Validate pricing matrix updates apply to new Job Orders and confirm behavior for
 # Test Case 35
 **Description:**  
 Pricing Missing Configuration Handling  
-Validate system behavior when a catalog item has no active pricing matrix.
+Validate system behavior when a Package item has no active pricing matrix.
 
 **Test Steps:**
-1. Select a catalog item that has no active pricing matrix (or delete/deactivate its pricing).
+1. Select a Package item that has no active pricing matrix (or delete/deactivate its pricing).
 2. Add it to a Job Order.
 3. Observe the pricing resolution result.
 

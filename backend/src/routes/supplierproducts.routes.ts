@@ -214,7 +214,7 @@ router.post(
         }
 
         // Check one-to-one: no other active supplier product should reference this inventory item
-        // Scoped to same branch to allow different branches to link the same catalog item
+        // Scoped to same branch to allow different branches to link the same package item
         const { data: existingLink } = await supabaseAdmin
           .from("supplier_products")
           .select("id, suppliers(supplier_name)")

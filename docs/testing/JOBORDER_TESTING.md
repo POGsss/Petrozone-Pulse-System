@@ -6,15 +6,15 @@
 
 ### Overview
 
-The Job Order (JO) module is the central workflow in the system. It manages service requests tied to a customer vehicle, tracking catalog items with vehicle-class-based pricing, inventory consumption, third-party repairs (TPR), and a multi-step lifecycle workflow. When a JO is approved, the system automatically deducts stock from inventory based on the inventory template snapshots captured during JO creation. The module supports full CRUD for both JO items and third-party repairs, with conditional hard/soft delete logic depending on the JO's lifecycle stage.
+The Job Order (JO) module is the central workflow in the system. It manages service requests tied to a customer vehicle, tracking Package items with vehicle-class-based pricing, inventory consumption, third-party repairs (TPR), and a multi-step lifecycle workflow. When a JO is approved, the system automatically deducts stock from inventory based on the inventory template snapshots captured during JO creation. The module supports full CRUD for both JO items and third-party repairs, with conditional hard/soft delete logic depending on the JO's lifecycle stage.
 
 ### Key Business Rules
 
-1. **Vehicle class pricing** — each JO has a `vehicle_class` (light / heavy / extra\_heavy) that is **automatically populated from the selected vehicle's `vehicle_class` field**. When a catalog item is added, the system resolves its pricing matrix and selects the price column matching the vehicle class (e.g., `light_price`, `heavy_price`, or `extra_heavy_price`). The vehicle class is set on the vehicle record itself (via the Vehicle Management page) and cannot be manually overridden during JO creation.
+1. **Vehicle class pricing** — each JO has a `vehicle_class` (light / heavy / extra\_heavy) that is **automatically populated from the selected vehicle's `vehicle_class` field**. When a Package item is added, the system resolves its pricing matrix and selects the price column matching the vehicle class (e.g., `light_price`, `heavy_price`, or `extra_heavy_price`). The vehicle class is set on the vehicle record itself (via the Vehicle Management page) and cannot be manually overridden during JO creation.
 2. **Pricing formula** — `line_total = (labor_price + inventory_cost) × quantity`, where:
    - `labor_price` = the vehicle-class-specific price from the pricing matrix (0 if no active pricing exists)
-   - `inventory_cost` = `Σ(unit_cost × quantity_per_unit)` for all linked inventory items on that catalog item
-3. **Inventory snapshots** — when a catalog item is added to a JO, the system fetches its inventory template (from `catalog_inventory_links`) and creates `job_order_item_inventories` snapshots. Each snapshot records `inventory_item_id`, `inventory_item_name`, `quantity_per_unit`, and `unit_cost` at the time of creation.
+   - `inventory_cost` = `Σ(unit_cost × quantity_per_unit)` for all linked inventory items on that Package item
+3. **Inventory snapshots** — when a Package item is added to a JO, the system fetches its inventory template (from `package_inventory_links`) and creates `job_order_item_inventories` snapshots. Each snapshot records `inventory_item_id`, `inventory_item_name`, `quantity_per_unit`, and `unit_cost` at the time of creation.
 4. **Editable inventory quantities** — during JO item creation and editing (only in `draft` status), users can modify `quantity_per_unit` for each inventory snapshot, which recalculates the `inventory_cost` and `line_total`.
 5. **Stock deduction on approval** — when a JO is approved, the system aggregates inventory quantities across all JO items and creates `stock_out` movements. If any item has insufficient stock, approval fails with an error.
 6. **Immutability** — once a JO moves past `draft` status, its notes and items are frozen and cannot be modified.
@@ -110,13 +110,13 @@ Ensure the following exist:
 - **Branches** (see `BRANCH_TESTING.md`)
 - **Customers** linked to branches (see `CUSTOMER_TESTING.md`)
 - **Vehicles** linked to customers (see `VEHICLE_TESTING.md`)
-- **Catalog items** with inventory links (see `CATALOG_TESTING.md`)
-- **Pricing matrices** for catalog items (see `PRICING_TESTING.md`)
+- **Package items** with inventory links (see `PACKAGES_TESTING.md`)
+- **Pricing matrices** for Package items (see `PRICING_TESTING.md`)
 - **Inventory items** with sufficient stock (see `INVENTORY_TESTING.md`)
 
 ### Sample Job Orders
 
-| #   | Branch          | Customer       | Vehicle         | Vehicle Class | Catalog Items                                   | Notes                         |
+| #   | Branch          | Customer       | Vehicle         | Vehicle Class | Package Items                                   | Notes                         |
 | --- | --------------- | -------------- | --------------- | ------------- | ----------------------------------------------- | ----------------------------- |
 | 1   | Main Branch     | Juan Dela Cruz | ABC-1234 Sedan  | Light         | Oil Change Service (×1), Air Filter Repl. (×1)  | Routine maintenance request   |
 | 2   | Main Branch     | Maria Santos   | XYZ-5678 SUV    | Heavy         | Brake Pad Replacement (×2)                      | Squeaking brakes complaint    |
@@ -130,7 +130,7 @@ Ensure the following exist:
 
 - Backend and frontend servers are running
 - Logged in as the appropriate role for each test
-- All dependency data populated (branches, customers, vehicles, catalog, pricing, inventory)
+- All dependency data populated (branches, customers, vehicles, Package, pricing, inventory)
 
 ---
 
@@ -165,13 +165,13 @@ Ensure the following exist:
    - Select a **Vehicle** from dropdown (filtered by selected customer)
    - ✅ **Vehicle Class** is **automatically populated** from the selected vehicle (read-only, displayed as disabled text field)
    - Enter **Notes** (optional)
-4. **Step 2 — Add Catalog Items:**
-   - Select a catalog item from the dropdown (shows active items)
+4. **Step 2 — Add Package Items:**
+   - Select a Package item from the dropdown (shows active items)
    - Pricing is resolved automatically via API (`pricingApi.resolve`)
    - Verify:
      - ✅ **Labor price** populated from the pricing matrix column matching vehicle class
      - ✅ If no active pricing exists: labor price = 0, warning toast shown
-     - ✅ **Inventory items** loaded from catalog template (from `catalog_inventory_links`)
+     - ✅ **Inventory items** loaded from Package template (from `package_inventory_links`)
      - ✅ Each inventory item shows: name, unit cost, quantity (editable, default = 1)
      - ✅ **Inventory cost** = sum of (unit\_cost × quantity) across all linked inventory items
      - ✅ **Line total** = (labor\_price + inventory\_cost) × quantity
@@ -182,7 +182,7 @@ Ensure the following exist:
      - Provider Name, Description, Cost (₱), Repair Date
    - Repairs appear in a list below
 6. **Review the draft:**
-   - ✅ Each item row shows: catalog item name, quantity, labor price, inventory cost, line total
+   - ✅ Each item row shows: Package item name, quantity, labor price, inventory cost, line total
    - ✅ Expanding an item row shows inventory detail sub-rows
    - ✅ Grand total is calculated correctly
 7. Click **"Create Job Order"**
@@ -212,7 +212,7 @@ Ensure the following exist:
    - ✅ **Vehicle Class** badge
    - ✅ **Notes**
    - ✅ **Items list**:
-     - For each item: catalog item name, quantity, labor price (₱), inventory cost (₱), line total (₱)
+     - For each item: Package item name, quantity, labor price (₱), inventory cost (₱), line total (₱)
      - Expandable inventory sub-rows: inventory item name, qty per unit, unit cost
    - ✅ **Third-Party Repairs** section (if any)
    - ✅ **History timeline** (status changes, user actions)
@@ -245,7 +245,7 @@ Ensure the following exist:
    - Verify the item is deleted (API call)
    - ✅ Cannot remove the last item — at least 1 must remain
 4. **Add a new item:**
-   - Select a new catalog item from dropdown
+   - Select a new Package item from dropdown
    - Pricing resolves, inventory loads
    - Add to the JO
    - Verify it appears in the items list
@@ -514,7 +514,7 @@ Ensure the following exist:
    - Select a branch and customer
    - Select a vehicle that has **Vehicle Class = Heavy**
    - ✅ The Vehicle Class field automatically shows "Heavy Vehicle" (read-only)
-   - Add a catalog item → pricing resolves using the **heavy\_price** column
+   - Add a Package item → pricing resolves using the **heavy\_price** column
 3. Change the vehicle to one with **Vehicle Class = Light**
    - ✅ The Vehicle Class field updates to "Light Vehicle"
    - ✅ If items were already added, their labor prices recalculate using the **light\_price** column
@@ -635,7 +635,7 @@ Ensure the following exist:
 | Create JO with Cascading Lookups                      | ⬜     |
 | Vehicle Class Auto-Population from Vehicle        | ⬜     |
 | Pricing Resolution (labor from pricing matrix)        | ⬜     |
-| Inventory Template Loading (from catalog links)       | ⬜     |
+| Inventory Template Loading (from Package links)       | ⬜     |
 | Editable Inventory Quantities per Item                | ⬜     |
 | Pricing Formula: (labor + inv_cost) × qty             | ⬜     |
 | Inventory Snapshots (job_order_item_inventories)      | ⬜     |

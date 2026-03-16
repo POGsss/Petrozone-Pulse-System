@@ -477,7 +477,7 @@ export function AnalyticsDashboard() {
                         {order.customers?.full_name || order.order_number}
                       </p>
                       <p className="text-xs text-neutral-900 truncate">
-                        {formatCurrency(order.total_amount)} &middot; {firstItem ? `${firstItem.catalog_item_name} x${firstItem.quantity}` : order.order_number}
+                        {formatCurrency(order.total_amount)} &middot; {firstItem ? `${firstItem.package_item_name} x${firstItem.quantity}` : order.order_number}
                       </p>
                     </div>
                     <div className="text-right shrink-0">

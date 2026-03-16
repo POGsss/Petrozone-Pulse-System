@@ -23,7 +23,7 @@ router.get(
     try {
       const {
         status,
-        catalog_item_id,
+        package_item_id,
         search,
         limit = "50",
         offset = "0",
@@ -34,7 +34,7 @@ router.get(
         .select(
           `
           *,
-          catalog_items(id, name)
+          package_items(id, name)
         `,
           { count: "exact" }
         )
@@ -44,13 +44,13 @@ router.get(
       if (status) {
         query = query.eq("status", status as "active" | "inactive");
       }
-      if (catalog_item_id) {
-        query = query.eq("catalog_item_id", catalog_item_id as string);
+      if (package_item_id) {
+        query = query.eq("package_item_id", package_item_id as string);
       }
       if (search) {
         const searchTerm = `%${search}%`;
         query = query.or(
-          `catalog_item_id.eq.${search}`
+          `package_item_id.eq.${search}`
         );
       }
 
@@ -98,7 +98,7 @@ router.get(
         .select(
           `
           *,
-          catalog_items(id, name)
+          package_items(id, name)
         `
         )
         .eq("id", id)
@@ -122,38 +122,38 @@ router.get(
 );
 
 /**
- * GET /api/pricing/resolve/:catalogItemId
- * Resolve the active pricing for a catalog item
+ * GET /api/pricing/resolve/:packageItemId
+ * Resolve the active pricing for a package item
  * Returns light_price, heavy_price, extra_heavy_price
  */
 router.get(
-  "/resolve/:catalogItemId",
+  "/resolve/:packageItemId",
   requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const catalogItemId = req.params.catalogItemId as string;
+      const packageItemId = req.params.packageItemId as string;
 
-      // Get the catalog item
-      const { data: catalogItem, error: catalogError } = await supabaseAdmin
-        .from("catalog_items")
+      // Get the package item
+      const { data: packageItem, error: packageError } = await supabaseAdmin
+        .from("package_items")
         .select("id, name")
-        .eq("id", catalogItemId)
+        .eq("id", packageItemId)
         .single();
 
-      if (catalogError) {
-        if (catalogError.code === "PGRST116") {
-          res.status(404).json({ error: "Catalog item not found" });
+      if (packageError) {
+        if (packageError.code === "PGRST116") {
+          res.status(404).json({ error: "Package item not found" });
           return;
         }
-        res.status(500).json({ error: catalogError.message });
+        res.status(500).json({ error: packageError.message });
         return;
       }
 
-      // Get active pricing matrix for this catalog item (one active per catalog_item_id)
+      // Get active pricing matrix for this package item (one active per package_item_id)
       const { data: pricingMatrix, error } = await supabaseAdmin
         .from("pricing_matrices")
         .select("*")
-        .eq("catalog_item_id", catalogItemId)
+        .eq("package_item_id", packageItemId)
         .eq("status", "active")
         .maybeSingle();
 
@@ -163,7 +163,7 @@ router.get(
       }
 
       res.json({
-        catalog_item: catalogItem,
+        package_item: packageItem,
         pricing: pricingMatrix
           ? {
               id: pricingMatrix.id,
@@ -182,26 +182,26 @@ router.get(
 
 /**
  * POST /api/pricing/resolve-bulk
- * Resolve pricing for multiple catalog items in one call
- * Body: { catalog_item_ids: string[] }
+ * Resolve pricing for multiple package items in one call
+ * Body: { package_item_ids: string[] }
  */
 router.post(
   "/resolve-bulk",
   requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { catalog_item_ids } = req.body;
+      const { package_item_ids } = req.body;
 
-      if (!Array.isArray(catalog_item_ids) || catalog_item_ids.length === 0) {
-        res.status(400).json({ error: "catalog_item_ids must be a non-empty array" });
+      if (!Array.isArray(package_item_ids) || package_item_ids.length === 0) {
+        res.status(400).json({ error: "package_item_ids must be a non-empty array" });
         return;
       }
 
-      // Get all active pricing matrices for these catalog items
+      // Get all active pricing matrices for these package items
       const { data: pricingMatrices, error } = await supabaseAdmin
         .from("pricing_matrices")
         .select("*")
-        .in("catalog_item_id", catalog_item_ids)
+        .in("package_item_id", package_item_ids)
         .eq("status", "active");
 
       if (error) {
@@ -209,11 +209,11 @@ router.post(
         return;
       }
 
-      // Get catalog items
-      const { data: catalogItems, error: catError } = await supabaseAdmin
-        .from("catalog_items")
+      // Get package items
+      const { data: packageItems, error: catError } = await supabaseAdmin
+        .from("package_items")
         .select("id, name")
-        .in("id", catalog_item_ids);
+        .in("id", package_item_ids);
 
       if (catError) {
         res.status(500).json({ error: catError.message });
@@ -222,7 +222,7 @@ router.post(
 
       // Build results map
       const results: Record<string, {
-        catalog_item: { id: string; name: string } | null;
+        package_item: { id: string; name: string } | null;
         pricing: {
           id: string;
           light_price: number;
@@ -231,11 +231,11 @@ router.post(
         } | null;
       }> = {};
 
-      for (const itemId of catalog_item_ids) {
-        const catItem = catalogItems?.find((c: any) => c.id === itemId) || null;
-        const matrix = pricingMatrices?.find((m: any) => m.catalog_item_id === itemId) || null;
+      for (const itemId of package_item_ids) {
+        const catItem = packageItems?.find((c: any) => c.id === itemId) || null;
+        const matrix = pricingMatrices?.find((m: any) => m.package_item_id === itemId) || null;
         results[itemId] = {
-          catalog_item: catItem,
+          package_item: catItem,
           pricing: matrix
             ? {
                 id: matrix.id,
@@ -258,8 +258,8 @@ router.post(
 /**
  * POST /api/pricing
  * Create a new pricing matrix
- * Fields: catalog_item_id, light_price, heavy_price, extra_heavy_price, status
- * Constraint: one active pricing matrix per catalog_item_id
+ * Fields: package_item_id, light_price, heavy_price, extra_heavy_price, status
+ * Constraint: one active pricing matrix per package_item_id
  */
 router.post(
   "/",
@@ -267,16 +267,16 @@ router.post(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const {
-        catalog_item_id,
+        package_item_id,
         light_price,
         heavy_price,
         extra_heavy_price,
         status,
       } = req.body;
 
-      // Validation: catalog_item_id required
-      if (!catalog_item_id) {
-        res.status(400).json({ error: "Catalog item is required" });
+      // Validation: package_item_id required
+      if (!package_item_id) {
+        res.status(400).json({ error: "Package item is required" });
         return;
       }
 
@@ -306,25 +306,25 @@ router.post(
         return;
       }
 
-      // Verify catalog item exists
-      const { data: catalogItem, error: catalogError } = await supabaseAdmin
-        .from("catalog_items")
+      // Verify package item exists
+      const { data: packageItem, error: packageError } = await supabaseAdmin
+        .from("package_items")
         .select("id")
-        .eq("id", catalog_item_id)
+        .eq("id", package_item_id)
         .single();
 
-      if (catalogError || !catalogItem) {
-        res.status(400).json({ error: "Catalog item not found" });
+      if (packageError || !packageItem) {
+        res.status(400).json({ error: "Package item not found" });
         return;
       }
 
-      // Conflict detection: one active pricing matrix per catalog_item_id
+      // Conflict detection: one active pricing matrix per package_item_id
       const effectiveStatus = status || "active";
       if (effectiveStatus === "active") {
         const { data: conflicting, error: conflictError } = await supabaseAdmin
           .from("pricing_matrices")
           .select("id")
-          .eq("catalog_item_id", catalog_item_id)
+          .eq("package_item_id", package_item_id)
           .eq("status", "active")
           .limit(1);
 
@@ -335,7 +335,7 @@ router.post(
 
         if (conflicting && conflicting.length > 0) {
           res.status(409).json({
-            error: "An active pricing matrix already exists for this catalog item. Deactivate it first or create as inactive.",
+            error: "An active pricing matrix already exists for this package item. Deactivate it first or create as inactive.",
           });
           return;
         }
@@ -344,7 +344,7 @@ router.post(
       const { data: item, error } = await supabaseAdmin
         .from("pricing_matrices")
         .insert({
-          catalog_item_id,
+          package_item_id,
           light_price: parsedLightPrice,
           heavy_price: parsedHeavyPrice,
           extra_heavy_price: parsedExtraHeavyPrice,
@@ -354,7 +354,7 @@ router.post(
         .select(
           `
           *,
-          catalog_items(id, name)
+          package_items(id, name)
         `
         )
         .single();
@@ -363,7 +363,7 @@ router.post(
         // Handle unique constraint violation from the partial index
         if (error.code === "23505") {
           res.status(409).json({
-            error: "An active pricing matrix already exists for this catalog item.",
+            error: "An active pricing matrix already exists for this package item.",
           });
           return;
         }
@@ -386,7 +386,7 @@ router.post(
 /**
  * PUT /api/pricing/:id
  * Update a pricing matrix
- * Fields: catalog_item_id, light_price, heavy_price, extra_heavy_price, status
+ * Fields: package_item_id, light_price, heavy_price, extra_heavy_price, status
  */
 router.put(
   "/:id",
@@ -395,7 +395,7 @@ router.put(
     try {
       const id = req.params.id as string;
       const {
-        catalog_item_id,
+        package_item_id,
         light_price,
         heavy_price,
         extra_heavy_price,
@@ -421,19 +421,19 @@ router.put(
       // Build update payload
       const updateData: Record<string, unknown> = {};
 
-      if (catalog_item_id !== undefined) {
-        // Verify catalog item exists
-        const { data: catalogItem, error: catErr } = await supabaseAdmin
-          .from("catalog_items")
+      if (package_item_id !== undefined) {
+        // Verify package item exists
+        const { data: packageItem, error: catErr } = await supabaseAdmin
+          .from("package_items")
           .select("id")
-          .eq("id", catalog_item_id)
+          .eq("id", package_item_id)
           .single();
 
-        if (catErr || !catalogItem) {
-          res.status(400).json({ error: "Catalog item not found" });
+        if (catErr || !packageItem) {
+          res.status(400).json({ error: "Package item not found" });
           return;
         }
-        updateData.catalog_item_id = catalog_item_id;
+        updateData.package_item_id = package_item_id;
       }
 
       if (light_price !== undefined) {
@@ -483,22 +483,22 @@ router.put(
       if (Object.keys(actualChanges).length === 0) {
         const { data: current } = await supabaseAdmin
           .from("pricing_matrices")
-          .select(`*, catalog_items(id, name)`)
+          .select(`*, package_items(id, name)`)
           .eq("id", id)
           .single();
         res.json(current);
         return;
       }
 
-      // Conflict detection when activating or changing catalog_item_id
+      // Conflict detection when activating or changing package_item_id
       const newStatus = (actualChanges.status as string) || existing.status;
-      const newCatalogItemId = (actualChanges.catalog_item_id as string) || existing.catalog_item_id;
+      const newPackageItemId = (actualChanges.package_item_id as string) || existing.package_item_id;
 
       if (newStatus === "active") {
         const { data: conflicting, error: conflictError } = await supabaseAdmin
           .from("pricing_matrices")
           .select("id")
-          .eq("catalog_item_id", newCatalogItemId)
+          .eq("package_item_id", newPackageItemId)
           .eq("status", "active")
           .neq("id", id)
           .limit(1);
@@ -510,7 +510,7 @@ router.put(
 
         if (conflicting && conflicting.length > 0) {
           res.status(409).json({
-            error: "An active pricing matrix already exists for this catalog item. Deactivate it first.",
+            error: "An active pricing matrix already exists for this package item. Deactivate it first.",
           });
           return;
         }
@@ -523,7 +523,7 @@ router.put(
         .select(
           `
           *,
-          catalog_items(id, name)
+          package_items(id, name)
         `
         )
         .single();
@@ -531,7 +531,7 @@ router.put(
       if (error) {
         if (error.code === "23505") {
           res.status(409).json({
-            error: "An active pricing matrix already exists for this catalog item.",
+            error: "An active pricing matrix already exists for this package item.",
           });
           return;
         }
@@ -628,7 +628,7 @@ router.delete(
           p_entity_id: id,
           p_performed_by_user_id: req.user!.id,
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
-          p_new_values: { catalog_item_id: existing.catalog_item_id, deleted: true },
+          p_new_values: { package_item_id: existing.package_item_id, deleted: true },
         });
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);

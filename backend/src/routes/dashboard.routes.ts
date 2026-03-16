@@ -182,7 +182,7 @@ router.get(
 );
 
 // GET /api/dashboard/top-services
-// Returns top catalog items by revenue for bar chart
+// Returns top package items by revenue for bar chart
 router.get(
   "/top-services",
   requireRoles("HM", "POC", "JS", "R"),
@@ -213,13 +213,13 @@ router.get(
       // Get job_order_items for those orders
       const { data: items } = await supabaseAdmin
         .from("job_order_items")
-        .select("catalog_item_name, line_total, quantity")
+        .select("package_item_name, line_total, quantity")
         .in("job_order_id", ids);
 
-      // Aggregate by catalog_item_name
+      // Aggregate by package_item_name
       const serviceMap: Record<string, { revenue: number; count: number }> = {};
       (items || []).forEach((item: any) => {
-        const name = item.catalog_item_name;
+        const name = item.package_item_name;
         if (!serviceMap[name]) serviceMap[name] = { revenue: 0, count: 0 };
         serviceMap[name].revenue += item.line_total || 0;
         serviceMap[name].count += item.quantity || 1;
@@ -351,7 +351,7 @@ router.get(
           `id, order_number, status, total_amount, created_at,
            customers(id, full_name),
            vehicles(id, plate_number, model),
-           job_order_items(catalog_item_name, quantity, line_total)`
+           job_order_items(package_item_name, quantity, line_total)`
         )
         .eq("is_deleted", false)
         .order("created_at", { ascending: false })

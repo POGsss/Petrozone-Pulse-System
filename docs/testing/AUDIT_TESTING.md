@@ -198,7 +198,7 @@ The Audit Logs page provides a centralized view of all system activity — login
    - ✅ **Logout** → audit entry with action `LOGOUT`
    - ✅ **Create a customer** → audit entry with action `CREATE`, entity `CUSTOMER`
    - ✅ **Update a vehicle** → audit entry with action `UPDATE`, entity `VEHICLE`
-   - ✅ **Delete a catalog item** → audit entry with action `DELETE` or `UPDATE` (if soft-deleted)
+   - ✅ **Delete a Package item** → audit entry with action `DELETE` or `UPDATE` (if soft-deleted)
    - ✅ **Approve a job order** → audit entry with action `UPDATE`, entity `JOB_ORDER`
    - ✅ **Receive a purchase order** → audit entry with action `RECEIVE`, entity `PURCHASE_ORDER`
 

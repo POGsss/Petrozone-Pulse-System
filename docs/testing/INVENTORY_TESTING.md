@@ -198,9 +198,9 @@ Use the **Add New Item** button on the Inventory page. Enter each item below int
 
 **Goal:** Verify automatic stock deduction when a JO is approved.
 
-> **How it works:** When a catalog item is added to a JO, the system captures **inventory snapshots** from the catalog's inventory template (`catalog_inventory_links`). Each snapshot records the `inventory_item_id`, `quantity_per_unit`, and `unit_cost`. On approval, the system aggregates quantities across all JO items and creates `stock_out` movements for each inventory item.
+> **How it works:** When a Package item is added to a JO, the system captures **inventory snapshots** from the Package's inventory template (`package_inventory_links`). Each snapshot records the `inventory_item_id`, `quantity_per_unit`, and `unit_cost`. On approval, the system aggregates quantities across all JO items and creates `stock_out` movements for each inventory item.
 
-1. Ensure a catalog item (e.g., `Oil Change Service`) is linked to inventory items:
+1. Ensure a Package item (e.g., `Oil Change Service`) is linked to inventory items:
    - Shell Helix Ultra 5W-40 (1L) — quantity\_per\_unit = 1
    - Denso Oil Filter — quantity\_per\_unit = 1
 2. Go to **Job Orders** → Create a new Job Order

@@ -151,24 +151,24 @@ export interface Vehicle {
   };
 }
 
-// Catalog types
-export type CatalogItemStatus = "active" | "inactive";
+// Package types
+export type PackageItemStatus = "active" | "inactive";
 
-export interface CatalogItem {
+export interface PackageItem {
   id: string;
   name: string;
   description: string | null;
-  status: CatalogItemStatus;
+  status: PackageItemStatus;
   inventory_types: string[];
   created_by: string | null;
   created_at: string;
   updated_at: string;
 }
 
-// Catalog Inventory Link types
-export interface CatalogInventoryLink {
+// Package Inventory Link types
+export interface PackageInventoryLink {
   id: string;
-  catalog_item_id: string;
+  package_item_id: string;
   inventory_item_id: string;
   created_at: string;
   inventory_items?: {
@@ -189,7 +189,7 @@ export type PricingMatrixStatus = "active" | "inactive";
 
 export interface PricingMatrix {
   id: string;
-  catalog_item_id: string;
+  package_item_id: string;
   light_price: number;
   heavy_price: number;
   extra_heavy_price: number;
@@ -197,14 +197,14 @@ export interface PricingMatrix {
   created_by: string | null;
   created_at: string;
   updated_at: string;
-  catalog_items?: {
+  package_items?: {
     id: string;
     name: string;
   };
 }
 
 export interface ResolvedPricing {
-  catalog_item: {
+  package_item: {
     id: string;
     name: string;
   };
@@ -222,9 +222,9 @@ export type JobOrderStatus = "draft" | "pending_approval" | "approved" | "in_pro
 export interface JobOrderItem {
   id: string;
   job_order_id: string;
-  catalog_item_id: string;
-  catalog_item_name: string;
-  catalog_item_type: string;
+  package_item_id: string;
+  package_item_name: string;
+  package_item_type: string;
   quantity: number;
   labor_price: number | null;
   inventory_cost: number;
@@ -550,7 +550,7 @@ export interface RecentOrder {
   created_at: string;
   customers?: { id: string; full_name: string } | null;
   vehicles?: { id: string; plate_number: string; model: string } | null;
-  job_order_items?: { catalog_item_name: string; quantity: number; line_total: number }[];
+  job_order_items?: { package_item_name: string; quantity: number; line_total: number }[];
 }
 
 // ─── Service Reminder types ───

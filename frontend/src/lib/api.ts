@@ -473,8 +473,8 @@ export const vehiclesApi = {
   },
 };
 
-// Catalog API
-export const catalogApi = {
+// Packages API
+export const packagesApi = {
   getAll: async (params?: {
     status?: string;
     search?: string;
@@ -490,13 +490,13 @@ export const catalogApi = {
       });
     }
     const query = searchParams.toString();
-    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").CatalogItem>>(
-      `/api/catalog${query ? `?${query}` : ""}`
+    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").PackageItem>>(
+      `/api/packages${query ? `?${query}` : ""}`
     );
   },
 
   getById: async (id: string) => {
-    return fetchWithAuth<import("../types").CatalogItem>(`/api/catalog/${id}`);
+    return fetchWithAuth<import("../types").PackageItem>(`/api/packages/${id}`);
   },
 
   create: async (data: {
@@ -505,7 +505,7 @@ export const catalogApi = {
     status?: string;
     inventory_types?: string[];
   }) => {
-    return fetchWithAuth<import("../types").CatalogItem>("/api/catalog", {
+    return fetchWithAuth<import("../types").PackageItem>("/api/packages", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -520,28 +520,28 @@ export const catalogApi = {
       inventory_types?: string[];
     }
   ) => {
-    return fetchWithAuth<import("../types").CatalogItem>(`/api/catalog/${id}`, {
+    return fetchWithAuth<import("../types").PackageItem>(`/api/packages/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     });
   },
 
   delete: async (id: string) => {
-    return fetchWithAuth<{ message: string; deactivated?: boolean }>(`/api/catalog/${id}`, {
+    return fetchWithAuth<{ message: string; deactivated?: boolean }>(`/api/packages/${id}`, {
       method: "DELETE",
     });
   },
 
   // Inventory Links
   getInventoryLinks: async (itemId: string) => {
-    return fetchWithAuth<import("../types").CatalogInventoryLink[]>(
-      `/api/catalog/${itemId}/inventory-links`
+    return fetchWithAuth<import("../types").PackageInventoryLink[]>(
+      `/api/packages/${itemId}/inventory-links`
     );
   },
 
   addInventoryLink: async (itemId: string, data: { inventory_item_id: string }) => {
-    return fetchWithAuth<import("../types").CatalogInventoryLink>(
-      `/api/catalog/${itemId}/inventory-links`,
+    return fetchWithAuth<import("../types").PackageInventoryLink>(
+      `/api/packages/${itemId}/inventory-links`,
       {
         method: "POST",
         body: JSON.stringify(data),
@@ -551,7 +551,7 @@ export const catalogApi = {
 
   removeInventoryLink: async (itemId: string, linkId: string) => {
     return fetchWithAuth<{ message: string }>(
-      `/api/catalog/${itemId}/inventory-links/${linkId}`,
+      `/api/packages/${itemId}/inventory-links/${linkId}`,
       {
         method: "DELETE",
       }
@@ -563,7 +563,7 @@ export const catalogApi = {
 export const pricingApi = {
   getAll: async (params?: {
     status?: string;
-    catalog_item_id?: string;
+    package_item_id?: string;
     search?: string;
     limit?: number;
     offset?: number;
@@ -586,24 +586,24 @@ export const pricingApi = {
     return fetchWithAuth<import("../types").PricingMatrix>(`/api/pricing/${id}`);
   },
 
-  resolve: async (catalogItemId: string) => {
+  resolve: async (packageItemId: string) => {
     return fetchWithAuth<import("../types").ResolvedPricing>(
-      `/api/pricing/resolve/${catalogItemId}`
+      `/api/pricing/resolve/${packageItemId}`
     );
   },
 
-  resolveBulk: async (catalogItemIds: string[]) => {
+  resolveBulk: async (packageItemIds: string[]) => {
     return fetchWithAuth<Record<string, import("../types").ResolvedPricing>>(
       "/api/pricing/resolve-bulk",
       {
         method: "POST",
-        body: JSON.stringify({ catalog_item_ids: catalogItemIds }),
+        body: JSON.stringify({ package_item_ids: packageItemIds }),
       }
     );
   },
 
   create: async (data: {
-    catalog_item_id: string;
+    package_item_id: string;
     light_price: number;
     heavy_price: number;
     extra_heavy_price: number;
@@ -618,7 +618,7 @@ export const pricingApi = {
   update: async (
     id: string,
     data: {
-      catalog_item_id?: string;
+      package_item_id?: string;
       light_price?: number;
       heavy_price?: number;
       extra_heavy_price?: number;
@@ -677,7 +677,7 @@ export const jobOrdersApi = {
     odometer_reading?: number;
     vehicle_bay?: string;
     items: Array<{
-      catalog_item_id: string;
+      package_item_id: string;
       quantity: number;
       inventory_quantities?: Array<{
         inventory_item_id: string;
@@ -754,7 +754,7 @@ export const jobOrdersApi = {
     });
   },
 
-  addItem: async (id: string, data: { catalog_item_id: string; quantity: number; inventory_quantities?: Array<{ inventory_item_id: string; quantity: number }> }) => {
+  addItem: async (id: string, data: { package_item_id: string; quantity: number; inventory_quantities?: Array<{ inventory_item_id: string; quantity: number }> }) => {
     return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/items`, {
       method: "POST",
       body: JSON.stringify(data),

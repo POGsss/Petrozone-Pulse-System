@@ -120,10 +120,10 @@ No service history, reminders, or fulfillment logic.
 
 ---
 
-## Module 3: Services / Products / Packages Catalog
+## Module 3: Services / Products / Packages
 
 ```text
-You are implementing the Service, Product, and Package Catalog module for Sprint 2.
+You are implementing the Services, Products, and Packages module for Sprint 2.
 
 Authoritative references:
 - docs/SYSTEM_CONCEPT.md
@@ -131,8 +131,8 @@ Authoritative references:
 - docs/requirements/FunctionalAndNonFunctionalRequirements.docx
 
 Scope:
-- Define catalog items (services, products, packages) that can be selected in job orders
-- CRUD for catalog items with branch scope or global flag
+- Define package items (services, products, packages) that can be selected in job orders
+- CRUD for package items with branch scope or global flag
 - Enforce mandatory fields and RBAC
 - Audit logging
 
@@ -143,8 +143,8 @@ Mandatory fields:
 - Either branch_id or is_global = true (not both)
 
 Rules:
-- Only HM, POC, JS can create, update, and delete catalog items
-- HM, POC, JS, R can view catalog items (T has no access)
+- Only HM, POC, JS can create, update, and delete package items
+- HM, POC, JS, R can view package items (T has no access)
 - Global items (is_global = true): only HM can create, edit, and delete; branch_id is set to null
 - Branch-scoped items require a valid branch_id
 - Branch scoping: HM sees all; others see global items plus their branch items
@@ -159,11 +159,11 @@ As a HM, POC, or JS, I want to update services, products, and packages to reflec
 As a HM, POC, or JS, I want to delete services, products, and packages that are no longer offered.
 
 Tasks:
-1. Design catalog_items schema with type enum and is_global flag
+1. Design package_items schema with type enum and is_global flag
 2. Implement backend CRUD APIs with validation and global/branch logic
 3. Apply Supabase RLS policies for branch isolation
-4. Build Catalog Management page with type, status, and branch filters
-5. Add Catalog item in sidebar for HM, POC, JS, R
+4. Build Packages Management page with type, status, and branch filters
+5. Add Packages in the sidebar for HM, POC, JS, R
 6. Audit all changes
 7. Maintain consistent styling of components and use available modal components for all actions
 
@@ -183,14 +183,14 @@ Authoritative references:
 - docs/requirements/FunctionalAndNonFunctionalRequirements.docx
 
 Scope:
-- Define pricing override rules for catalog items (labor and packaging)
+- Define pricing override rules for package items (labor and packaging)
 - Support resolution of pricing at job order creation
 - Enforce one active pricing rule per condition
 - Provide resolve and bulk-resolve endpoints for price computation
 - Audit all changes
 
 Mandatory fields:
-- catalog_item_id (must exist)
+- package_item_id (must exist)
 - pricing_type (labor | packaging)
 - price (non-negative number)
 - branch_id (must exist)
@@ -202,11 +202,11 @@ Optional fields:
 Rules:
 - All roles (HM, POC, JS, R, T) can view pricing matrices
 - Only HM, POC, JS, R can create, update, and delete pricing matrices
-- Active uniqueness constraint: only one active pricing rule per (catalog_item_id, pricing_type, branch_id) combination; returns 409 Conflict if violated
+- Active uniqueness constraint: only one active pricing rule per (package_item_id, pricing_type, branch_id) combination; returns 409 Conflict if violated
 - Conditional delete: try hard delete first; if FK constraint, fall back to soft delete (status to "inactive") and return { deactivated: true }
 - Pricing is resolved at job order creation time via resolve endpoints
-- Resolve endpoint: GET /resolve/:catalogItemId returns { base_price, labor, packaging }
-- Bulk resolve: POST /resolve-bulk accepts { branch_id, catalog_item_ids } and returns a map of resolved prices
+- Resolve endpoint: GET /resolve/:packageItemId returns { base_price, labor, packaging }
+- Bulk resolve: POST /resolve-bulk accepts { branch_id, package_item_ids } and returns a map of resolved prices
 - All CUD operations are audit-logged via log_admin_action RPC
 
 User Stories:
@@ -252,10 +252,10 @@ Mandatory fields (Job Order):
 - customer_id (must exist)
 - vehicle_id (must belong to the selected customer)
 - branch_id
-- items (non-empty array, each with catalog_item_id and optional quantity)
+- items (non-empty array, each with package_item_id and optional quantity)
 
 Mandatory fields (Job Order Item):
-- catalog_item_id
+- package_item_id
 - quantity (defaults to 1, minimum 1)
 
 Status lifecycle:
@@ -303,7 +303,7 @@ Tasks:
 6. Implement cancel endpoint with stock restoration for approved orders
 7. Implement conditional delete logic (hard/soft)
 8. Integrate stock deduction on approval (link with Inventory module)
-9. Build Job Order creation page with draft items and pricing preview (same layout as Catalog)
+9. Build Job Order creation page with draft items and pricing preview (same layout as Packages)
 10. Build edit modal with item management for created/rejected orders
 11. Build approval modal with approve/reject buttons
 12. Build cancel confirmation and history modals
@@ -375,7 +375,7 @@ You are validating Sprint 2 modules end-to-end.
 Scope:
 - Customer creation, update, delete (conditional), and validation
 - Vehicle creation, linking to customers, and delete (conditional)
-- Catalog setup with global and branch-scoped items
+- Package setup with global and branch-scoped items
 - Pricing resolution and active uniqueness enforcement
 - Job order creation with pricing, item management, and status lifecycle
 - Customer approval request and recording

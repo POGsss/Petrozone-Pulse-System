@@ -6,7 +6,7 @@
 
 ### Overview
 
-The Supplier Products module (Sprint 3, Module 4) manages the catalog of products that each supplier offers. Products are accessed via the Supplier Management page — each supplier card has a 3-dots dropdown menu with a "Manage Products" action. Products can optionally be linked to inventory items (one-to-one relationship). The module supports full CRUD with mandatory field validation, one-to-one inventory linking, branch isolation, and audit logging.
+The Supplier Products module (Sprint 3, Module 4) manages the list of products that each supplier offers. Products are accessed via the Supplier Management page — each supplier card has a 3-dots dropdown menu with a "Manage Products" action. Products can optionally be linked to inventory items (one-to-one relationship). The module supports full CRUD with mandatory field validation, one-to-one inventory linking, branch isolation, and audit logging.
 
 ### Key Business Rules
 

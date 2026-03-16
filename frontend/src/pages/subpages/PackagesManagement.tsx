@@ -6,7 +6,7 @@ import {
   LuPackage,
   LuX,
 } from "react-icons/lu";
-import { catalogApi, pricingApi } from "../../lib/api";
+import { packagesApi, pricingApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
 import { useAuth } from "../../auth";
 import {
@@ -25,7 +25,7 @@ import {
   GridCard,
 } from "../../components";
 import type { FilterGroup } from "../../components";
-import type { CatalogItem } from "../../types";
+import type { PackageItem } from "../../types";
 
 const ITEMS_PER_PAGE = 12;
 
@@ -54,7 +54,7 @@ function formatDate(dateStr: string): string {
   });
 }
 
-export function CatalogManagement() {
+export function PackagesManagement() {
   const { user } = useAuth();
   const userRoles = user?.roles || [];
 
@@ -64,7 +64,7 @@ export function CatalogManagement() {
   const canDelete = canCreate;
 
   // Data state
-  const [allItems, setAllItems] = useState<CatalogItem[]>([]);
+  const [allItems, setAllItems] = useState<PackageItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -85,12 +85,12 @@ export function CatalogManagement() {
 
   // View modal
   const [showViewModal, setShowViewModal] = useState(false);
-  const [viewItem, setViewItem] = useState<CatalogItem | null>(null);
+  const [viewItem, setViewItem] = useState<PackageItem | null>(null);
 
   // Edit modal
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingItem, setEditingItem] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<CatalogItem | null>(null);
+  const [selectedItem, setSelectedItem] = useState<PackageItem | null>(null);
   const [editForm, setEditForm] = useState({
     name: "",
     description: "",
@@ -102,7 +102,7 @@ export function CatalogManagement() {
   // Delete modal
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingItem, setDeletingItem] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<CatalogItem | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<PackageItem | null>(null);
   const [itemHasReferences, setItemHasReferences] = useState(false);
   const [checkingReferences, setCheckingReferences] = useState(false);
 
@@ -158,8 +158,8 @@ export function CatalogManagement() {
     try {
       setLoading(true);
       setError(null);
-      const catalogRes = await catalogApi.getAll({ limit: 1000 });
-      setAllItems(catalogRes.data);
+      const packageRes = await packagesApi.getAll({ limit: 1000 });
+      setAllItems(packageRes.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch data");
     } finally {
@@ -186,30 +186,30 @@ export function CatalogManagement() {
 
     try {
       setAddingItem(true);
-      await catalogApi.create({
+      await packagesApi.create({
         name: addForm.name.trim(),
         description: addForm.description.trim() || undefined,
         inventory_types: addForm.inventory_types,
       });
       setShowAddModal(false);
-      showToast.success("Catalog item created successfully");
+      showToast.success("Package item created successfully");
       fetchData();
     } catch (err) {
-      setAddError(err instanceof Error ? err.message : "Failed to create catalog item");
-      showToast.error(err instanceof Error ? err.message : "Failed to create catalog item");
+      setAddError(err instanceof Error ? err.message : "Failed to create Package item");
+      showToast.error(err instanceof Error ? err.message : "Failed to create Package item");
     } finally {
       setAddingItem(false);
     }
   }
 
   // --- View ---
-  async function openViewModal(item: CatalogItem) {
+  async function openViewModal(item: PackageItem) {
     setViewItem(item);
     setShowViewModal(true);
   }
 
   // --- Edit ---
-  async function openEditModal(item: CatalogItem) {
+  async function openEditModal(item: PackageItem) {
     setSelectedItem(item);
     setEditForm({
       name: item.name,
@@ -234,7 +234,7 @@ export function CatalogManagement() {
 
     try {
       setEditingItem(true);
-      await catalogApi.update(selectedItem.id, {
+      await packagesApi.update(selectedItem.id, {
         name: editForm.name.trim(),
         description: editForm.description.trim() || null,
         status: editForm.status,
@@ -242,24 +242,24 @@ export function CatalogManagement() {
       });
       setShowEditModal(false);
       setSelectedItem(null);
-      showToast.success("Catalog item updated successfully");
+      showToast.success("Package item updated successfully");
       fetchData();
     } catch (err) {
-      setEditError(err instanceof Error ? err.message : "Failed to update catalog item");
-      showToast.error(err instanceof Error ? err.message : "Failed to update catalog item");
+      setEditError(err instanceof Error ? err.message : "Failed to update Package item");
+      showToast.error(err instanceof Error ? err.message : "Failed to update Package item");
     } finally {
       setEditingItem(false);
     }
   }
 
   // --- Delete ---
-  async function openDeleteConfirmModal(item: CatalogItem) {
+  async function openDeleteConfirmModal(item: PackageItem) {
     setItemToDelete(item);
     setItemHasReferences(false);
     setCheckingReferences(true);
     setShowDeleteConfirm(true);
     try {
-      const pricingRes = await pricingApi.getAll({ catalog_item_id: item.id, limit: 1 });
+      const pricingRes = await pricingApi.getAll({ package_item_id: item.id, limit: 1 });
       setItemHasReferences((pricingRes.data?.length ?? 0) > 0);
     } catch {
       setItemHasReferences(true);
@@ -272,14 +272,14 @@ export function CatalogManagement() {
     if (!itemToDelete) return;
     try {
       setDeletingItem(true);
-      const result = await catalogApi.delete(itemToDelete.id);
+      const result = await packagesApi.delete(itemToDelete.id);
       setShowDeleteConfirm(false);
       setItemToDelete(null);
       const isDeactivated = result.message?.toLowerCase().includes("deactivated");
-      showToast.success(isDeactivated ? "Catalog item deactivated successfully" : "Catalog item deleted successfully");
+      showToast.success(isDeactivated ? "Package item deactivated successfully" : "Package item deleted successfully");
       fetchData();
     } catch (err) {
-      const failMsg = itemHasReferences ? "Failed to deactivate catalog item" : "Failed to delete catalog item";
+      const failMsg = itemHasReferences ? "Failed to deactivate Package item" : "Failed to delete Package item";
       setError(err instanceof Error ? err.message : failMsg);
       showToast.error(err instanceof Error ? err.message : failMsg);
     } finally {
@@ -299,9 +299,9 @@ export function CatalogManagement() {
     <div className="space-y-6">
       {/* Header */}
       <PageHeader
-        title="Catalog"
+        title="Packages"
         subtitle={`${allItems.length} items total`}
-        buttonLabel="Add New Catalog"
+        buttonLabel="Add New Package"
         onAdd={openAddModal}
         showButton={canCreate}
       />
@@ -320,13 +320,13 @@ export function CatalogManagement() {
         />
       )}
 
-      {/* Catalog Cards Grid */}
+      {/* Packages Cards Grid */}
       <CardGrid
         isEmpty={paginatedItems.length === 0}
         emptyMessage={
           searchQuery
-            ? "No catalog items match your search."
-            : 'No catalog items found. Click "Add New Catalog" to create one.'
+            ? "No Package items match your search."
+            : 'No package items found. Click "Add New Package" to create one.'
         }
       >
         {paginatedItems.map((item) => (
@@ -373,11 +373,11 @@ export function CatalogManagement() {
         variant="card"
       />
 
-      {/* Add Catalog Item Modal */}
+      {/* Add Package item Modal */}
       <Modal
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
-        title="Add Catalog Item"
+        title="Add Package item"
         maxWidth="lg"
       >
         <form onSubmit={handleAddItem}>
@@ -454,17 +454,17 @@ export function CatalogManagement() {
 
           <ModalButtons
             onCancel={() => setShowAddModal(false)}
-            submitText={addingItem ? "Creating..." : "Create Catalog"}
+            submitText={addingItem ? "Creating..." : "Create Package"}
             loading={addingItem}
           />
         </form>
       </Modal>
 
-      {/* View Catalog Item Modal */}
+      {/* View Package item Modal */}
       <Modal
         isOpen={showViewModal && !!viewItem}
         onClose={() => setShowViewModal(false)}
-        title="Catalog Item Details"
+        title="Package Item Details"
         maxWidth="lg"
       >
         {viewItem && (
@@ -528,11 +528,11 @@ export function CatalogManagement() {
         )}
       </Modal>
 
-      {/* Edit Catalog Item Modal */}
+      {/* Edit Package item Modal */}
       <Modal
         isOpen={showEditModal && !!selectedItem}
         onClose={() => setShowEditModal(false)}
-        title="Edit Catalog Item"
+        title="Edit Package Item"
         maxWidth="lg"
       >
         <form onSubmit={handleEditItem}>
@@ -626,7 +626,7 @@ export function CatalogManagement() {
       <Modal
         isOpen={showDeleteConfirm && !!itemToDelete}
         onClose={() => setShowDeleteConfirm(false)}
-        title={itemHasReferences ? "Deactivate Catalog Item" : "Delete Catalog Item"}
+        title={itemHasReferences ? "Deactivate Package item" : "Delete Package item"}
         maxWidth="sm"
       >
         {itemToDelete && (
@@ -641,8 +641,8 @@ export function CatalogManagement() {
             </div>
             <p className="text-sm text-neutral-900 mb-2">
               {itemHasReferences
-                ? "This catalog item has existing pricing records and will be set to inactive instead of deleted."
-                : "This action cannot be undone. All catalog item data will be permanently removed."
+                ? "This Package item has existing pricing records and will be set to inactive instead of deleted."
+                : "This action cannot be undone. All Package item data will be permanently removed."
               }
             </p>
 
