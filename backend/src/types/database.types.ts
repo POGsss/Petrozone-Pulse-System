@@ -733,6 +733,9 @@ export type Database = {
           created_by: string | null
           received_at: string | null
           received_by: string | null
+          receipt_attachment: string | null
+          receipt_uploaded_by: string | null
+          receipt_uploaded_at: string | null
           is_deleted: boolean
           created_at: string
           updated_at: string
@@ -751,6 +754,9 @@ export type Database = {
           created_by?: string | null
           received_at?: string | null
           received_by?: string | null
+          receipt_attachment?: string | null
+          receipt_uploaded_by?: string | null
+          receipt_uploaded_at?: string | null
           is_deleted?: boolean
           created_at?: string
           updated_at?: string
@@ -769,6 +775,9 @@ export type Database = {
           created_by?: string | null
           received_at?: string | null
           received_by?: string | null
+          receipt_attachment?: string | null
+          receipt_uploaded_by?: string | null
+          receipt_uploaded_at?: string | null
           is_deleted?: boolean
           created_at?: string
           updated_at?: string
@@ -791,6 +800,13 @@ export type Database = {
           {
             foreignKeyName: "purchase_orders_received_by_fkey"
             columns: ["received_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_receipt_uploaded_by_fkey"
+            columns: ["receipt_uploaded_by"]
             isOneToOne: false
             referencedRelation: "user_profiles"
             referencedColumns: ["id"]

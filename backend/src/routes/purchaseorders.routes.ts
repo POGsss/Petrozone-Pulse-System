@@ -1,11 +1,37 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
+import multer from "multer";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
 import { logFailedAction, fixAuditLogUser, filterUnchangedFields } from "../lib/auditLogger.js";
 
 const router = Router();
 const PO_NUMBER_PATTERN = /^PO-[A-Z0-9]+-[0-9]{1,6}$/;
+const RECEIPT_BUCKET = "purchase-order-receipts";
+const ALLOWED_RECEIPT_MIME_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "application/pdf",
+];
+
+const receiptUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (_req, file, cb) => {
+    if (!ALLOWED_RECEIPT_MIME_TYPES.includes(file.mimetype)) {
+      cb(new Error("Invalid file type. Allowed: jpg, jpeg, png, pdf"));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+function getFileExtension(filename: string): string {
+  const parts = filename.split(".");
+  const ext = parts.length > 1 ? parts.pop() : "";
+  return (ext || "bin").toLowerCase();
+}
 
 // All purchase-order routes require authentication
 router.use(requireAuth);
@@ -654,6 +680,152 @@ router.patch(
   }
 );
 
+// --- POST /api/purchase-orders/:id/upload-receipt ---------------------
+// Upload/replace PO receipt attachment
+// Roles: HM, POC, JS, R
+router.post(
+  "/:id/upload-receipt",
+  requireRoles("HM", "POC", "JS", "R"),
+  receiptUpload.single("receipt"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const poId = req.params.id as string;
+
+      if (!req.file) {
+        res.status(400).json({ error: "Receipt file is required" });
+        return;
+      }
+
+      const { data: po, error: fetchError } = await supabaseAdmin
+        .from("purchase_orders")
+        .select("id, po_number, branch_id, status")
+        .eq("id", poId)
+        .neq("status", "deactivated")
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === "PGRST116") {
+          res.status(404).json({ error: "Purchase order not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError.message });
+        return;
+      }
+
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(po.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this branch" });
+        return;
+      }
+
+      const { data: buckets, error: bucketListError } = await supabaseAdmin.storage.listBuckets();
+      if (bucketListError) {
+        res.status(500).json({ error: "Failed to access storage buckets" });
+        return;
+      }
+
+      const bucketExists = (buckets || []).some((bucket) => bucket.name === RECEIPT_BUCKET);
+      if (!bucketExists) {
+        const { error: bucketCreateError } = await supabaseAdmin.storage.createBucket(RECEIPT_BUCKET, {
+          public: true,
+          fileSizeLimit: 10 * 1024 * 1024,
+          allowedMimeTypes: ALLOWED_RECEIPT_MIME_TYPES,
+        });
+
+        if (bucketCreateError && !bucketCreateError.message.toLowerCase().includes("already exists")) {
+          res.status(500).json({ error: "Failed to create receipt storage bucket" });
+          return;
+        }
+      }
+
+      const timestamp = Date.now();
+      const extension = getFileExtension(req.file.originalname);
+      const filePath = `purchase-orders/${poId}/receipt-${timestamp}.${extension}`;
+
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from(RECEIPT_BUCKET)
+        .upload(filePath, req.file.buffer, {
+          contentType: req.file.mimetype,
+          upsert: true,
+        });
+
+      if (uploadError) {
+        res.status(500).json({ error: uploadError.message });
+        return;
+      }
+
+      const { data: publicUrlData } = supabaseAdmin.storage
+        .from(RECEIPT_BUCKET)
+        .getPublicUrl(filePath);
+
+      const receiptUrl = publicUrlData?.publicUrl || filePath;
+      const uploadedAt = new Date().toISOString();
+
+      const { error: updateError } = await supabaseAdmin
+        .from("purchase_orders")
+        .update({
+          receipt_attachment: receiptUrl,
+          receipt_uploaded_by: req.user!.id,
+          receipt_uploaded_at: uploadedAt,
+        })
+        .eq("id", poId);
+
+      if (updateError) {
+        res.status(500).json({ error: updateError.message });
+        return;
+      }
+
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "PO_RECEIPT_UPLOADED",
+          p_entity_type: "PURCHASE_ORDER",
+          p_entity_id: poId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: {
+            purchase_order_id: poId,
+            uploaded_by: req.user!.id,
+            timestamp: uploadedAt,
+            file_path: filePath,
+            receipt_attachment: receiptUrl,
+          },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      const { data: updatedPO, error: updatedFetchError } = await supabaseAdmin
+        .from("purchase_orders")
+        .select("*, suppliers(id, supplier_name), branches(id, name, code), purchase_order_items(*, inventory_items(id, item_name, sku_code, unit_of_measure))")
+        .eq("id", poId)
+        .single();
+
+      if (updatedFetchError) {
+        res.status(500).json({ error: updatedFetchError.message });
+        return;
+      }
+
+      res.json({
+        ...updatedPO,
+        receipt_url: receiptUrl,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to upload receipt";
+      console.error("Upload receipt error:", error);
+      await logFailedAction(
+        req,
+        "PO_RECEIPT_UPLOADED",
+        "PURCHASE_ORDER",
+        (req.params.id as string) || null,
+        message
+      );
+      res.status(500).json({ error: message });
+    }
+  }
+);
+
 // --- PATCH /api/purchase-orders/:id/receive ----------------------------
 // Receive PO � stock-in logic (FR-6 stock-in rules)
 // Atomically increases on-hand quantity for each item
@@ -693,6 +865,13 @@ router.patch(
       if (po.status !== "approved") {
         res.status(400).json({
           error: "Only approved purchase orders can be received",
+        });
+        return;
+      }
+
+      if (!po.receipt_attachment) {
+        res.status(400).json({
+          error: "Cannot receive purchase order without receipt attachment",
         });
         return;
       }

@@ -463,6 +463,9 @@ export interface PurchaseOrder {
   created_by: string | null;
   received_at: string | null;
   received_by: string | null;
+  receipt_attachment: string | null;
+  receipt_uploaded_by: string | null;
+  receipt_uploaded_at: string | null;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;

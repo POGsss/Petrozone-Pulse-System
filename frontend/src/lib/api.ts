@@ -32,11 +32,15 @@ async function fetchWithAuth<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const accessToken = getAccessToken();
+  const isFormDataBody = options.body instanceof FormData;
   
   const headers: HeadersInit = {
-    "Content-Type": "application/json",
     ...(options.headers || {}),
   };
+
+  if (!isFormDataBody) {
+    (headers as Record<string, string>)["Content-Type"] = "application/json";
+  }
 
   if (accessToken) {
     (headers as Record<string, string>)["Authorization"] = `Bearer ${accessToken}`;
@@ -1114,6 +1118,16 @@ export const purchaseOrdersApi = {
   cancel: async (id: string) => {
     return fetchWithAuth<{ message: string }>(`/api/purchase-orders/${id}/cancel`, {
       method: "PATCH",
+    });
+  },
+
+  uploadPurchaseOrderReceipt: async (id: string, file: File) => {
+    const formData = new FormData();
+    formData.append("receipt", file);
+
+    return fetchWithAuth<import("../types").PurchaseOrder>(`/api/purchase-orders/${id}/upload-receipt`, {
+      method: "POST",
+      body: formData,
     });
   },
 };

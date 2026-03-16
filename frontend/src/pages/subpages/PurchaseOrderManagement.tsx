@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, type ChangeEvent } from "react";
 import {
   LuPlus,
   LuPencil,
@@ -10,6 +10,7 @@ import {
   LuBan,
   LuBadgeCheck,
   LuClipboardList,
+  LuFileText,
   LuX,
 } from "react-icons/lu";
 import { purchaseOrdersApi, branchesApi, suppliersApi, supplierProductsApi } from "../../lib/api";
@@ -85,6 +86,10 @@ function statusBadge(status: string) {
 
 function statusLabel(status: string): string {
   return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function canModifyReceipt(order: PurchaseOrder): boolean {
+  return order.status === "approved" || order.status === "received" || !!order.receipt_attachment;
 }
 
 // Draft item for the plus-button pattern
@@ -188,6 +193,11 @@ export function PurchaseOrderManagement() {
   const [showReceiveConfirm, setShowReceiveConfirm] = useState(false);
   const [orderToReceive, setOrderToReceive] = useState<PurchaseOrder | null>(null);
   const [processingReceive, setProcessingReceive] = useState(false);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [receiptOrder, setReceiptOrder] = useState<PurchaseOrder | null>(null);
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  const [receiptTargetOrderId, setReceiptTargetOrderId] = useState<string | null>(null);
+  const receiptInputRef = useRef<HTMLInputElement | null>(null);
 
   // Actions overflow dropdown
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
@@ -685,6 +695,53 @@ export function PurchaseOrderManagement() {
     setOrderToReceive(order);
     setShowReceiveConfirm(true);
   }
+
+  function openReceiptModal(order: PurchaseOrder) {
+    setReceiptOrder(order);
+    setShowReceiptModal(true);
+  }
+
+  function openReceiptPicker(orderId: string) {
+    setReceiptTargetOrderId(orderId);
+    if (receiptInputRef.current) {
+      receiptInputRef.current.value = "";
+      receiptInputRef.current.click();
+    }
+  }
+
+  async function handleReceiptFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || !receiptTargetOrderId) return;
+
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "application/pdf"];
+    if (!allowedTypes.includes(file.type)) {
+      showToast.error("Receipt upload failed");
+      return;
+    }
+
+    try {
+      setUploadingReceipt(true);
+      const updated = await purchaseOrdersApi.uploadPurchaseOrderReceipt(receiptTargetOrderId, file);
+
+      if (viewOrder?.id === updated.id) {
+        setViewOrder(updated);
+      }
+      if (orderToReceive?.id === updated.id) {
+        setOrderToReceive(updated);
+      }
+      if (receiptOrder?.id === updated.id) {
+        setReceiptOrder(updated);
+      }
+
+      showToast.success("Receipt uploaded successfully");
+      fetchData();
+    } catch {
+      showToast.error("Receipt upload failed");
+    } finally {
+      setUploadingReceipt(false);
+      setReceiptTargetOrderId(null);
+    }
+  }
   async function handleConfirmReceive() {
     if (!orderToReceive || processingReceive) return;
     setProcessingReceive(true);
@@ -707,6 +764,7 @@ export function PurchaseOrderManagement() {
     if (order.status === "draft") actions.push("submit");
     if (order.status === "submitted" && canApprove) actions.push("approve");
     if (order.status === "approved") actions.push("receive");
+    actions.push("receipt");
     if (["draft", "submitted"].includes(order.status)) actions.push("cancel");
     return actions;
   }
@@ -836,8 +894,19 @@ export function PurchaseOrderManagement() {
                                   <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openApproveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBadgeCheck className="w-4 h-4" /> Approve PO</button>
                                 )}
                                 {order.status === "approved" && (
-                                  <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openReceiveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuPackageCheck className="w-4 h-4" /> Receive &amp; Stock In</button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); closeDropdown(); openReceiveConfirm(order); }}
+                                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                  >
+                                    <LuPackageCheck className="w-4 h-4" /> Receive &amp; Stock In
+                                  </button>
                                 )}
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); closeDropdown(); openReceiptModal(order); }}
+                                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                >
+                                  <LuFileText className="w-4 h-4" /> Receipt
+                                </button>
                                 {["draft", "submitted"].includes(order.status) && (
                                   <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBan className="w-4 h-4" /> Cancel PO</button>
                                 )}
@@ -933,8 +1002,19 @@ export function PurchaseOrderManagement() {
                                   <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openApproveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBadgeCheck className="w-4 h-4" /> Approve PO</button>
                                 )}
                                 {order.status === "approved" && (
-                                  <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openReceiveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuPackageCheck className="w-4 h-4" /> Receive &amp; Stock In</button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); closeDropdown(); openReceiveConfirm(order); }}
+                                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                  >
+                                    <LuPackageCheck className="w-4 h-4" /> Receive &amp; Stock In
+                                  </button>
                                 )}
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); closeDropdown(); openReceiptModal(order); }}
+                                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                >
+                                  <LuFileText className="w-4 h-4" /> Receipt
+                                </button>
                                 {["draft", "submitted"].includes(order.status) && (
                                   <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBan className="w-4 h-4" /> Cancel PO</button>
                                 )}
@@ -1455,6 +1535,104 @@ export function PurchaseOrderManagement() {
         )}
       </Modal>
 
+      {/* ═══════════════════ RECEIPT MODAL ═══════════════════ */}
+      <Modal isOpen={showReceiptModal && !!receiptOrder} onClose={() => { setShowReceiptModal(false); setReceiptOrder(null); }} title="Receipt" maxWidth="lg">
+        {receiptOrder && (() => {
+          const receiptUrl = receiptOrder.receipt_attachment || "";
+          const isPdf = /\.pdf($|\?)/i.test(receiptUrl);
+
+          return (
+            <div>
+              <ModalSection title="Basic Information">
+                <ModalInput
+                  type="text"
+                  value={receiptOrder.po_number}
+                  onChange={() => {}}
+                  placeholder="PO Number"
+                  disabled
+                />
+                <ModalInput
+                  type="text"
+                  value={statusLabel(receiptOrder.status)}
+                  onChange={() => {}}
+                  placeholder="Status"
+                  disabled
+                />
+              </ModalSection>
+
+              {receiptOrder.receipt_attachment && (
+                <ModalSection title="Receipt Preview">
+                  <div className="space-y-4">
+                    <div className="bg-neutral-100 rounded-xl p-3">
+                      {isPdf ? (
+                        <iframe
+                          src={receiptUrl}
+                          title="Receipt Preview"
+                          className="w-full h-[520px] rounded-lg border border-neutral-200"
+                        />
+                      ) : (
+                        <img
+                          src={receiptUrl}
+                          alt="Receipt Preview"
+                          className="w-full max-h-[520px] object-contain rounded-lg border border-neutral-200 bg-white"
+                        />
+                      )}
+                    </div>
+                  </div>
+                </ModalSection>
+              )}
+
+              <ModalSection title="Actions">
+                <div className="flex flex-wrap gap-2">
+                  {!receiptOrder.receipt_attachment ? (
+                    <button
+                      type="button"
+                      onClick={() => openReceiptPicker(receiptOrder.id)}
+                      disabled={uploadingReceipt || !canModifyReceipt(receiptOrder)}
+                      className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                        uploadingReceipt || !canModifyReceipt(receiptOrder)
+                          ? "bg-primary text-white opacity-50 cursor-not-allowed"
+                          : "bg-primary text-white"
+                      }`}
+                    >
+                      {uploadingReceipt && receiptTargetOrderId === receiptOrder.id ? "Uploading..." : "Upload Receipt"}
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          window.open(receiptOrder.receipt_attachment!, "_blank", "noopener,noreferrer");
+                        }}
+                        className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all bg-neutral-100 text-neutral hover:bg-neutral-200"
+                      >
+                        Download Receipt
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => openReceiptPicker(receiptOrder.id)}
+                        disabled={uploadingReceipt}
+                        className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                          uploadingReceipt
+                            ? "bg-primary text-white opacity-50 cursor-not-allowed"
+                            : "bg-primary text-white"
+                        }`}
+                      >
+                        {uploadingReceipt && receiptTargetOrderId === receiptOrder.id ? "Replacing..." : "Replace Receipt"}
+                      </button>
+                    </>
+                  )}
+                </div>
+                {!canModifyReceipt(receiptOrder) && !receiptOrder.receipt_attachment && (
+                  <p className="text-sm text-neutral-900 mt-2">Receipt can only be uploaded when PO is approved or received.</p>
+                )}
+              </ModalSection>
+            </div>
+          );
+        })()}
+      </Modal>
+
       {/* ═══════════════════ RECEIVE PO CONFIRM MODAL ═══════════════════ */}
       <Modal isOpen={showReceiveConfirm && !!orderToReceive} onClose={() => setShowReceiveConfirm(false)} title="Receive Purchase Order" maxWidth="sm">
         {orderToReceive && (
@@ -1468,6 +1646,9 @@ export function PurchaseOrderManagement() {
             <p className="text-sm text-neutral-900 mb-2">
               This will mark the PO as received, create stock-in movements for every line item, and update on-hand quantities. <strong>This action is irreversible.</strong>
             </p>
+            {!orderToReceive.receipt_attachment && (
+              <p className="text-sm text-negative mb-2">Upload receipt before receiving purchase order.</p>
+            )}
             <div className="flex gap-3 mt-6">
               <button
                 type="button"
@@ -1479,15 +1660,23 @@ export function PurchaseOrderManagement() {
               <button
                 type="button"
                 onClick={handleConfirmReceive}
-                disabled={processingReceive}
+                disabled={processingReceive || !orderToReceive.receipt_attachment}
                 className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {processingReceive ? "Receiving..." : "Receive & Stock In"}
+                {processingReceive ? "Receiving..." : "Receive"}
               </button>
             </div>
           </div>
         )}
       </Modal>
+
+      <input
+        ref={receiptInputRef}
+        type="file"
+        accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/jpg,image/png,application/pdf"
+        className="hidden"
+        onChange={handleReceiptFileChange}
+      />
     </div>
   );
 }
