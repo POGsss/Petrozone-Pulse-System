@@ -64,7 +64,10 @@ router.get(
 
       if (branch_id) query = query.eq("branch_id", branch_id as string);
       if (status) {
-        query = query.eq("status", status as string);
+        query = query.eq(
+          "status",
+          status as "draft" | "submitted" | "approved" | "received" | "cancelled" | "deactivated"
+        );
       } else {
         query = query.neq("status", "deactivated");
       }

@@ -62,7 +62,7 @@ export function ReportsManagement() {
 
   // Search and filters
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
+  const [activeFilters, setActiveFilters] = useState<Record<string, string>>({ status: "active" });
   const [currentPage, setCurrentPage] = useState(1);
 
   // Create modal
@@ -100,6 +100,8 @@ export function ReportsManagement() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [reportToDelete, setReportToDelete] = useState<Report | null>(null);
+  const [reportHasReferences, setReportHasReferences] = useState(false);
+  const [checkingReferences, setCheckingReferences] = useState(false);
 
   // Export loading
   const [exporting, setExporting] = useState<string | null>(null);
@@ -133,6 +135,15 @@ export function ReportsManagement() {
           ...REPORT_TYPE_OPTIONS.map((o) => ({ value: o.value, label: o.label })),
         ],
       },
+      {
+        key: "status",
+        label: "Status",
+        options: [
+          { value: "all", label: "All Status" },
+          { value: "active", label: "Active" },
+          { value: "deactivated", label: "Deactivated" },
+        ],
+      },
 
     ];
   }, []);
@@ -150,7 +161,13 @@ export function ReportsManagement() {
       const matchType =
         !typeFilter || typeFilter === "all" || report.report_type === typeFilter;
 
-      return matchSearch && matchType;
+      const statusFilter = activeFilters.status;
+      const matchStatus =
+        !statusFilter ||
+        statusFilter === "all" ||
+        (statusFilter === "deactivated" ? report.is_deleted : !report.is_deleted);
+
+      return matchSearch && matchType && matchStatus;
     });
 
     const pages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
@@ -163,7 +180,7 @@ export function ReportsManagement() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [activeFilters.status]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -173,11 +190,19 @@ export function ReportsManagement() {
     try {
       setLoading(true);
       setError(null);
-      const [reportsRes, branchesRes] = await Promise.all([
-        reportsApi.getAll({ limit: 1000 }),
-        branchesApi.getAll(),
-      ]);
-      setAllReports(reportsRes.data);
+      const statusFilter = activeFilters.status;
+      const reportsPromise =
+        !statusFilter || statusFilter === "all"
+          ? Promise.all([
+              reportsApi.getAll({ limit: 1000, status: "active" }),
+              reportsApi.getAll({ limit: 1000, status: "deactivated" }),
+            ]).then(([activeRes, deactivatedRes]) => [...activeRes.data, ...deactivatedRes.data])
+          : reportsApi
+              .getAll({ limit: 1000, status: statusFilter })
+              .then((res) => res.data);
+
+      const [reportsData, branchesRes] = await Promise.all([reportsPromise, branchesApi.getAll()]);
+      setAllReports(reportsData);
       setBranches(branchesRes.filter((b) => b.is_active));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch data");
@@ -292,9 +317,19 @@ export function ReportsManagement() {
   }
 
   // --- Delete ---
-  function openDeleteModal(report: Report) {
+  async function openDeleteModal(report: Report) {
     setReportToDelete(report);
+    setReportHasReferences(false);
+    setCheckingReferences(true);
     setShowDeleteModal(true);
+    try {
+      const deleteMode = await reportsApi.getDeleteMode(report.id);
+      setReportHasReferences(deleteMode.mode === "deactivate");
+    } catch {
+      setReportHasReferences(true);
+    } finally {
+      setCheckingReferences(false);
+    }
   }
 
   async function handleDelete() {
@@ -302,13 +337,15 @@ export function ReportsManagement() {
 
     try {
       setDeleting(true);
-      await reportsApi.delete(reportToDelete.id);
-      showToast.success("Report deleted successfully");
+      const result = await reportsApi.delete(reportToDelete.id);
+      const isDeactivated = result.message?.toLowerCase().includes("deactivated");
+      showToast.success(isDeactivated ? "Report deactivated successfully" : "Report deleted successfully");
       setShowDeleteModal(false);
       setReportToDelete(null);
       fetchData();
     } catch (err) {
-      showToast.error(err instanceof Error ? err.message : "Failed to delete report");
+      const fallback = reportHasReferences ? "Failed to deactivate report" : "Failed to delete report";
+      showToast.error(err instanceof Error ? err.message : fallback);
     } finally {
       setDeleting(false);
     }
@@ -796,20 +833,34 @@ export function ReportsManagement() {
       <Modal
         isOpen={showDeleteModal && !!reportToDelete}
         onClose={() => setShowDeleteModal(false)}
-        title="Delete Report"
+        title={reportHasReferences ? "Deactivate Report" : "Delete Report"}
         maxWidth="sm"
       >
         {reportToDelete && (
           <div>
             <div className="bg-neutral-100 rounded-xl p-4 my-4">
               <p className="text-neutral-900">
-                Are you sure you want to delete{" "}
-                <strong className="text-neutral-950">
-                  {reportToDelete.report_name}
-                </strong>
-                ? This action cannot be undone.
+                {reportHasReferences
+                  ? (
+                    <>
+                      Are you sure you want to deactivate{" "}
+                      <strong className="text-neutral-950">{reportToDelete.report_name}</strong>?
+                    </>
+                  )
+                  : (
+                    <>
+                      Are you sure you want to delete{" "}
+                      <strong className="text-neutral-950">{reportToDelete.report_name}</strong>? This action cannot be undone.
+                    </>
+                  )}
               </p>
             </div>
+
+            <p className="text-sm text-neutral-900 mb-2">
+              {reportHasReferences
+                ? "This report has references and will be set to inactive instead of being permanently deleted."
+                : "This will permanently remove the report record from the database."}
+            </p>
 
             <div className="flex gap-3 mt-6">
               <button
@@ -822,10 +873,14 @@ export function ReportsManagement() {
               <button
                 type="button"
                 onClick={handleDelete}
-                disabled={deleting}
+                disabled={deleting || checkingReferences}
                 className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {deleting ? "Deleting..." : "Delete"}
+                {checkingReferences
+                  ? "Checking..."
+                  : deleting
+                    ? (reportHasReferences ? "Deactivating..." : "Deleting...")
+                    : (reportHasReferences ? "Deactivate" : "Delete")}
               </button>
             </div>
           </div>

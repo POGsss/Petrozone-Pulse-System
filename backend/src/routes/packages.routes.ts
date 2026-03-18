@@ -107,6 +107,44 @@ router.get(
 );
 
 /**
+ * GET /api/packages/:itemId/delete-mode
+ * Returns whether package can be hard-deleted or will be deactivated.
+ */
+router.get(
+  "/:itemId/delete-mode",
+  requireRoles("HM", "POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const itemId = req.params.itemId as string;
+
+      const [{ count: legacyRefs }, { count: lineRefs }] = await Promise.all([
+        supabaseAdmin
+          .from("job_order_items")
+          .select("id", { count: "exact", head: true })
+          .eq("package_item_id", itemId),
+        supabaseAdmin
+          .from("job_order_lines")
+          .select("id", { count: "exact", head: true })
+          .eq("line_type", "package")
+          .eq("reference_id", itemId),
+      ]);
+
+      const references = (legacyRefs || 0) + (lineRefs || 0);
+      const mode = references > 0 ? "deactivate" : "delete";
+
+      res.json({
+        deletable: references === 0,
+        mode,
+        reference_count: references,
+      });
+    } catch (error) {
+      console.error("Get package delete mode error:", error);
+      res.status(500).json({ error: "Failed to determine package delete mode" });
+    }
+  }
+);
+
+/**
  * POST /api/packages
  * Create a new Package item (labor package template)
  * HM, POC, JS can create
@@ -286,18 +324,13 @@ router.delete(
         return;
       }
 
-      // Check if referenced by job_order_items or pricing_matrices
+      // Check if referenced by job_order_items
       const { count: joiCount } = await supabaseAdmin
         .from("job_order_items")
         .select("id", { count: "exact", head: true })
         .eq("package_item_id", itemId);
 
-      const { count: pmCount } = await supabaseAdmin
-        .from("pricing_matrices")
-        .select("id", { count: "exact", head: true })
-        .eq("package_item_id", itemId);
-
-      const hasReferences = ((joiCount ?? 0) + (pmCount ?? 0)) > 0;
+      const hasReferences = (joiCount ?? 0) > 0;
 
       if (hasReferences) {
         // Soft delete: set status to inactive
@@ -330,6 +363,16 @@ router.delete(
         });
       } else {
         // Hard delete: remove inventory links first, then the item
+        await supabaseAdmin
+          .from("package_labor_items")
+          .delete()
+          .eq("package_id", itemId);
+
+        await supabaseAdmin
+          .from("package_inventory_items")
+          .delete()
+          .eq("package_id", itemId);
+
         await supabaseAdmin
           .from("package_inventory_links")
           .delete()
@@ -396,12 +439,12 @@ router.get(
       }
 
       const { data: links, error } = await supabaseAdmin
-        .from("package_inventory_links")
+        .from("package_inventory_items")
         .select(`
           *,
           inventory_items(id, item_name, sku_code, cost_price, unit_of_measure, branch_id)
         `)
-        .eq("package_item_id", itemId)
+        .eq("package_id", itemId)
         .order("created_at", { ascending: true });
 
       if (error) {
@@ -419,7 +462,7 @@ router.get(
 
 /**
  * POST /api/packages/:itemId/inventory-links
- * Add an inventory item link to a Package item (template association only, no quantity)
+ * Add an inventory item to a Package item with quantity
  * Roles: HM, POC, JS
  */
 router.post(
@@ -428,7 +471,7 @@ router.post(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const itemId = req.params.itemId as string;
-      const { inventory_item_id } = req.body;
+      const { inventory_item_id, quantity } = req.body;
 
       if (!inventory_item_id) {
         res.status(400).json({ error: "Inventory item ID is required" });
@@ -465,10 +508,16 @@ router.post(
         return;
       }
 
+      const parsedQty = Number(quantity ?? 1);
+      if (Number.isNaN(parsedQty) || parsedQty <= 0) {
+        res.status(400).json({ error: "Quantity must be greater than 0" });
+        return;
+      }
+
       const { data: existing } = await supabaseAdmin
-        .from("package_inventory_links")
+        .from("package_inventory_items")
         .select("id")
-        .eq("package_item_id", itemId)
+        .eq("package_id", itemId)
         .eq("inventory_item_id", inventory_item_id)
         .maybeSingle();
 
@@ -478,10 +527,11 @@ router.post(
       }
 
       const { data: link, error: insertError } = await supabaseAdmin
-        .from("package_inventory_links")
+        .from("package_inventory_items")
         .insert({
-          package_item_id: itemId,
+          package_id: itemId,
           inventory_item_id,
+          quantity: parsedQty,
         })
         .select(`
           *,
@@ -498,6 +548,54 @@ router.post(
     } catch (error) {
       console.error("Add package inventory link error:", error);
       res.status(500).json({ error: "Failed to add inventory link" });
+    }
+  }
+);
+
+/**
+ * PUT /api/packages/:itemId/inventory-links/:linkId
+ * Update inventory item quantity in a Package item
+ * Roles: HM, POC, JS
+ */
+router.put(
+  "/:itemId/inventory-links/:linkId",
+  requireRoles("HM", "POC", "JS"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const itemId = req.params.itemId as string;
+      const linkId = req.params.linkId as string;
+      const { quantity } = req.body;
+
+      const parsedQty = Number(quantity);
+      if (Number.isNaN(parsedQty) || parsedQty <= 0) {
+        res.status(400).json({ error: "Quantity must be greater than 0" });
+        return;
+      }
+
+      const { data: link, error } = await supabaseAdmin
+        .from("package_inventory_items")
+        .update({ quantity: parsedQty })
+        .eq("id", linkId)
+        .eq("package_id", itemId)
+        .select(`
+          *,
+          inventory_items(id, item_name, sku_code, cost_price, unit_of_measure, branch_id)
+        `)
+        .single();
+
+      if (error) {
+        if (error.code === "PGRST116") {
+          res.status(404).json({ error: "Package inventory item not found" });
+          return;
+        }
+        res.status(500).json({ error: error.message });
+        return;
+      }
+
+      res.json(link);
+    } catch (error) {
+      console.error("Update package inventory item error:", error);
+      res.status(500).json({ error: "Failed to update package inventory item" });
     }
   }
 );
@@ -531,10 +629,10 @@ router.delete(
       }
 
       const { error: deleteError } = await supabaseAdmin
-        .from("package_inventory_links")
+        .from("package_inventory_items")
         .delete()
         .eq("id", linkId)
-        .eq("package_item_id", itemId);
+        .eq("package_id", itemId);
 
       if (deleteError) {
         res.status(500).json({ error: deleteError.message });
@@ -545,6 +643,227 @@ router.delete(
     } catch (error) {
       console.error("Delete package inventory link error:", error);
       res.status(500).json({ error: "Failed to remove inventory link" });
+    }
+  }
+);
+
+/**
+ * GET /api/packages/:itemId/labor-items
+ * Get all labor items linked to a Package item
+ * Roles: HM, POC, JS, R
+ */
+router.get(
+  "/:itemId/labor-items",
+  requireRoles("HM", "POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const itemId = req.params.itemId as string;
+
+      const { data: packageItem, error: catError } = await supabaseAdmin
+        .from("package_items")
+        .select("id")
+        .eq("id", itemId)
+        .single();
+
+      if (catError || !packageItem) {
+        if (catError?.code === "PGRST116") {
+          res.status(404).json({ error: "Package item not found" });
+          return;
+        }
+        res.status(500).json({ error: catError?.message || "Failed to validate package item" });
+        return;
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from("package_labor_items")
+        .select(`
+          *,
+          labor_items(id, name, light_price, heavy_price, extra_heavy_price, status)
+        `)
+        .eq("package_id", itemId)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        res.status(500).json({ error: error.message });
+        return;
+      }
+
+      res.json(data || []);
+    } catch (error) {
+      console.error("Get package labor items error:", error);
+      res.status(500).json({ error: "Failed to fetch labor items" });
+    }
+  }
+);
+
+/**
+ * POST /api/packages/:itemId/labor-items
+ * Add labor item to a Package item with quantity
+ * Roles: HM, POC, JS
+ */
+router.post(
+  "/:itemId/labor-items",
+  requireRoles("HM", "POC", "JS"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const itemId = req.params.itemId as string;
+      const { labor_item_id, quantity } = req.body;
+
+      if (!labor_item_id) {
+        res.status(400).json({ error: "Labor item ID is required" });
+        return;
+      }
+
+      const parsedQty = Number(quantity ?? 1);
+      if (Number.isNaN(parsedQty) || parsedQty <= 0) {
+        res.status(400).json({ error: "Quantity must be greater than 0" });
+        return;
+      }
+
+      const { data: packageItem, error: catError } = await supabaseAdmin
+        .from("package_items")
+        .select("id")
+        .eq("id", itemId)
+        .single();
+
+      if (catError || !packageItem) {
+        if (catError?.code === "PGRST116") {
+          res.status(404).json({ error: "Package item not found" });
+          return;
+        }
+        res.status(500).json({ error: catError?.message || "Failed to validate package item" });
+        return;
+      }
+
+      const { data: laborItem, error: laborError } = await supabaseAdmin
+        .from("labor_items")
+        .select("id, status")
+        .eq("id", labor_item_id)
+        .single();
+
+      if (laborError || !laborItem) {
+        res.status(400).json({ error: "Labor item not found" });
+        return;
+      }
+      if (laborItem.status !== "active") {
+        res.status(400).json({ error: "Labor item is not active" });
+        return;
+      }
+
+      const { data: existing } = await supabaseAdmin
+        .from("package_labor_items")
+        .select("id")
+        .eq("package_id", itemId)
+        .eq("labor_id", labor_item_id)
+        .maybeSingle();
+
+      if (existing) {
+        res.status(409).json({ error: "This labor item is already linked to this Package item" });
+        return;
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from("package_labor_items")
+        .insert({
+          package_id: itemId,
+          labor_id: labor_item_id,
+          quantity: parsedQty,
+        })
+        .select(`
+          *,
+          labor_items(id, name, light_price, heavy_price, extra_heavy_price, status)
+        `)
+        .single();
+
+      if (error) {
+        res.status(500).json({ error: error.message });
+        return;
+      }
+
+      res.status(201).json(data);
+    } catch (error) {
+      console.error("Add package labor item error:", error);
+      res.status(500).json({ error: "Failed to add labor item" });
+    }
+  }
+);
+
+/**
+ * PUT /api/packages/:itemId/labor-items/:linkId
+ * Update labor item quantity in a Package item
+ * Roles: HM, POC, JS
+ */
+router.put(
+  "/:itemId/labor-items/:linkId",
+  requireRoles("HM", "POC", "JS"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const itemId = req.params.itemId as string;
+      const linkId = req.params.linkId as string;
+      const { quantity } = req.body;
+
+      const parsedQty = Number(quantity);
+      if (Number.isNaN(parsedQty) || parsedQty <= 0) {
+        res.status(400).json({ error: "Quantity must be greater than 0" });
+        return;
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from("package_labor_items")
+        .update({ quantity: parsedQty })
+        .eq("id", linkId)
+        .eq("package_id", itemId)
+        .select(`
+          *,
+          labor_items(id, name, light_price, heavy_price, extra_heavy_price, status)
+        `)
+        .single();
+
+      if (error) {
+        if (error.code === "PGRST116") {
+          res.status(404).json({ error: "Package labor item not found" });
+          return;
+        }
+        res.status(500).json({ error: error.message });
+        return;
+      }
+
+      res.json(data);
+    } catch (error) {
+      console.error("Update package labor item error:", error);
+      res.status(500).json({ error: "Failed to update package labor item" });
+    }
+  }
+);
+
+/**
+ * DELETE /api/packages/:itemId/labor-items/:linkId
+ * Remove a labor item link from a Package item
+ * Roles: HM, POC, JS
+ */
+router.delete(
+  "/:itemId/labor-items/:linkId",
+  requireRoles("HM", "POC", "JS"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const itemId = req.params.itemId as string;
+      const linkId = req.params.linkId as string;
+
+      const { error } = await supabaseAdmin
+        .from("package_labor_items")
+        .delete()
+        .eq("id", linkId)
+        .eq("package_id", itemId);
+
+      if (error) {
+        res.status(500).json({ error: error.message });
+        return;
+      }
+
+      res.json({ message: "Labor item removed successfully" });
+    } catch (error) {
+      console.error("Delete package labor item error:", error);
+      res.status(500).json({ error: "Failed to remove labor item" });
     }
   }
 );

@@ -780,6 +780,14 @@ export function PurchaseOrderManagement() {
 
   return (
     <div className="space-y-6">
+      <input
+        ref={receiptInputRef}
+        type="file"
+        accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/jpg,image/png,application/pdf"
+        className="hidden"
+        onChange={handleReceiptFileChange}
+      />
+
       {/* Header */}
       <PageHeader
         title="Purchase Orders"
@@ -1624,9 +1632,6 @@ export function PurchaseOrderManagement() {
                     </>
                   )}
                 </div>
-                {!canModifyReceipt(receiptOrder) && !receiptOrder.receipt_attachment && (
-                  <p className="text-sm text-neutral-900 mt-2">Receipt can only be uploaded when PO is approved or received.</p>
-                )}
               </ModalSection>
             </div>
           );
@@ -1669,14 +1674,6 @@ export function PurchaseOrderManagement() {
           </div>
         )}
       </Modal>
-
-      <input
-        ref={receiptInputRef}
-        type="file"
-        accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/jpg,image/png,application/pdf"
-        className="hidden"
-        onChange={handleReceiptFileChange}
-      />
     </div>
   );
 }

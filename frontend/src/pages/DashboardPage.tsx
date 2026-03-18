@@ -12,7 +12,7 @@ import { AuditLogs } from "./subpages/AuditLogs";
 import { CustomerManagement } from "./subpages/CustomerManagement";
 import { VehicleManagement } from "./subpages/VehicleManagement";
 import { PackagesManagement } from "./subpages/PackagesManagement";
-import { PricingManagement } from "./subpages/PricingManagement";
+import { LaborManagement } from "./subpages/LaborManagement";
 import { JobOrderManagement } from "./subpages/JobOrderManagement";
 import { InventoryManagement } from "./subpages/InventoryManagement";
 import { PurchaseOrderManagement } from "./subpages/PurchaseOrderManagement";
@@ -54,9 +54,9 @@ const pageData: Record<string, { title: string; description: string }> = {
     title: "Job Orders",
     description: "Create and manage job orders for customers.",
   },
-  pricing: {
-    title: "Pricing Matrices",
-    description: "Define and manage pricing rules for package items.",
+  labor: {
+    title: "Labor Items",
+    description: "Define and manage labor rates by vehicle type.",
   },
   inventory: {
     title: "Inventory",
@@ -140,8 +140,8 @@ function getNavItemsForRole(roles: string[]): NavItem[] {
     items.push({ id: "vehicles", label: "Vehicles", icon: <NavIcons.Vehicle /> });
   }
 
-  // Pricing Matrices: All roles can view; HM, POC, JS, R can manage
-  items.push({ id: "pricing", label: "Pricing Matrices", icon: <NavIcons.Pricing /> });
+  // Labor Items: All roles can view; HM, POC, JS, R can manage
+  items.push({ id: "labor", label: "Labor Items", icon: <NavIcons.Pricing /> });
 
   // Packages: HM, POC, JS, R (view); HM/POC/JS can manage
   if (hasAnyRole("HM", "POC", "JS", "R")) {
@@ -210,7 +210,7 @@ export function DashboardPage() {
   // Keep active nav aligned to items the current role can access.
   useEffect(() => {
     if (navItems.length === 0) return;
-    const allowedNonNavViews = ["profile"];
+    const allowedNonNavViews = ["profile", "notifications"];
     const isActiveNavAllowed =
       navItems.some((item) => item.id === activeNav) ||
       allowedNonNavViews.includes(activeNav);
@@ -299,9 +299,9 @@ export function DashboardPage() {
           <JobOrderManagement />
       )}
 
-      {/* Pricing Matrices - All roles can view */}
-      {activeNav === "pricing" && (
-          <PricingManagement />
+        {/* Labor Items - All roles can view */}
+        {activeNav === "labor" && (
+          <LaborManagement />
       )}
 
       {/* Notifications - All roles (UC61-UC64) */}
@@ -325,7 +325,7 @@ export function DashboardPage() {
       )}
 
       {/* Empty state for upcoming pages (Settings) */}
-      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && activeNav !== "vehicles" && activeNav !== "packages" && activeNav !== "inventory" && activeNav !== "purchase-orders" && activeNav !== "suppliers" && activeNav !== "job-orders" && activeNav !== "pricing" && activeNav !== "notifications" && activeNav !== "service-reminders" && activeNav !== "staff-performance" && activeNav !== "reports" && (
+      {activeNav !== "dashboard" && activeNav !== "settings" && activeNav !== "users" && activeNav !== "branches" && activeNav !== "profile" && activeNav !== "audit" && activeNav !== "customers" && activeNav !== "vehicles" && activeNav !== "packages" && activeNav !== "inventory" && activeNav !== "purchase-orders" && activeNav !== "suppliers" && activeNav !== "job-orders" && activeNav !== "labor" && activeNav !== "notifications" && activeNav !== "service-reminders" && activeNav !== "staff-performance" && activeNav !== "reports" && (
         <div className="bg-white rounded-xl p-6 border border-neutral-100">
           <p className="text-neutral-900">This feature is coming in the next phase.</p>
         </div>

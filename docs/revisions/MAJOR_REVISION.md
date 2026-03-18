@@ -1,322 +1,453 @@
-# REVISIONS – Job Order & Core System Overhaul
+# PHASE 5 – REVISED IMPLEMENTATION PLAN
 
-## Authoritative References
-- docs/PHASE1.md  
-- docs/PHASE2.md  
-- docs/PHASE3.md  
-- docs/PHASE4.md  
-- docs/SYSTEM_CONCEPT.md  
-- Meeting Notes – March 16 Standup  
-- job_order_flow.html  
-- job_rework_flow.html  
+Migration Principle:
+Break the package-centric architecture and transition into a modular Job Order system while minimizing production risk.
 
----
-
-This revision introduces a major overhaul of the Job Order system, pricing structure, and supporting modules for UAT readiness.
+Design Standard:
+- Modular (Labor, Packages, Inventory are independent)
+- Consistent naming (no legacy “package_item” confusion)
+- Backend-driven validation (not frontend-dependent)
+- Clear lifecycle enforcement
 
 ---
 
-## Module 1: Job Order Structure Overhaul
+# PRIORITY 1 (FOUNDATION – 2–3 DAYS)
+## MODULE 1: Pricing Matrix → Labor System
 
-You are implementing the new Job Order structure.
-
-### Scope
-- Support Packages, Labor, and Inventory as independent sections  
-- Allow “none-to-many” relationships for each section  
-- Update total calculation logic  
-- Update job order creation UI  
-
-### Functional Requirements
-- Job Order must support:
-  - Packages (optional)
-  - Individual Labor (optional)
-  - Individual Inventory (optional)
-- Each section can have zero or multiple entries  
-- Sections must be independent (no forced dependency)  
-- Total must be computed as:
-  - Package totals + Labor totals + Inventory totals  
-- Inventory must respect vehicle-type filtering  
-- Odometer reading is required  
-
-### Rules
-- Job Order can exist with any combination:
-  - Packages only
-  - Labor only
-  - Inventory only
-  - Any mix of the three  
-- Empty job orders are NOT allowed  
-- Total must update dynamically on any change  
-
-### Acceptance Criteria
-- Job Order saves correctly with any valid combination  
-- Totals are accurate  
-- UI reflects three independent sections  
-- Odometer is required before submission  
-
-### Tasks
-1. Refactor job_order schema  
-2. Create job_order_packages table  
-3. Create job_order_labors table  
-4. Create job_order_inventories table  
-5. Update API endpoints  
-6. Rebuild total calculation logic  
-7. Update UI based on provided JO flow  
-8. Enforce validation rules  
+### Objective
+Transform pricing matrix into a standalone Labor module that can be reused across Job Orders and Packages.
 
 ---
 
-## Module 2: Packages Module (Catalog Refactor)
+### Implementation Prompt (Backend)
 
-You are implementing the Packages module.
+1. Create new table:
 
-### Scope
-- Rename Catalog → Packages  
-- Support package composition (Labor + Inventory)  
-- Support base + vehicle-specific components  
+labor_items
 
-### Functional Requirements
-- Package contains:
-  - Base components (fixed)
-  - Vehicle-specific selectable components  
-- Package must support:
-  - Labor items
-  - Inventory items  
-- Vehicle-specific filtering must apply  
+id (uuid)
 
-### Rules
-- Base components are non-editable in JO  
-- Vehicle-specific components are selectable during JO creation  
-- Packages must compute their own subtotal  
+name (string)
 
-### Acceptance Criteria
-- Packages can be created and edited  
-- Packages integrate with Job Orders  
-- Vehicle filtering works correctly  
+vehicle_type (enum: light | heavy | extra_heavy)
 
-### Tasks
-1. Rename catalog table to packages  
-2. Create package_items table  
-3. Link package_items to labor and inventory  
-4. Update APIs and UI references  
-5. Implement package subtotal logic  
+price (numeric)
+
+status (active | inactive)
+
+created_at
+
+
+2. Data Migration:
+- Extract all rows from `pricing_matrices`
+- Convert each into `labor_items`
+- Preserve pricing per vehicle type
+
+3. Remove coupling:
+- Remove dependency on `package_item_id`
+- Stop using pricing resolve endpoints tied to packages
+
+4. Replace logic:
+- All JO labor pricing must come from `labor_items`
 
 ---
 
-## Module 3: Labor Module (Pricing Matrix Refactor)
+### Implementation Prompt (Frontend)
 
-You are implementing the Labor module.
-
-### Scope
-- Convert Pricing Matrix → Labor table  
-- Remove package logic from pricing matrix  
-- Enable reuse across system  
-
-### Functional Requirements
-- Labor represents a single service  
-- Must be usable:
-  - Directly in Job Orders
-  - Inside Packages  
-- Must support vehicle-type scoping  
-
-### Rules
-- Labor is globally defined (not branch-based)  
-- Must be searchable (UI improvement)  
-
-### Acceptance Criteria
-- Labor can be selected in Job Orders  
-- Labor integrates with Packages  
-- Search-based UI works  
-
-### Tasks
-1. Rename pricing_matrix to labor  
-2. Remove package-related fields  
-3. Update all references  
-4. Implement search-based selection UI  
+- Replace pricing selection with labor selection
+- Remove `/pricing/resolve` usage
+- Add labor dropdown in JO UI
 
 ---
 
-## Module 4: Rework Job Feature
+### Sample Scenario
 
-You are implementing the Rework Job workflow.
+Before:
+- Select Package → System fetches price from pricing matrix
 
-### Scope
-- Create rework job from completed JO  
-- Require HM approval  
-- Add rework-specific fields  
-
-### Functional Requirements
-- Rework job must:
-  - Reference original job order  
-  - Capture reason for rework  
-  - Allow free redo toggle  
-
-### Workflow
-1. Select completed JO  
-2. Click “Create Rework Job”  
-3. Fill rework form  
-4. Submit for HM approval  
-
-- Job cannot proceed without approval  
-
-### Fields to Add
-- original_job_order_id  
-- rework_reason  
-- is_free_redo  
-- approval_status (pending | approved | rejected)  
-
-### Rules
-- Rework jobs default to pending approval  
-- Free redo sets total to 0  
-- Original JO must be completed  
-
-### Acceptance Criteria
-- Rework flow matches UI reference  
-- Approval gating works  
-- Job is blocked until approved  
-
-### Tasks
-1. Update job_order table (no new table)  
-2. Implement rework creation endpoint  
-3. Implement approval workflow  
-4. Update UI based on rework flow  
-5. Add notifications for approval  
+After:
+- Select Labor (e.g. Wheel Alignment)
+- System directly uses labor price
 
 ---
 
-## Module 5: Payment & Invoice Validation
+# PRIORITY 2 (CORE SYSTEM – 3–4 DAYS)
+## MODULE 2: Job Order Structure Overhaul
 
-You are implementing payment tracking validation.
-
-### Scope
-- Require payment details before closing JO  
-- Capture payment mode and reference  
-
-### Functional Requirements
-- Required before marking JO as completed:
-  - Payment mode (Cash, Card, GCash/Maya)  
-  - Reference code  
-- Reference code comes from POS receipt  
-
-### Rules
-- Job cannot be completed without payment info  
-- Payment data must be stored in JO  
-
-### Acceptance Criteria
-- Validation blocks completion without payment  
-- Data is stored correctly  
-- UI modal is triggered before completion  
-
-### Tasks
-1. Add payment_mode field  
-2. Add payment_reference field  
-3. Update completion endpoint  
-4. Implement UI modal  
-5. Add validation logic  
+### Objective
+Allow Job Orders to support:
+- Labor (0 to many)
+- Packages (0 to many)
+- Inventory (0 to many)
 
 ---
 
-## Module 6: Inventory Flow Update
+### Implementation Prompt (Backend)
 
-You are updating inventory behavior.
+1. Create new table:
 
-### Scope
-- Support new JO structure  
-- Maintain existing PO flow  
+job_order_lines
 
-### Functional Requirements
-- Inventory OUT (JO):
-  - Deduct based on:
-    - Packages  
-    - Individual inventory items  
-- Inventory IN (PO):
-  - No change  
+id
 
-### Rules
-- Deduction occurs on “Start Work”  
-- Must handle multiple sources (package + standalone)  
+job_order_id
 
-### Acceptance Criteria
-- Inventory deducts correctly  
-- No duplication or double deduction  
-- Works with all JO combinations  
+line_type (labor | package | inventory)
 
-### Tasks
-1. Update inventory trigger logic  
-2. Adjust stock movement handling  
-3. Test all JO scenarios  
+reference_id (nullable)
 
----
+name (snapshot)
 
-## Module 7: Vehicle External History
+quantity
 
-You are implementing external vehicle history tracking.
+unit_price
 
-### Scope
-- Track third-party repairs  
-- Add new vehicle history records  
+total
 
-### Functional Requirements
-- Fields:
-  - provider_name  
-  - service_date  
-  - description  
-  - cost  
-- Linked to vehicle  
 
-### Rules
-- Does not affect inventory  
-- Informational only  
+2. Remove legacy dependency:
+- REMOVE:
+  - package_item_id
+  - package_item_type
 
-### Acceptance Criteria
-- History can be created and viewed  
-- Properly linked to vehicle  
+3. API Updates:
+- POST /job-orders
+  - Accept mixed line types
+- PATCH /job-orders/:id
+  - Add/update/remove lines per type
 
-### Tasks
-1. Create vehicle_external_history table  
-2. Implement CRUD APIs  
-3. Add UI under Vehicle module  
+4. Total Calculation:
+
+total = SUM(job_order_lines.total)
+
 
 ---
 
-## Module 8: Customer-Provided Parts Flag
+### Implementation Prompt (Frontend)
 
-You are implementing customer-provided inventory tracking.
-
-### Scope
-- Track non-inventory parts used in JO  
-
-### Functional Requirements
-- Add flag:
-  - is_customer_provided  
-- Items with this flag:
-  - Do NOT deduct inventory  
-  - Still included in JO records  
-
-### Acceptance Criteria
-- Inventory unaffected when flagged  
-- Visible in JO details  
-
-### Tasks
-1. Update job_order_items schema  
-2. Update deduction logic  
-3. Update UI toggle  
+- Split JO UI into 3 sections:
+  - Packages
+  - Labor
+  - Inventory
+- Allow independent additions
 
 ---
 
-## Module 9: Odometer Validation
+### Sample Scenario
 
-You are implementing odometer enforcement.
+User creates JO:
+- Adds Package: PMS (₱1500)
+- Adds Labor: Alignment (₱500)
+- Adds Inventory: Oil x2 (₱300)
 
-### Scope
-- Make odometer required  
+Total = ₱2300
 
-### Rules
-- Cannot create JO without odometer  
+---
 
-### Acceptance Criteria
-- Validation enforced backend + frontend  
+# PRIORITY 3 (STRUCTURE – 2–3 DAYS)
+## MODULE 3: Packages Refactor
 
-### Tasks
-1. Update schema validation  
-2. Update UI form validation  
-3. Update API validation  
+### Objective
+Convert Packages into reusable compositions of Labor + Inventory.
+
+---
+
+### Implementation Prompt (Backend)
+
+1. Rename:
+- `catalog` → `packages`
+
+2. Create:
+
+package_labor_items
+
+id
+
+package_id
+
+labor_id
+
+quantity
+
+package_inventory_items
+
+id
+
+package_id
+
+inventory_item_id
+
+quantity
+
+
+3. Remove:
+- pricing dependency from packages
+
+---
+
+### Implementation Prompt (Frontend)
+
+- Package builder UI:
+  - Add labor
+  - Add inventory
+- No pricing logic inside packages
+
+---
+
+### Sample Scenario
+
+Package: Basic PMS
+- Labor: Oil Change
+- Inventory: Oil + Filter
+
+---
+
+# PRIORITY 4 (BUSINESS LOGIC – 2 DAYS)
+## MODULE 4: Inventory Logic Enhancement
+
+### Objective
+Support customer-provided inventory and accurate deduction.
+
+---
+
+### Implementation Prompt (Backend)
+
+1. Add column:
+
+job_order_line_inventories
+
+is_customer_provided (boolean)
+
+
+2. Deduction Logic:
+
+IF is_customer_provided = true
+→ SKIP stock deduction
+
+
+3. Update stock movement logic
+
+---
+
+### Implementation Prompt (Frontend)
+
+- Add toggle:
+  "Customer Provided"
+
+---
+
+### Sample Scenario
+
+Customer brings oil:
+- Mark as customer provided
+- No deduction happens
+
+---
+
+# PRIORITY 5 (WORKFLOW – 2 DAYS)
+Ok that's a great implementation, im happy with the current Job Order Flow, now let's move on to more revisions.
+
+This is under the Job Order Flow also I just need to add a new process which is the Job Redo or Rework Workflow, here is the instruction:
+
+## MODULE 5: Rework / Backorder Job Orders
+
+### Objective
+Introduce rework job flow with approval control.
+
+---
+
+### Implementation Prompt (Backend)
+
+1. Add fields:
+
+job_orders
+
+job_type (normal | backorder)
+
+reference_job_order_id
+
+
+2. Validation:
+- If backorder:
+  - reference_job_order_id REQUIRED
+  - HM approval REQUIRED
+
+3. Lifecycle update:
+- Add approval checkpoint
+
+---
+
+### Implementation Prompt (Frontend)
+
+- Add "Rework Job" Button to the More Action Button
+- Create a Modal similar to the attached image
+- Dont copy the layout of the image, use the current styling and consistency
+
+---
+
+### Sample Scenario
+
+Customer returns:
+- Select Customer previous Job Order
+- Click More Actions and Rework Job
+- Fillout the Rework Form and Save
+- Requires HM approval
+
+---
+
+# PRIORITY 6 (ENFORCEMENT – 1–2 DAYS)
+## MODULE 6: Payment Enforcement
+
+### Objective
+Prevent job completion without payment details.
+
+---
+
+### Implementation Prompt (Backend)
+
+1. Add fields:
+
+job_orders
+
+invoice_number
+
+payment_reference
+
+payment_mode
+
+
+2. Validation Rule:
+
+BLOCK completion IF:
+invoice_number IS NULL OR payment_reference IS NULL
+
+
+---
+
+### Implementation Prompt (Frontend)
+
+- Payment modal must require:
+  - Invoice #
+  - Payment reference
+
+---
+
+### Sample Scenario
+
+Before completing JO:
+- Receptionist inputs GCash ref
+- System allows completion
+
+---
+
+# PRIORITY 7 (DATA – 1 DAY)
+## MODULE 7: Vehicle External History
+
+### Objective
+Track external services done outside the system.
+
+---
+
+### Implementation Prompt (Backend)
+
+1. Create:
+
+vehicle_external_history
+
+id
+
+vehicle_id
+
+service_date
+
+provider_name
+
+description
+
+history_type
+
+
+2. CRUD APIs
+
+---
+
+### Implementation Prompt (Frontend)
+
+- Add tab in vehicle profile
+
+---
+
+### Sample Scenario
+
+Record:
+- “Brake repair at external shop”
+
+---
+
+# PRIORITY 8 (VALIDATION – 0.5–1 DAY)
+## MODULE 8: Odometer Requirement
+
+### Objective
+Make odometer mandatory for all job orders.
+
+---
+
+### Implementation Prompt
+
+1. DB:
+
+ALTER job_orders
+SET odometer_reading NOT NULL
+
+
+2. Backend validation
+
+3. Frontend required field
+
+---
+
+### Sample Scenario
+
+User cannot submit JO without odometer
+
+---
+
+# FINAL IMPLEMENTATION STRATEGY
+
+## DO:
+- Implement per module (in order)
+- Test after each module
+- Keep old structure temporarily only where needed
+
+## DO NOT:
+- Do dual-write (too risky here)
+- Patch old package-based JO model
+- Mix old and new logic in same endpoint
+
+---
+
+# END GOAL ARCHITECTURE
+
+Job Order =
+- Labor lines (direct)
+- Package lines (composed)
+- Inventory lines (direct)
+
+NO hard dependency between them.
+
+---
+
+# SUCCESS CRITERIA
+
+- JO can exist with:
+  - only labor
+  - only inventory
+  - only packages
+  - or any combination
+
+- Pricing is reusable
+- Inventory deduction is accurate
+- Workflow is enforced
+- System is modular and scalable
+
+---

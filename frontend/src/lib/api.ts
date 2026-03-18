@@ -538,16 +538,26 @@ export const packagesApi = {
 
   // Inventory Links
   getInventoryLinks: async (itemId: string) => {
-    return fetchWithAuth<import("../types").PackageInventoryLink[]>(
+    return fetchWithAuth<import("../types").PackageInventoryItem[]>(
       `/api/packages/${itemId}/inventory-links`
     );
   },
 
-  addInventoryLink: async (itemId: string, data: { inventory_item_id: string }) => {
-    return fetchWithAuth<import("../types").PackageInventoryLink>(
+  addInventoryLink: async (itemId: string, data: { inventory_item_id: string; quantity: number }) => {
+    return fetchWithAuth<import("../types").PackageInventoryItem>(
       `/api/packages/${itemId}/inventory-links`,
       {
         method: "POST",
+        body: JSON.stringify(data),
+      }
+    );
+  },
+
+  updateInventoryLink: async (itemId: string, linkId: string, data: { quantity: number }) => {
+    return fetchWithAuth<import("../types").PackageInventoryItem>(
+      `/api/packages/${itemId}/inventory-links/${linkId}`,
+      {
+        method: "PUT",
         body: JSON.stringify(data),
       }
     );
@@ -561,13 +571,54 @@ export const packagesApi = {
       }
     );
   },
+
+  // Labor Links
+  getLaborLinks: async (itemId: string) => {
+    return fetchWithAuth<import("../types").PackageLaborItem[]>(
+      `/api/packages/${itemId}/labor-items`
+    );
+  },
+
+  addLaborLink: async (itemId: string, data: { labor_item_id: string; quantity: number }) => {
+    return fetchWithAuth<import("../types").PackageLaborItem>(
+      `/api/packages/${itemId}/labor-items`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    );
+  },
+
+  updateLaborLink: async (itemId: string, linkId: string, data: { quantity: number }) => {
+    return fetchWithAuth<import("../types").PackageLaborItem>(
+      `/api/packages/${itemId}/labor-items/${linkId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }
+    );
+  },
+
+  removeLaborLink: async (itemId: string, linkId: string) => {
+    return fetchWithAuth<{ message: string }>(
+      `/api/packages/${itemId}/labor-items/${linkId}`,
+      {
+        method: "DELETE",
+      }
+    );
+  },
+
+  getDeleteMode: async (itemId: string) => {
+    return fetchWithAuth<{ deletable: boolean; mode: "delete" | "deactivate"; reference_count: number }>(
+      `/api/packages/${itemId}/delete-mode`
+    );
+  },
 };
 
-// Pricing API
-export const pricingApi = {
+// Labor API
+export const laborItemsApi = {
   getAll: async (params?: {
     status?: string;
-    package_item_id?: string;
     search?: string;
     limit?: number;
     offset?: number;
@@ -581,39 +632,29 @@ export const pricingApi = {
       });
     }
     const query = searchParams.toString();
-    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").PricingMatrix>>(
-      `/api/pricing${query ? `?${query}` : ""}`
+    return fetchWithAuth<import("../types").PaginatedResponse<import("../types").LaborItem>>(
+      `/api/labor-items${query ? `?${query}` : ""}`
     );
   },
 
   getById: async (id: string) => {
-    return fetchWithAuth<import("../types").PricingMatrix>(`/api/pricing/${id}`);
+    return fetchWithAuth<import("../types").LaborItem>(`/api/labor-items/${id}`);
   },
 
-  resolve: async (packageItemId: string) => {
-    return fetchWithAuth<import("../types").ResolvedPricing>(
-      `/api/pricing/resolve/${packageItemId}`
-    );
-  },
-
-  resolveBulk: async (packageItemIds: string[]) => {
-    return fetchWithAuth<Record<string, import("../types").ResolvedPricing>>(
-      "/api/pricing/resolve-bulk",
-      {
-        method: "POST",
-        body: JSON.stringify({ package_item_ids: packageItemIds }),
-      }
+  getDeleteMode: async (id: string) => {
+    return fetchWithAuth<{ deletable: boolean; mode: "delete" | "deactivate"; reference_count: number }>(
+      `/api/labor-items/${id}/delete-mode`
     );
   },
 
   create: async (data: {
-    package_item_id: string;
+    name: string;
     light_price: number;
     heavy_price: number;
     extra_heavy_price: number;
     status?: string;
   }) => {
-    return fetchWithAuth<import("../types").PricingMatrix>("/api/pricing", {
+    return fetchWithAuth<import("../types").LaborItem>("/api/labor-items", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -622,21 +663,21 @@ export const pricingApi = {
   update: async (
     id: string,
     data: {
-      package_item_id?: string;
+      name?: string;
       light_price?: number;
       heavy_price?: number;
       extra_heavy_price?: number;
       status?: string;
     }
   ) => {
-    return fetchWithAuth<import("../types").PricingMatrix>(`/api/pricing/${id}`, {
+    return fetchWithAuth<import("../types").LaborItem>(`/api/labor-items/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     });
   },
 
   delete: async (id: string) => {
-    return fetchWithAuth<{ message: string }>(`/api/pricing/${id}`, {
+    return fetchWithAuth<{ message: string }>(`/api/labor-items/${id}`, {
       method: "DELETE",
     });
   },
@@ -680,13 +721,23 @@ export const jobOrdersApi = {
     notes?: string;
     odometer_reading?: number;
     vehicle_bay?: string;
-    items: Array<{
+    items?: Array<{
       package_item_id: string;
+      labor_item_id: string;
       quantity: number;
       inventory_quantities?: Array<{
         inventory_item_id: string;
         quantity: number;
       }>;
+    }>;
+    lines?: Array<{
+      line_type: import("../types").JobOrderLineType;
+      reference_id?: string | null;
+      quantity: number;
+      vehicle_specific_components?: {
+        labor?: Array<{ labor_item_id: string; quantity?: number }>;
+        inventory?: Array<{ inventory_item_id: string; quantity?: number }>;
+      };
     }>;
   }) => {
     return fetchWithAuth<import("../types").JobOrder>("/api/job-orders", {
@@ -698,6 +749,24 @@ export const jobOrdersApi = {
   update: async (id: string, data: { notes?: string | null }) => {
     return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}`, {
       method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  patch: async (id: string, data: {
+    notes?: string | null;
+    lines?: Array<{
+      line_type: import("../types").JobOrderLineType;
+      reference_id?: string | null;
+      quantity: number;
+      vehicle_specific_components?: {
+        labor?: Array<{ labor_item_id: string; quantity?: number }>;
+        inventory?: Array<{ inventory_item_id: string; quantity?: number }>;
+      };
+    }>;
+  }) => {
+    return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}`, {
+      method: "PATCH",
       body: JSON.stringify(data),
     });
   },
@@ -758,7 +827,7 @@ export const jobOrdersApi = {
     });
   },
 
-  addItem: async (id: string, data: { package_item_id: string; quantity: number; inventory_quantities?: Array<{ inventory_item_id: string; quantity: number }> }) => {
+  addItem: async (id: string, data: { package_item_id: string; labor_item_id: string; quantity: number; inventory_quantities?: Array<{ inventory_item_id: string; quantity: number }> }) => {
     return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/items`, {
       method: "POST",
       body: JSON.stringify(data),
@@ -1586,6 +1655,7 @@ export const reportsApi = {
     report_type?: string;
     branch_id?: string;
     is_template?: string;
+    status?: "active" | "deactivated";
     search?: string;
     limit?: number;
     offset?: number;
@@ -1606,6 +1676,11 @@ export const reportsApi = {
 
   getById: async (id: string) => {
     return fetchWithAuth<{ data: import("../types").Report }>(`/api/reports/${id}`);
+  },
+  getDeleteMode: async (id: string) => {
+    return fetchWithAuth<{ deletable: boolean; mode: "delete" | "deactivate"; reference_count: number }>(
+      `/api/reports/${id}/delete-mode`
+    );
   },
 
   create: async (data: {

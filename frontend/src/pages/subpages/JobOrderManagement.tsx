@@ -17,7 +17,7 @@ import {
   LuCircleCheck,
   LuCreditCard,
 } from "react-icons/lu";
-import { jobOrdersApi, branchesApi, customersApi, vehiclesApi, packagesApi, pricingApi, thirdPartyRepairsApi, inventoryApi } from "../../lib/api";
+import { jobOrdersApi, branchesApi, customersApi, vehiclesApi, packagesApi, laborItemsApi, thirdPartyRepairsApi, inventoryApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
 import { useAuth } from "../../auth";
 import {
@@ -36,7 +36,7 @@ import {
   GridCard,
 } from "../../components";
 import type { FilterGroup } from "../../components";
-import type { JobOrder, JobOrderItem, JobOrderHistory, Branch, Customer, Vehicle, PackageItem, PackageInventoryLink, ResolvedPricing, ThirdPartyRepair, VehicleClass, InventoryItem } from "../../types";
+import type { JobOrder, JobOrderItem, JobOrderHistory, Branch, Customer, Vehicle, PackageItem, PackageInventoryItem, ThirdPartyRepair, VehicleClass, InventoryItem, LaborItem } from "../../types";
 
 const ITEMS_PER_PAGE = 12;
 
@@ -63,6 +63,27 @@ function formatPrice(price: number): string {
     style: "currency",
     currency: "PHP",
   }).format(price);
+}
+
+function getLaborPriceByVehicleClass(laborItem: LaborItem, vehicleClass: VehicleClass): number {
+  if (vehicleClass === "light") return laborItem.light_price || 0;
+  if (vehicleClass === "heavy") return laborItem.heavy_price || 0;
+  return laborItem.extra_heavy_price || 0;
+}
+
+function computeOrderItemsTotal(order: JobOrder): number {
+  if (order.job_order_lines && order.job_order_lines.length > 0) {
+    return order.job_order_lines.reduce((sum, line) => sum + (line.total || 0), 0);
+  }
+  return (order.job_order_items || []).reduce((sum, item) => sum + (item.line_total || 0), 0);
+}
+
+function computeOrderGrandTotal(order: JobOrder, repairsOverride?: ThirdPartyRepair[]): number {
+  const itemsTotal = computeOrderItemsTotal(order);
+  const repairsTotal = repairsOverride
+    ? repairsOverride.reduce((sum, repair) => sum + (repair.cost || 0), 0)
+    : (order.third_party_repairs || []).reduce((sum, repair) => sum + (repair.cost || 0), 0);
+  return itemsTotal + repairsTotal;
 }
 
 // Status display helpers
@@ -100,6 +121,8 @@ function getStatusColors(status: string): string {
 
 // Item being added to the order (before submission)
 interface DraftItem {
+  labor_item_id: string;
+  labor_item_name: string;
   package_item_id: string;
   package_item_name: string;
   quantity: number;
@@ -114,8 +137,34 @@ interface DraftItem {
     category?: string;
     available_items?: Array<{ id: string; item_name: string; cost_price: number }>;
   }>;
-  /** Cached resolved pricing so we can recalculate on vehicle class change */
-  resolved_pricing?: { light_price: number; heavy_price: number; extra_heavy_price: number } | null;
+}
+
+interface DraftPackageLine {
+  package_item_id: string;
+  package_item_name: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
+  base_labor_components: Array<{ labor_item_id: string; labor_item_name: string; quantity: number; unit_price: number }>;
+  base_inventory_components: Array<{ inventory_item_id: string; inventory_item_name: string; quantity: number; unit_price: number }>;
+  vehicle_specific_labor_components: Array<{ labor_item_id: string; labor_item_name: string; quantity: number; unit_price: number }>;
+  vehicle_specific_inventory_components: Array<{ inventory_item_id: string; inventory_item_name: string; quantity: number; unit_price: number }>;
+}
+
+interface DraftLaborLine {
+  labor_item_id: string;
+  labor_item_name: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
+}
+
+interface DraftInventoryLine {
+  inventory_item_id: string;
+  inventory_item_name: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
 }
 
 interface DraftRepair {
@@ -170,7 +219,9 @@ export function JobOrderManagement() {
   const [addVehicleId, setAddVehicleId] = useState("");
   const [addVehicleClass, setAddVehicleClass] = useState<VehicleClass>("light");
   const [addNotes, setAddNotes] = useState("");
-  const [draftItems, setDraftItems] = useState<DraftItem[]>([]);
+  const [draftPackageLines, setDraftPackageLines] = useState<DraftPackageLine[]>([]);
+  const [draftLaborLines, setDraftLaborLines] = useState<DraftLaborLine[]>([]);
+  const [draftInventoryLines, setDraftInventoryLines] = useState<DraftInventoryLine[]>([]);
   const [draftRepairs, setDraftRepairs] = useState<DraftRepair[]>([]);
   const [addOdometer, setAddOdometer] = useState("");
   const [addVehicleBay, setAddVehicleBay] = useState("");
@@ -183,11 +234,19 @@ export function JobOrderManagement() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [packageItems, setPackageItems] = useState<PackageItem[]>([]);
+  const [laborItems, setLaborItems] = useState<LaborItem[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [loadingLookups, setLoadingLookups] = useState(false);
 
   // Add item sub-form
   const [selectedPackageItemId, setSelectedPackageItemId] = useState("");
-  const [selectedQty, setSelectedQty] = useState("1");
+  const [selectedLaborItemId, setSelectedLaborItemId] = useState("");
+  const [selectedInventoryItemId, setSelectedInventoryItemId] = useState("");
+  const [vehicleSpecificTypeByPackage, setVehicleSpecificTypeByPackage] = useState<Record<string, "labor" | "inventory" | "">>({});
+  const [vehicleSpecificItemByPackage, setVehicleSpecificItemByPackage] = useState<Record<string, string>>({});
+  const [selectedPackageQty, setSelectedPackageQty] = useState("1");
+  const [selectedLaborQty, setSelectedLaborQty] = useState("1");
+  const [selectedInventoryQty, setSelectedInventoryQty] = useState("1");
   const [resolvingPrice, setResolvingPrice] = useState(false);
 
   // Edit modal
@@ -202,10 +261,26 @@ export function JobOrderManagement() {
   const [origEditItems, setOrigEditItems] = useState<JobOrderItem[]>([]);
   const [editDraftItems, setEditDraftItems] = useState<DraftItem[]>([]);
   const [editPackageItems, setEditPackageItems] = useState<PackageItem[]>([]);
+  const [editLaborItems, setEditLaborItems] = useState<LaborItem[]>([]);
+  const [editInventoryItems, setEditInventoryItems] = useState<InventoryItem[]>([]);
   const [editLoadingItems, setEditLoadingItems] = useState(false);
   const [editSelectedPackageId, setEditSelectedPackageId] = useState("");
+  const [editSelectedLaborId, setEditSelectedLaborId] = useState("");
   const [editSelectedQty, setEditSelectedQty] = useState("1");
   const [editResolvingPrice, setEditResolvingPrice] = useState(false);
+
+  // Edit modal line-based states
+  const [editLinePackageLines, setEditLinePackageLines] = useState<DraftPackageLine[]>([]);
+  const [editLineLaborLines, setEditLineLaborLines] = useState<DraftLaborLine[]>([]);
+  const [editLineInventoryLines, setEditLineInventoryLines] = useState<DraftInventoryLine[]>([]);
+  const [editLineSelectedPackageId, setEditLineSelectedPackageId] = useState("");
+  const [editLineSelectedLaborId, setEditLineSelectedLaborId] = useState("");
+  const [editLineSelectedInventoryId, setEditLineSelectedInventoryId] = useState("");
+  const [editLineSelectedPackageQty, setEditLineSelectedPackageQty] = useState("1");
+  const [editLineSelectedLaborQty, setEditLineSelectedLaborQty] = useState("1");
+  const [editLineSelectedInventoryQty, setEditLineSelectedInventoryQty] = useState("1");
+  const [editVehicleSpecificTypeByPackage, setEditVehicleSpecificTypeByPackage] = useState<Record<string, "labor" | "inventory" | "">>({});
+  const [editVehicleSpecificItemByPackage, setEditVehicleSpecificItemByPackage] = useState<Record<string, string>>({});
 
   // Delete modal
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -409,10 +484,25 @@ export function JobOrderManagement() {
       .map((i) => ({ value: i.id, label: i.name }));
   }, [packageItems]);
 
+  const laborItemOptions = useMemo(() => {
+    return laborItems
+      .filter((i) => i.status === "active")
+      .map((i) => ({ value: i.id, label: `${i.name} (${formatPrice(getLaborPriceByVehicleClass(i, addVehicleClass))})` }));
+  }, [laborItems, addVehicleClass]);
+
+  const inventoryItemOptions = useMemo(() => {
+    return inventoryItems
+      .filter((i) => i.status === "active")
+      .map((i) => ({ value: i.id, label: `${i.item_name} (${formatPrice(i.cost_price || 0)})` }));
+  }, [inventoryItems]);
+
   // Draft total
   const draftTotal = useMemo(
-    () => draftItems.reduce((sum, item) => sum + item.line_total, 0),
-    [draftItems]
+    () =>
+      draftPackageLines.reduce((sum, item) => sum + item.total, 0) +
+      draftLaborLines.reduce((sum, item) => sum + item.total, 0) +
+      draftInventoryLines.reduce((sum, item) => sum + item.total, 0),
+    [draftPackageLines, draftLaborLines, draftInventoryLines]
   );
 
   const draftRepairsTotal = useMemo(
@@ -427,6 +517,19 @@ export function JobOrderManagement() {
       .map((i) => ({ value: i.id, label: i.name }));
   }, [editPackageItems]);
 
+  const editLaborItemOptions = useMemo(() => {
+    const vehicleClass = editOrder?.vehicle_class || "light";
+    return editLaborItems
+      .filter((i) => i.status === "active")
+      .map((i) => ({ value: i.id, label: `${i.name} (${formatPrice(getLaborPriceByVehicleClass(i, vehicleClass))})` }));
+  }, [editLaborItems, editOrder]);
+
+  const editInventoryItemOptions = useMemo(() => {
+    return editInventoryItems
+      .filter((i) => i.status === "active")
+      .map((i) => ({ value: i.id, label: `${i.item_name} (${formatPrice(i.cost_price || 0)})` }));
+  }, [editInventoryItems]);
+
   // Edit modal: items total
   const editItemsTotal = useMemo(
     () =>
@@ -435,18 +538,53 @@ export function JobOrderManagement() {
     [editItems, editDraftItems]
   );
 
+  const editLineItemsTotal = useMemo(
+    () =>
+      editLinePackageLines.reduce((sum, item) => sum + item.total, 0) +
+      editLineLaborLines.reduce((sum, item) => sum + item.total, 0) +
+      editLineInventoryLines.reduce((sum, item) => sum + item.total, 0),
+    [editLinePackageLines, editLineLaborLines, editLineInventoryLines]
+  );
+
+  const viewLinePackageLines = useMemo(
+    () => (viewOrder?.job_order_lines || []).filter((line) => line.line_type === "package"),
+    [viewOrder]
+  );
+
+  const viewLineLaborLines = useMemo(
+    () => (viewOrder?.job_order_lines || []).filter((line) => line.line_type === "labor"),
+    [viewOrder]
+  );
+
+  const viewLineInventoryLines = useMemo(
+    () => (viewOrder?.job_order_lines || []).filter((line) => line.line_type === "inventory"),
+    [viewOrder]
+  );
+
+  const viewGrandTotal = useMemo(
+    () => {
+      if (!viewOrder) return 0;
+      return computeOrderGrandTotal(viewOrder, repairs);
+    },
+    [viewOrder, repairs]
+  );
+
   // Load lookups when add modal opens
   const loadLookups = useCallback(async (branchId: string) => {
     try {
       setLoadingLookups(true);
-      const [custRes, vehRes, catRes] = await Promise.all([
+      const [custRes, vehRes, catRes, laborRes, invRes] = await Promise.all([
         customersApi.getAll({ limit: 1000, branch_id: branchId || undefined }),
         vehiclesApi.getAll({ limit: 1000, branch_id: branchId || undefined }),
         packagesApi.getAll({ limit: 1000 }),
+        laborItemsApi.getAll({ limit: 1000, status: "active" }),
+        inventoryApi.getAll({ limit: 1000, branch_id: branchId || undefined, status: "active" }),
       ]);
       setCustomers(custRes.data);
       setVehicles(vehRes.data);
       setPackageItems(catRes.data);
+      setLaborItems(laborRes.data);
+      setInventoryItems(invRes.data);
     } catch {
       // Silently fail — will show empty dropdowns
     } finally {
@@ -464,14 +602,22 @@ export function JobOrderManagement() {
     setAddNotes("");
     setAddOdometer("");
     setAddVehicleBay("");
-    setDraftItems([]);
+    setDraftPackageLines([]);
+    setDraftLaborLines([]);
+    setDraftInventoryLines([]);
     setDraftRepairs([]);
     setNewRepairProvider("");
     setNewRepairDescription("");
     setNewRepairCost("");
     setNewRepairDate(new Date().toISOString().split("T")[0]);
     setSelectedPackageItemId("");
-    setSelectedQty("1");
+    setSelectedLaborItemId("");
+    setSelectedInventoryItemId("");
+    setSelectedPackageQty("1");
+    setSelectedLaborQty("1");
+    setSelectedInventoryQty("1");
+    setVehicleSpecificTypeByPackage({});
+    setVehicleSpecificItemByPackage({});
     setAddError(null);
     setShowAddModal(true);
     loadLookups(branch);
@@ -482,7 +628,11 @@ export function JobOrderManagement() {
     setAddBranchId(newBranchId);
     setAddCustomerId("");
     setAddVehicleId("");
-    setDraftItems([]);
+    setDraftPackageLines([]);
+    setDraftLaborLines([]);
+    setDraftInventoryLines([]);
+    setVehicleSpecificTypeByPackage({});
+    setVehicleSpecificItemByPackage({});
     loadLookups(newBranchId);
   }
 
@@ -501,34 +651,37 @@ export function JobOrderManagement() {
       if (selectedVehicle?.vehicle_class) {
         const newClass = selectedVehicle.vehicle_class as VehicleClass;
         setAddVehicleClass(newClass);
-        // Recalculate prices for existing draft items based on new vehicle class
-        if (draftItems.length > 0) {
-          setDraftItems((prev) =>
-            prev.map((item) => {
-              const priceKey = `${newClass}_price` as "light_price" | "heavy_price" | "extra_heavy_price";
-              const newLaborPrice = item.resolved_pricing ? (item.resolved_pricing[priceKey] || 0) : 0;
-              const newLineTotal = (newLaborPrice + item.inventory_cost) * item.quantity;
-              return { ...item, labor_price: newLaborPrice, line_total: newLineTotal };
-            })
-          );
-          showToast.info("Prices updated for the vehicle class.");
-        }
+        setSelectedLaborItemId("");
       } else {
         setAddVehicleClass("light");
+        setSelectedLaborItemId("");
       }
     } else {
       setAddVehicleClass("light");
+      setSelectedLaborItemId("");
     }
   }
 
-  // Add a Package item to draft
-  async function handleAddDraftItem() {
-    if (!selectedPackageItemId || !addBranchId) return;
-    const qty = parseInt(selectedQty) || 1;
+  function recomputeDraftPackageLine(line: DraftPackageLine): DraftPackageLine {
+    const unitPrice =
+      line.base_labor_components.reduce((sum, c) => sum + c.unit_price * c.quantity, 0) +
+      line.base_inventory_components.reduce((sum, c) => sum + c.unit_price * c.quantity, 0) +
+      line.vehicle_specific_labor_components.reduce((sum, c) => sum + c.unit_price * c.quantity, 0) +
+      line.vehicle_specific_inventory_components.reduce((sum, c) => sum + c.unit_price * c.quantity, 0);
 
-    // Check if already added
-    if (draftItems.some((d) => d.package_item_id === selectedPackageItemId)) {
-      setAddError("This item is already in the order");
+    return {
+      ...line,
+      unit_price: unitPrice,
+      total: unitPrice * line.quantity,
+    };
+  }
+
+  async function handleAddDraftPackageLine() {
+    if (!selectedPackageItemId || !addBranchId) return;
+    const qty = parseInt(selectedPackageQty, 10) || 1;
+
+    if (draftPackageLines.some((d) => d.package_item_id === selectedPackageItemId)) {
+      setAddError("This package is already in the order");
       return;
     }
 
@@ -536,178 +689,247 @@ export function JobOrderManagement() {
       setResolvingPrice(true);
       setAddError(null);
 
-      // Resolve pricing (new shape: { package_item, pricing })
-      let resolved: ResolvedPricing;
-      try {
-        resolved = await pricingApi.resolve(selectedPackageItemId);
-      } catch {
-        const catItem = packageItems.find((c) => c.id === selectedPackageItemId);
-        if (!catItem) {
-          setAddError("Package item not found");
-          return;
-        }
-        resolved = {
-          package_item: { id: catItem.id, name: catItem.name },
-          pricing: null,
-        };
+      const packageItem = packageItems.find((p) => p.id === selectedPackageItemId);
+      if (!packageItem) {
+        setAddError("Package item not found");
+        return;
       }
 
-      const { pricing, package_item } = resolved;
-
-      // Select labor price based on vehicle_class
-      let laborPrice = 0;
-      if (pricing) {
-        const priceKey = `${addVehicleClass}_price` as "light_price" | "heavy_price" | "extra_heavy_price";
-        laborPrice = pricing[priceKey] || 0;
-      } else {
-        showToast.warning(
-          `No active pricing found for "${package_item.name}". Labor price will be 0.`
-        );
-      }
-
-      // Fetch inventory links (template) to determine required inventory items
-      // Fetch inventory items based on Package item's inventory_types or legacy links
-      let inventoryQuantities: Array<{
-        inventory_item_id: string;
-        inventory_item_name: string;
-        unit_cost: number;
-        quantity: number;
-        category?: string;
-        available_items?: Array<{ id: string; item_name: string; cost_price: number }>;
-      }> = [];
-
-      const catItem = packageItems.find((c) => c.id === package_item.id);
-      const invTypes = catItem?.inventory_types || [];
-
-      if (invTypes.length > 0) {
-        // Category-based: fetch available items per required category, default to first
-        try {
-          const catResults = await Promise.all(
-            invTypes.map((t) => inventoryApi.getAll({ category: t, branch_id: addBranchId, status: "active", limit: 500 }))
-          );
-          for (let i = 0; i < invTypes.length; i++) {
-            const items = catResults[i]?.data || [];
-            const availableItems = items.map((it) => ({ id: it.id, item_name: it.item_name, cost_price: it.cost_price }));
-            if (items.length > 0) {
-              inventoryQuantities.push({
-                inventory_item_id: items[0].id,
-                inventory_item_name: items[0].item_name,
-                unit_cost: items[0].cost_price,
-                quantity: 1,
-                category: invTypes[i],
-                available_items: availableItems,
-              });
-            } else {
-              // No items in this category, still add a slot with empty selection
-              inventoryQuantities.push({
-                inventory_item_id: "",
-                inventory_item_name: `No ${invTypes[i]} items available`,
-                unit_cost: 0,
-                quantity: 1,
-                category: invTypes[i],
-                available_items: [],
-              });
-            }
-          }
-        } catch {
-          // ignore — user can still pick manually
-        }
-      } else {
-        // Legacy: use package_inventory_links template
-        try {
-          const linksRes = await packagesApi.getInventoryLinks(package_item.id);
-          if (linksRes && linksRes.length > 0) {
-            inventoryQuantities = linksRes.map((l: PackageInventoryLink) => ({
-              inventory_item_id: l.inventory_items?.id || l.inventory_item_id,
-              inventory_item_name: l.inventory_items?.item_name || "Unknown",
-              unit_cost: l.inventory_items?.cost_price || 0,
-              quantity: 1,
-            }));
-          }
-        } catch {
-          // ignore — backend will validate on submission
-        }
-      }
-
-      const inventoryCost = inventoryQuantities.reduce(
-        (sum, iq) => sum + iq.unit_cost * iq.quantity,
-        0
-      );
-
-      const lineTotal = (laborPrice + inventoryCost) * qty;
-
-      setDraftItems((prev) => [
-        ...prev,
-        {
-          package_item_id: package_item.id,
-          package_item_name: package_item.name,
-          quantity: qty,
-          labor_price: laborPrice,
-          inventory_cost: inventoryCost,
-          line_total: lineTotal,
-          inventory_quantities: inventoryQuantities,
-          resolved_pricing: pricing ? { light_price: pricing.light_price, heavy_price: pricing.heavy_price, extra_heavy_price: pricing.extra_heavy_price } : null,
-        },
+      const [pkgLaborLinks, pkgInventoryLinks] = await Promise.all([
+        packagesApi.getLaborLinks(packageItem.id),
+        packagesApi.getInventoryLinks(packageItem.id),
       ]);
+
+      const baseLaborComponents = pkgLaborLinks.map((link) => {
+        const name = link.labor_items?.name || "Unknown Labor";
+        const unitPrice = link.labor_items
+          ? getLaborPriceByVehicleClass(
+              {
+                id: link.labor_items.id,
+                name,
+                light_price: link.labor_items.light_price,
+                heavy_price: link.labor_items.heavy_price,
+                extra_heavy_price: link.labor_items.extra_heavy_price,
+                status: (link.labor_items.status as "active" | "inactive") || "active",
+                created_at: "",
+              },
+              addVehicleClass
+            )
+          : 0;
+        return {
+          labor_item_id: link.labor_id,
+          labor_item_name: name,
+          quantity: link.quantity || 1,
+          unit_price: unitPrice,
+        };
+      });
+
+      const baseInventoryComponents = pkgInventoryLinks.map((link) => ({
+        inventory_item_id: link.inventory_item_id,
+        inventory_item_name: link.inventory_items?.item_name || "Unknown Inventory",
+        quantity: link.quantity || 1,
+        unit_price: link.inventory_items?.cost_price || 0,
+      }));
+
+      const line: DraftPackageLine = recomputeDraftPackageLine({
+        package_item_id: packageItem.id,
+        package_item_name: packageItem.name,
+        quantity: qty,
+        unit_price: 0,
+        total: 0,
+        base_labor_components: baseLaborComponents,
+        base_inventory_components: baseInventoryComponents,
+        vehicle_specific_labor_components: [],
+        vehicle_specific_inventory_components: [],
+      });
+
+      setDraftPackageLines((prev) => [...prev, line]);
       setSelectedPackageItemId("");
-      setSelectedQty("1");
+      setSelectedPackageQty("1");
     } catch (err) {
-      setAddError(err instanceof Error ? err.message : "Failed to resolve pricing");
+      setAddError(err instanceof Error ? err.message : "Failed to add package");
     } finally {
       setResolvingPrice(false);
     }
   }
 
-  function removeDraftItem(packageItemId: string) {
-    setDraftItems((prev) => prev.filter((d) => d.package_item_id !== packageItemId));
+  function handleRemoveDraftPackageLine(packageItemId: string) {
+    setDraftPackageLines((prev) => prev.filter((d) => d.package_item_id !== packageItemId));
+    setVehicleSpecificTypeByPackage((prev) => {
+      const next = { ...prev };
+      delete next[packageItemId];
+      return next;
+    });
+    setVehicleSpecificItemByPackage((prev) => {
+      const next = { ...prev };
+      delete next[packageItemId];
+      return next;
+    });
   }
 
-  // Update inventory quantity for a draft item and recompute costs
-  function updateDraftInventoryQty(packageItemId: string, inventoryItemId: string, newQty: number) {
-    if (newQty < 0) return;
-    setDraftItems((prev) =>
-      prev.map((item) => {
-        if (item.package_item_id !== packageItemId) return item;
-        const updatedInv = item.inventory_quantities.map((iq) =>
-          iq.inventory_item_id === inventoryItemId ? { ...iq, quantity: newQty } : iq
-        );
-        const newInvCost = updatedInv.reduce((sum, iq) => sum + iq.unit_cost * iq.quantity, 0);
-        return {
-          ...item,
-          inventory_quantities: updatedInv,
-          inventory_cost: newInvCost,
-          line_total: (item.labor_price + newInvCost) * item.quantity,
+  function handleUpdateDraftPackageQty(packageItemId: string, qty: number) {
+    if (qty < 1) return;
+    setDraftPackageLines((prev) =>
+      prev.map((line) =>
+        line.package_item_id === packageItemId
+          ? recomputeDraftPackageLine({ ...line, quantity: qty })
+          : line
+      )
+    );
+  }
+
+  function handleAddVehicleSpecificLabor(packageItemId: string, laborItemId: string, qty = 1) {
+    const laborItem = laborItems.find((l) => l.id === laborItemId);
+    if (!laborItem) return;
+    setDraftPackageLines((prev) =>
+      prev.map((line) => {
+        if (line.package_item_id !== packageItemId) return line;
+        const nextLine = {
+          ...line,
+          vehicle_specific_labor_components: [
+            ...line.vehicle_specific_labor_components,
+            {
+              labor_item_id: laborItem.id,
+              labor_item_name: laborItem.name,
+              quantity: qty,
+              unit_price: getLaborPriceByVehicleClass(laborItem, addVehicleClass),
+            },
+          ],
         };
+        return recomputeDraftPackageLine(nextLine);
       })
     );
   }
 
-  // Change the selected inventory item for a specific slot index in a draft item
-  function changeDraftInventoryItem(packageItemId: string, slotIndex: number, newItemId: string) {
-    setDraftItems((prev) =>
-      prev.map((item) => {
-        if (item.package_item_id !== packageItemId) return item;
-        const updatedInv = item.inventory_quantities.map((iq, idx) => {
-          if (idx !== slotIndex) return iq;
-          const available = iq.available_items || [];
-          const selected = available.find((a) => a.id === newItemId);
-          if (!selected) return iq;
-          return {
-            ...iq,
-            inventory_item_id: selected.id,
-            inventory_item_name: selected.item_name,
-            unit_cost: selected.cost_price,
-          };
-        });
-        const newInvCost = updatedInv.reduce((sum, iq) => sum + iq.unit_cost * iq.quantity, 0);
-        return {
-          ...item,
-          inventory_quantities: updatedInv,
-          inventory_cost: newInvCost,
-          line_total: (item.labor_price + newInvCost) * item.quantity,
+  function handleAddVehicleSpecificInventory(packageItemId: string, inventoryItemId: string, qty = 1) {
+    const inventoryItem = inventoryItems.find((i) => i.id === inventoryItemId);
+    if (!inventoryItem) return;
+    setDraftPackageLines((prev) =>
+      prev.map((line) => {
+        if (line.package_item_id !== packageItemId) return line;
+        const nextLine = {
+          ...line,
+          vehicle_specific_inventory_components: [
+            ...line.vehicle_specific_inventory_components,
+            {
+              inventory_item_id: inventoryItem.id,
+              inventory_item_name: inventoryItem.item_name,
+              quantity: qty,
+              unit_price: inventoryItem.cost_price || 0,
+            },
+          ],
         };
+        return recomputeDraftPackageLine(nextLine);
       })
     );
+  }
+
+  function handleRemoveVehicleSpecificLabor(packageItemId: string, index: number) {
+    setDraftPackageLines((prev) =>
+      prev.map((line) => {
+        if (line.package_item_id !== packageItemId) return line;
+        const nextLine = {
+          ...line,
+          vehicle_specific_labor_components: line.vehicle_specific_labor_components.filter((_, idx) => idx !== index),
+        };
+        return recomputeDraftPackageLine(nextLine);
+      })
+    );
+  }
+
+  function handleRemoveVehicleSpecificInventory(packageItemId: string, index: number) {
+    setDraftPackageLines((prev) =>
+      prev.map((line) => {
+        if (line.package_item_id !== packageItemId) return line;
+        const nextLine = {
+          ...line,
+          vehicle_specific_inventory_components: line.vehicle_specific_inventory_components.filter((_, idx) => idx !== index),
+        };
+        return recomputeDraftPackageLine(nextLine);
+      })
+    );
+  }
+
+  function handleVehicleSpecificTypeChange(packageItemId: string, type: "labor" | "inventory" | "") {
+    setVehicleSpecificTypeByPackage((prev) => ({
+      ...prev,
+      [packageItemId]: type,
+    }));
+    setVehicleSpecificItemByPackage((prev) => ({
+      ...prev,
+      [packageItemId]: "",
+    }));
+  }
+
+  function handleVehicleSpecificItemChange(packageItemId: string, itemId: string) {
+    setVehicleSpecificItemByPackage((prev) => ({
+      ...prev,
+      [packageItemId]: itemId,
+    }));
+  }
+
+  function handleAddVehicleSpecificComponent(packageItemId: string) {
+    const selectedType = vehicleSpecificTypeByPackage[packageItemId] || "";
+    const selectedItemId = vehicleSpecificItemByPackage[packageItemId] || "";
+
+    if (!selectedType || !selectedItemId) return;
+
+    if (selectedType === "labor") {
+      handleAddVehicleSpecificLabor(packageItemId, selectedItemId, 1);
+    } else {
+      handleAddVehicleSpecificInventory(packageItemId, selectedItemId, 1);
+    }
+
+    setVehicleSpecificItemByPackage((prev) => ({
+      ...prev,
+      [packageItemId]: "",
+    }));
+  }
+
+  function handleAddDraftLaborLine() {
+    if (!selectedLaborItemId) return;
+    const qty = parseInt(selectedLaborQty, 10) || 1;
+    const laborItem = laborItems.find((l) => l.id === selectedLaborItemId);
+    if (!laborItem) return;
+    setDraftLaborLines((prev) => [
+      ...prev,
+      {
+        labor_item_id: laborItem.id,
+        labor_item_name: laborItem.name,
+        quantity: qty,
+        unit_price: getLaborPriceByVehicleClass(laborItem, addVehicleClass),
+        total: getLaborPriceByVehicleClass(laborItem, addVehicleClass) * qty,
+      },
+    ]);
+    setSelectedLaborItemId("");
+    setSelectedLaborQty("1");
+  }
+
+  function handleRemoveDraftLaborLine(laborItemId: string, index: number) {
+    setDraftLaborLines((prev) => prev.filter((line, idx) => !(line.labor_item_id === laborItemId && idx === index)));
+  }
+
+  function handleAddDraftInventoryLine() {
+    if (!selectedInventoryItemId) return;
+    const qty = parseInt(selectedInventoryQty, 10) || 1;
+    const invItem = inventoryItems.find((i) => i.id === selectedInventoryItemId);
+    if (!invItem) return;
+    setDraftInventoryLines((prev) => [
+      ...prev,
+      {
+        inventory_item_id: invItem.id,
+        inventory_item_name: invItem.item_name,
+        quantity: qty,
+        unit_price: invItem.cost_price || 0,
+        total: (invItem.cost_price || 0) * qty,
+      },
+    ]);
+    setSelectedInventoryItemId("");
+    setSelectedInventoryQty("1");
+  }
+
+  function handleRemoveDraftInventoryLine(inventoryItemId: string, index: number) {
+    setDraftInventoryLines((prev) => prev.filter((line, idx) => !(line.inventory_item_id === inventoryItemId && idx === index)));
   }
 
   // Draft repair functions for create modal
@@ -753,7 +975,10 @@ export function JobOrderManagement() {
       return;
     }
     if (!addVehicleBay) { setAddError("Vehicle bay is required"); return; }
-    if (draftItems.length === 0) { setAddError("Add at least one item"); return; }
+    if (draftPackageLines.length + draftLaborLines.length + draftInventoryLines.length === 0) {
+      setAddError("Add at least one line item");
+      return;
+    }
 
     try {
       setAddingOrder(true);
@@ -765,14 +990,33 @@ export function JobOrderManagement() {
         notes: addNotes.trim() || undefined,
         odometer_reading: parseInt(addOdometer, 10),
         vehicle_bay: addVehicleBay,
-        items: draftItems.map((d) => ({
-          package_item_id: d.package_item_id,
-          quantity: d.quantity,
-          inventory_quantities: d.inventory_quantities.map((iq) => ({
-            inventory_item_id: iq.inventory_item_id,
-            quantity: iq.quantity,
+        lines: [
+          ...draftPackageLines.map((line) => ({
+            line_type: "package" as const,
+            reference_id: line.package_item_id,
+            quantity: line.quantity,
+            vehicle_specific_components: {
+              labor: line.vehicle_specific_labor_components.map((c) => ({
+                labor_item_id: c.labor_item_id,
+                quantity: c.quantity,
+              })),
+              inventory: line.vehicle_specific_inventory_components.map((c) => ({
+                inventory_item_id: c.inventory_item_id,
+                quantity: c.quantity,
+              })),
+            },
           })),
-        })),
+          ...draftLaborLines.map((line) => ({
+            line_type: "labor" as const,
+            reference_id: line.labor_item_id,
+            quantity: line.quantity,
+          })),
+          ...draftInventoryLines.map((line) => ({
+            line_type: "inventory" as const,
+            reference_id: line.inventory_item_id,
+            quantity: line.quantity,
+          })),
+        ],
       });
 
       // Create draft repairs if any
@@ -842,7 +1086,19 @@ export function JobOrderManagement() {
     setOrigEditItems([]);
     setEditDraftItems([]);
     setEditSelectedPackageId("");
+    setEditSelectedLaborId("");
     setEditSelectedQty("1");
+    setEditLinePackageLines([]);
+    setEditLineLaborLines([]);
+    setEditLineInventoryLines([]);
+    setEditLineSelectedPackageId("");
+    setEditLineSelectedLaborId("");
+    setEditLineSelectedInventoryId("");
+    setEditLineSelectedPackageQty("1");
+    setEditLineSelectedLaborQty("1");
+    setEditLineSelectedInventoryQty("1");
+    setEditVehicleSpecificTypeByPackage({});
+    setEditVehicleSpecificItemByPackage({});
     setShowEditModal(true);
 
     // If status allows item editing and user has package access, load items + package
@@ -854,13 +1110,85 @@ export function JobOrderManagement() {
   async function loadEditModalData(order: JobOrder) {
     setEditLoadingItems(true);
     try {
-      const [fullOrder, catRes] = await Promise.all([
+      const [fullOrder, catRes, laborRes, invRes] = await Promise.all([
         jobOrdersApi.getById(order.id),
         packagesApi.getAll({ limit: 1000 }),
+        laborItemsApi.getAll({ limit: 1000, status: "active" }),
+        inventoryApi.getAll({ limit: 1000, branch_id: order.branch_id, status: "active" }),
       ]);
+      setEditOrder(fullOrder);
       const items = fullOrder.job_order_items || [];
       const packageItems = catRes.data;
       setEditPackageItems(packageItems);
+      setEditLaborItems(laborRes.data);
+      setEditInventoryItems(invRes.data);
+
+      if (fullOrder.job_order_lines && fullOrder.job_order_lines.length > 0) {
+        const packageLines: DraftPackageLine[] = [];
+        const laborLines: DraftLaborLine[] = [];
+        const inventoryLines: DraftInventoryLine[] = [];
+
+        for (const line of fullOrder.job_order_lines) {
+          if (line.line_type === "package") {
+            const baseLabor = line.metadata?.base_components?.labor || [];
+            const baseInventory = line.metadata?.base_components?.inventory || [];
+            const vehicleSpecificLabor = line.metadata?.vehicle_specific_components?.labor || [];
+            const vehicleSpecificInventory = line.metadata?.vehicle_specific_components?.inventory || [];
+
+            packageLines.push({
+              package_item_id: line.reference_id || "",
+              package_item_name: line.name,
+              quantity: line.quantity,
+              unit_price: line.unit_price,
+              total: line.total,
+              base_labor_components: baseLabor.map((c) => ({
+                labor_item_id: c.labor_item_id || "",
+                labor_item_name: c.name,
+                quantity: c.quantity,
+                unit_price: c.unit_price,
+              })),
+              base_inventory_components: baseInventory.map((c) => ({
+                inventory_item_id: c.inventory_item_id || "",
+                inventory_item_name: c.name,
+                quantity: c.quantity,
+                unit_price: c.unit_price,
+              })),
+              vehicle_specific_labor_components: vehicleSpecificLabor.map((c) => ({
+                labor_item_id: c.labor_item_id || "",
+                labor_item_name: c.name,
+                quantity: c.quantity,
+                unit_price: c.unit_price,
+              })),
+              vehicle_specific_inventory_components: vehicleSpecificInventory.map((c) => ({
+                inventory_item_id: c.inventory_item_id || "",
+                inventory_item_name: c.name,
+                quantity: c.quantity,
+                unit_price: c.unit_price,
+              })),
+            });
+          } else if (line.line_type === "labor") {
+            laborLines.push({
+              labor_item_id: line.reference_id || "",
+              labor_item_name: line.name,
+              quantity: line.quantity,
+              unit_price: line.unit_price,
+              total: line.total,
+            });
+          } else if (line.line_type === "inventory") {
+            inventoryLines.push({
+              inventory_item_id: line.reference_id || "",
+              inventory_item_name: line.name,
+              quantity: line.quantity,
+              unit_price: line.unit_price,
+              total: line.total,
+            });
+          }
+        }
+
+        setEditLinePackageLines(packageLines);
+        setEditLineLaborLines(laborLines);
+        setEditLineInventoryLines(inventoryLines);
+      }
 
       // Augment existing items' inventories with available alternatives
       const augmentedItems = await Promise.all(
@@ -963,7 +1291,7 @@ export function JobOrderManagement() {
   }
 
   async function handleAddEditDraftItem() {
-    if (!editSelectedPackageId || !editOrder) return;
+    if (!editSelectedPackageId || !editSelectedLaborId || !editOrder) return;
     const qty = parseInt(editSelectedQty) || 1;
 
     // Check duplicates in both existing and draft
@@ -979,34 +1307,20 @@ export function JobOrderManagement() {
       setEditResolvingPrice(true);
       setEditError(null);
 
-      let resolved: ResolvedPricing;
-      try {
-        resolved = await pricingApi.resolve(editSelectedPackageId);
-      } catch {
-        const catItem = editPackageItems.find((c) => c.id === editSelectedPackageId);
-        if (!catItem) {
-          setEditError("Package item not found");
-          return;
-        }
-        resolved = {
-          package_item: { id: catItem.id, name: catItem.name },
-          pricing: null,
-        };
+      const packageItem = editPackageItems.find((c) => c.id === editSelectedPackageId);
+      if (!packageItem) {
+        setEditError("Package item not found");
+        return;
       }
 
-      const { pricing, package_item } = resolved;
+      const laborItem = editLaborItems.find((l) => l.id === editSelectedLaborId);
+      if (!laborItem) {
+        setEditError("Labor item not found");
+        return;
+      }
 
-      // Use the existing order's vehicle_class to select the right price
       const vehicleClass = editOrder.vehicle_class || "light";
-      let laborPrice = 0;
-      if (pricing) {
-        const priceKey = `${vehicleClass}_price` as "light_price" | "heavy_price" | "extra_heavy_price";
-        laborPrice = pricing[priceKey] || 0;
-      } else {
-        showToast.warning(
-          `No active pricing found for "${package_item.name}". Labor price will be 0.`
-        );
-      }
+      const laborPrice = getLaborPriceByVehicleClass(laborItem, vehicleClass);
 
       // Fetch inventory based on Package item's inventory_types or legacy links
       let editInvQuantities: Array<{
@@ -1018,7 +1332,7 @@ export function JobOrderManagement() {
         available_items?: Array<{ id: string; item_name: string; cost_price: number }>;
       }> = [];
 
-      const catItemData = editPackageItems.find((c) => c.id === package_item.id);
+      const catItemData = editPackageItems.find((c) => c.id === packageItem.id);
       const invTypes = catItemData?.inventory_types || [];
 
       if (invTypes.length > 0) {
@@ -1056,13 +1370,13 @@ export function JobOrderManagement() {
       } else {
         // Legacy: use package_inventory_links template
         try {
-          const linksRes = await packagesApi.getInventoryLinks(package_item.id);
+          const linksRes = await packagesApi.getInventoryLinks(packageItem.id);
           if (linksRes && linksRes.length > 0) {
-            editInvQuantities = linksRes.map((l: PackageInventoryLink) => ({
+            editInvQuantities = linksRes.map((l: PackageInventoryItem) => ({
               inventory_item_id: l.inventory_items?.id || l.inventory_item_id,
               inventory_item_name: l.inventory_items?.item_name || "Unknown",
               unit_cost: l.inventory_items?.cost_price || 0,
-              quantity: 1,
+              quantity: l.quantity || 1,
             }));
           }
         } catch {
@@ -1080,8 +1394,10 @@ export function JobOrderManagement() {
       setEditDraftItems((prev) => [
         ...prev,
         {
-          package_item_id: package_item.id,
-          package_item_name: package_item.name,
+          labor_item_id: laborItem.id,
+          labor_item_name: laborItem.name,
+          package_item_id: packageItem.id,
+          package_item_name: packageItem.name,
           quantity: qty,
           labor_price: laborPrice,
           inventory_cost: editInvCost,
@@ -1090,9 +1406,10 @@ export function JobOrderManagement() {
         },
       ]);
       setEditSelectedPackageId("");
+      setEditSelectedLaborId("");
       setEditSelectedQty("1");
     } catch (err) {
-      setEditError(err instanceof Error ? err.message : "Failed to resolve pricing");
+      setEditError(err instanceof Error ? err.message : "Failed to add item");
     } finally {
       setEditResolvingPrice(false);
     }
@@ -1134,21 +1451,331 @@ export function JobOrderManagement() {
     );
   }
 
+  async function handleAddEditLinePackage() {
+    if (!editLineSelectedPackageId || !editOrder) return;
+    const qty = parseInt(editLineSelectedPackageQty, 10) || 1;
+    if (qty < 1) return;
+
+    if (editLinePackageLines.some((d) => d.package_item_id === editLineSelectedPackageId)) {
+      setEditError("This package is already in the order");
+      return;
+    }
+
+    try {
+      setEditResolvingPrice(true);
+      setEditError(null);
+
+      const packageItem = editPackageItems.find((p) => p.id === editLineSelectedPackageId);
+      if (!packageItem) {
+        setEditError("Package item not found");
+        return;
+      }
+
+      const [pkgLaborLinks, pkgInventoryLinks] = await Promise.all([
+        packagesApi.getLaborLinks(packageItem.id),
+        packagesApi.getInventoryLinks(packageItem.id),
+      ]);
+
+      const vehicleClass = (editOrder.vehicle_class || "light") as VehicleClass;
+      const baseLaborComponents = pkgLaborLinks.map((link) => {
+        const name = link.labor_items?.name || "Unknown Labor";
+        const unitPrice = link.labor_items
+          ? getLaborPriceByVehicleClass(
+              {
+                id: link.labor_items.id,
+                name,
+                light_price: link.labor_items.light_price,
+                heavy_price: link.labor_items.heavy_price,
+                extra_heavy_price: link.labor_items.extra_heavy_price,
+                status: (link.labor_items.status as "active" | "inactive") || "active",
+                created_at: "",
+              },
+              vehicleClass
+            )
+          : 0;
+        return {
+          labor_item_id: link.labor_id,
+          labor_item_name: name,
+          quantity: link.quantity || 1,
+          unit_price: unitPrice,
+        };
+      });
+
+      const baseInventoryComponents = pkgInventoryLinks.map((link) => ({
+        inventory_item_id: link.inventory_item_id,
+        inventory_item_name: link.inventory_items?.item_name || "Unknown Inventory",
+        quantity: link.quantity || 1,
+        unit_price: link.inventory_items?.cost_price || 0,
+      }));
+
+      const line = recomputeDraftPackageLine({
+        package_item_id: packageItem.id,
+        package_item_name: packageItem.name,
+        quantity: qty,
+        unit_price: 0,
+        total: 0,
+        base_labor_components: baseLaborComponents,
+        base_inventory_components: baseInventoryComponents,
+        vehicle_specific_labor_components: [],
+        vehicle_specific_inventory_components: [],
+      });
+
+      setEditLinePackageLines((prev) => [...prev, line]);
+      setEditLineSelectedPackageId("");
+      setEditLineSelectedPackageQty("1");
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Failed to add package");
+    } finally {
+      setEditResolvingPrice(false);
+    }
+  }
+
+  function handleRemoveEditLinePackage(packageItemId: string) {
+    setEditLinePackageLines((prev) => prev.filter((line) => line.package_item_id !== packageItemId));
+    setEditVehicleSpecificTypeByPackage((prev) => {
+      const next = { ...prev };
+      delete next[packageItemId];
+      return next;
+    });
+    setEditVehicleSpecificItemByPackage((prev) => {
+      const next = { ...prev };
+      delete next[packageItemId];
+      return next;
+    });
+  }
+
+  function handleEditLinePackageQty(packageItemId: string, qty: number) {
+    if (qty < 1) return;
+    setEditLinePackageLines((prev) =>
+      prev.map((line) =>
+        line.package_item_id === packageItemId
+          ? recomputeDraftPackageLine({ ...line, quantity: qty })
+          : line
+      )
+    );
+  }
+
+  function handleAddEditVehicleSpecificLabor(packageItemId: string, laborItemId: string, qty = 1) {
+    const laborItem = editLaborItems.find((l) => l.id === laborItemId);
+    if (!laborItem || !editOrder) return;
+    const vehicleClass = (editOrder.vehicle_class || "light") as VehicleClass;
+    setEditLinePackageLines((prev) =>
+      prev.map((line) => {
+        if (line.package_item_id !== packageItemId) return line;
+        const nextLine = {
+          ...line,
+          vehicle_specific_labor_components: [
+            ...line.vehicle_specific_labor_components,
+            {
+              labor_item_id: laborItem.id,
+              labor_item_name: laborItem.name,
+              quantity: qty,
+              unit_price: getLaborPriceByVehicleClass(laborItem, vehicleClass),
+            },
+          ],
+        };
+        return recomputeDraftPackageLine(nextLine);
+      })
+    );
+  }
+
+  function handleAddEditVehicleSpecificInventory(packageItemId: string, inventoryItemId: string, qty = 1) {
+    const inventoryItem = editInventoryItems.find((i) => i.id === inventoryItemId);
+    if (!inventoryItem) return;
+    setEditLinePackageLines((prev) =>
+      prev.map((line) => {
+        if (line.package_item_id !== packageItemId) return line;
+        const nextLine = {
+          ...line,
+          vehicle_specific_inventory_components: [
+            ...line.vehicle_specific_inventory_components,
+            {
+              inventory_item_id: inventoryItem.id,
+              inventory_item_name: inventoryItem.item_name,
+              quantity: qty,
+              unit_price: inventoryItem.cost_price || 0,
+            },
+          ],
+        };
+        return recomputeDraftPackageLine(nextLine);
+      })
+    );
+  }
+
+  function handleRemoveEditVehicleSpecificLabor(packageItemId: string, index: number) {
+    setEditLinePackageLines((prev) =>
+      prev.map((line) => {
+        if (line.package_item_id !== packageItemId) return line;
+        const nextLine = {
+          ...line,
+          vehicle_specific_labor_components: line.vehicle_specific_labor_components.filter((_, idx) => idx !== index),
+        };
+        return recomputeDraftPackageLine(nextLine);
+      })
+    );
+  }
+
+  function handleRemoveEditVehicleSpecificInventory(packageItemId: string, index: number) {
+    setEditLinePackageLines((prev) =>
+      prev.map((line) => {
+        if (line.package_item_id !== packageItemId) return line;
+        const nextLine = {
+          ...line,
+          vehicle_specific_inventory_components: line.vehicle_specific_inventory_components.filter((_, idx) => idx !== index),
+        };
+        return recomputeDraftPackageLine(nextLine);
+      })
+    );
+  }
+
+  function handleEditVehicleSpecificTypeChange(packageItemId: string, type: "labor" | "inventory" | "") {
+    setEditVehicleSpecificTypeByPackage((prev) => ({
+      ...prev,
+      [packageItemId]: type,
+    }));
+    setEditVehicleSpecificItemByPackage((prev) => ({
+      ...prev,
+      [packageItemId]: "",
+    }));
+  }
+
+  function handleEditVehicleSpecificItemChange(packageItemId: string, itemId: string) {
+    setEditVehicleSpecificItemByPackage((prev) => ({
+      ...prev,
+      [packageItemId]: itemId,
+    }));
+  }
+
+  function handleAddEditVehicleSpecificComponent(packageItemId: string) {
+    const selectedType = editVehicleSpecificTypeByPackage[packageItemId] || "";
+    const selectedItemId = editVehicleSpecificItemByPackage[packageItemId] || "";
+
+    if (!selectedType || !selectedItemId) return;
+
+    if (selectedType === "labor") {
+      handleAddEditVehicleSpecificLabor(packageItemId, selectedItemId, 1);
+    } else {
+      handleAddEditVehicleSpecificInventory(packageItemId, selectedItemId, 1);
+    }
+
+    setEditVehicleSpecificItemByPackage((prev) => ({
+      ...prev,
+      [packageItemId]: "",
+    }));
+  }
+
+  function handleAddEditLineLabor() {
+    if (!editLineSelectedLaborId || !editOrder) return;
+    const qty = parseInt(editLineSelectedLaborQty, 10) || 1;
+    if (qty < 1) return;
+    const laborItem = editLaborItems.find((l) => l.id === editLineSelectedLaborId);
+    if (!laborItem) return;
+
+    setEditLineLaborLines((prev) => [
+      ...prev,
+      {
+        labor_item_id: laborItem.id,
+        labor_item_name: laborItem.name,
+        quantity: qty,
+        unit_price: getLaborPriceByVehicleClass(laborItem, (editOrder.vehicle_class || "light") as VehicleClass),
+        total: getLaborPriceByVehicleClass(laborItem, (editOrder.vehicle_class || "light") as VehicleClass) * qty,
+      },
+    ]);
+    setEditLineSelectedLaborId("");
+    setEditLineSelectedLaborQty("1");
+  }
+
+  function handleRemoveEditLineLabor(index: number) {
+    setEditLineLaborLines((prev) => prev.filter((_, idx) => idx !== index));
+  }
+
+  function handleAddEditLineInventory() {
+    if (!editLineSelectedInventoryId) return;
+    const qty = parseInt(editLineSelectedInventoryQty, 10) || 1;
+    if (qty < 1) return;
+    const invItem = editInventoryItems.find((i) => i.id === editLineSelectedInventoryId);
+    if (!invItem) return;
+
+    setEditLineInventoryLines((prev) => [
+      ...prev,
+      {
+        inventory_item_id: invItem.id,
+        inventory_item_name: invItem.item_name,
+        quantity: qty,
+        unit_price: invItem.cost_price || 0,
+        total: (invItem.cost_price || 0) * qty,
+      },
+    ]);
+    setEditLineSelectedInventoryId("");
+    setEditLineSelectedInventoryQty("1");
+  }
+
+  function handleRemoveEditLineInventory(index: number) {
+    setEditLineInventoryLines((prev) => prev.filter((_, idx) => idx !== index));
+  }
+
   async function handleEditOrder(e: React.FormEvent) {
     e.preventDefault();
     if (!editOrder) return;
     setEditError(null);
 
-    const canEditItems = isEditableStatus(editOrder.status);
+    const hasLineBasedItems = (editOrder.job_order_lines?.length || 0) > 0;
+    const canEditItems = isEditableStatus(editOrder.status) && !hasLineBasedItems;
+    const canEditLineItems = isEditableStatus(editOrder.status) && hasLineBasedItems;
 
     // Validate: must have at least 1 item
     if (canEditItems && editItems.length + editDraftItems.length === 0) {
       setEditError("Job order must have at least 1 item");
       return;
     }
+    if (canEditLineItems && editLinePackageLines.length + editLineLaborLines.length + editLineInventoryLines.length === 0) {
+      setEditError("Job order must have at least 1 line item");
+      return;
+    }
 
     try {
       setEditingOrder(true);
+
+      if (hasLineBasedItems) {
+        const linesPayload = [
+          ...editLinePackageLines.map((line) => ({
+            line_type: "package" as const,
+            reference_id: line.package_item_id,
+            quantity: line.quantity,
+            vehicle_specific_components: {
+              labor: line.vehicle_specific_labor_components.map((c) => ({
+                labor_item_id: c.labor_item_id,
+                quantity: c.quantity,
+              })),
+              inventory: line.vehicle_specific_inventory_components.map((c) => ({
+                inventory_item_id: c.inventory_item_id,
+                quantity: c.quantity,
+              })),
+            },
+          })),
+          ...editLineLaborLines.map((line) => ({
+            line_type: "labor" as const,
+            reference_id: line.labor_item_id,
+            quantity: line.quantity,
+          })),
+          ...editLineInventoryLines.map((line) => ({
+            line_type: "inventory" as const,
+            reference_id: line.inventory_item_id,
+            quantity: line.quantity,
+          })),
+        ];
+
+        await jobOrdersApi.patch(editOrder.id, {
+          notes: editNotes.trim() || null,
+          lines: linesPayload,
+        });
+
+        setShowEditModal(false);
+        setEditOrder(null);
+        showToast.success("Job order updated successfully");
+        fetchData();
+        return;
+      }
 
       // Save notes
       await jobOrdersApi.update(editOrder.id, { notes: editNotes.trim() || null });
@@ -1194,6 +1821,7 @@ export function JobOrderManagement() {
         for (const draft of editDraftItems) {
           await jobOrdersApi.addItem(editOrder.id, {
             package_item_id: draft.package_item_id,
+            labor_item_id: draft.labor_item_id,
             quantity: draft.quantity,
             inventory_quantities: draft.inventory_quantities.map((iq) => ({
               inventory_item_id: iq.inventory_item_id,
@@ -1486,16 +2114,18 @@ export function JobOrderManagement() {
       />
 
       {/* Search & Filter bar */}
-      <SearchFilter
-        searchValue={searchQuery}
-        onSearchChange={setSearchQuery}
-        searchPlaceholder="Search"
-        filters={filterGroups}
-        activeFilters={activeFilters}
-        onFilterChange={(key, value) =>
-          setActiveFilters((prev) => ({ ...prev, [key]: value }))
-        }
-      />
+      {allOrders.length > 0 && (
+        <SearchFilter
+          searchValue={searchQuery}
+          onSearchChange={setSearchQuery}
+          searchPlaceholder="Search"
+          filters={filterGroups}
+          activeFilters={activeFilters}
+          onFilterChange={(key, value) =>
+            setActiveFilters((prev) => ({ ...prev, [key]: value }))
+          }
+        />
+      )}
 
       {/* Order Cards Grid */}
       <CardGrid
@@ -1525,7 +2155,7 @@ export function JobOrderManagement() {
             }}
             details={
               <>
-                <p className="text-neutral-900">{formatPrice(order.total_amount + (order.third_party_repairs?.reduce((sum, r) => sum + r.cost, 0) || 0))}</p>
+                <p className="text-neutral-900">{formatPrice(computeOrderGrandTotal(order))}</p>
                 <p className="text-neutral-900">{order.vehicles ? `${order.vehicles.plate_number} ${order.vehicles.model}` : "—"}</p>
                 <p className="text-neutral-900">{order.customers?.full_name || "—"}</p>
                 <p className="text-neutral-900">{formatDate(order.created_at)}</p>
@@ -1735,123 +2365,236 @@ export function JobOrderManagement() {
             </div>
           </ModalSection>
 
-          <ModalSection title="Items Lists">
-            {/* Add item row */}
+          <ModalSection title="Packages">
             <div className="flex gap-2 items-end">
               <div className="flex-1">
                 <ModalSelect
                   value={selectedPackageItemId}
                   onChange={setSelectedPackageItemId}
-                  placeholder={loadingLookups ? "Loading..." : "Select Package item"}
+                  placeholder={loadingLookups ? "Loading..." : "Select package..."}
                   options={packageItemOptions}
                   disabled={loadingLookups || !addBranchId}
                 />
               </div>
               <div className="w-20">
-                <ModalInput
-                  type="number"
-                  value={selectedQty}
-                  onChange={setSelectedQty}
-                  placeholder="Qty"
-                />
+                <ModalInput type="number" value={selectedPackageQty} onChange={setSelectedPackageQty} placeholder="Qty" />
               </div>
               <button
                 type="button"
-                onClick={handleAddDraftItem}
+                onClick={handleAddDraftPackageLine}
                 disabled={!selectedPackageItemId || resolvingPrice}
                 className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
               >
-                {resolvingPrice ? (
-                  <LuRefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <LuPlus className="w-4 h-4" />
-                )}
+                {resolvingPrice ? <LuRefreshCw className="w-4 h-4 animate-spin" /> : <LuPlus className="w-4 h-4" />}
               </button>
             </div>
 
-            {/* Draft items list */}
-            {draftItems.length > 0 && (
-              <div className="mt-3 space-y-4">
-                {draftItems.map((item) => (
-                  <div
-                    key={item.package_item_id}
-                    className="bg-neutral-100 rounded-xl px-4 py-3"
-                  >
-                    <div className="flex items-center justify-between">
+            {draftPackageLines.length > 0 && (
+              <div className="mt-3 space-y-3">
+                {draftPackageLines.map((line) => (
+                  <div key={line.package_item_id} className="bg-neutral-100 rounded-xl p-3">
+                    <div className="flex items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-neutral-950 text-sm truncate">
-                          {item.package_item_name}
-                        </p>
-                        <p className="text-xs text-neutral-900">
-                          Labor: {formatPrice(item.labor_price)}
-                          {item.inventory_cost > 0 && ` + Inventory: ${formatPrice(item.inventory_cost)}`}
-                          {" × "}{item.quantity}
-                        </p>
+                        <p className="font-medium text-neutral-950 text-sm truncate">{line.package_item_name}</p>
+                        <p className="text-xs text-neutral-900">Package total: {formatPrice(line.total)}</p>
                       </div>
-                      <div className="flex items-center gap-3 ml-3">
-                        <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap">
-                          {formatPrice(item.line_total)}
-                        </span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={line.quantity}
+                        onChange={(e) => handleUpdateDraftPackageQty(line.package_item_id, parseInt(e.target.value, 10) || 1)}
+                        className="w-14 px-2 py-1 bg-white rounded text-xs text-center text-neutral-950 focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                      <button type="button" onClick={() => handleRemoveDraftPackageLine(line.package_item_id)} className="text-negative hover:text-negative-900 p-1">
+                        <LuX className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="mt-2 border-t border-neutral-200 pt-2 space-y-2">
+                      <p className="text-xs font-semibold text-primary uppercase">Base Components</p>
+                      <div>
+                        <p className="text-[11px] font-semibold text-neutral-900 uppercase">Labor</p>
+                        {line.base_labor_components.length > 0 ? line.base_labor_components.map((c, idx) => (
+                          <div key={`base-labor-${idx}`} className="flex justify-between text-xs text-neutral-900">
+                            <span>{c.labor_item_name}</span>
+                            <span>{formatPrice(c.unit_price * c.quantity)}</span>
+                          </div>
+                        )) : <p className="text-xs text-neutral-900">None</p>}
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-semibold text-neutral-900 uppercase">Inventory</p>
+                        {line.base_inventory_components.length > 0 ? line.base_inventory_components.map((c, idx) => (
+                          <div key={`base-inv-${idx}`} className="flex justify-between text-xs text-neutral-900">
+                            <span>{c.inventory_item_name}</span>
+                            <span>{formatPrice(c.unit_price * c.quantity)}</span>
+                          </div>
+                        )) : <p className="text-xs text-neutral-900">None</p>}
+                      </div>
+                    </div>
+
+                    <div className="mt-2 border-t border-neutral-200 pt-2 space-y-2">
+                      <p className="text-xs font-semibold text-primary uppercase">Vehicle-Specific Components - {addVehicleClass.replace("_", " ")}</p>
+                      <div>
+                        <p className="text-[11px] font-semibold text-neutral-900 uppercase">Labor</p>
+                        {line.vehicle_specific_labor_components.length > 0 ? line.vehicle_specific_labor_components.map((c, idx) => (
+                          <div key={`extra-labor-${idx}`} className="flex items-center justify-between gap-2 text-xs text-neutral-900">
+                            <span className="flex-1 truncate">{c.labor_item_name}</span>
+                            <span>{formatPrice(c.unit_price * c.quantity)}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveVehicleSpecificLabor(line.package_item_id, idx)}
+                              className="text-negative hover:text-negative-900 p-0.5"
+                              title="Remove item"
+                            >
+                              <LuX className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )) : <p className="text-xs text-neutral-900">None</p>}
+                      </div>
+
+                      <div>
+                        <p className="text-[11px] font-semibold text-neutral-900 uppercase">Inventory</p>
+                        {line.vehicle_specific_inventory_components.length > 0 ? line.vehicle_specific_inventory_components.map((c, idx) => (
+                          <div key={`extra-inv-${idx}`} className="flex items-center justify-between gap-2 text-xs text-neutral-900">
+                            <span className="flex-1 truncate">{c.inventory_item_name}</span>
+                            <span>{formatPrice(c.unit_price * c.quantity)}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveVehicleSpecificInventory(line.package_item_id, idx)}
+                              className="text-negative hover:text-negative-900 p-0.5"
+                              title="Remove item"
+                            >
+                              <LuX className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )) : <p className="text-xs text-neutral-900">None</p>}
+                      </div>
+
+                      <div className="flex gap-2 items-end pt-1">
+                        <div className="w-40">
+                          <ModalSelect
+                            value={vehicleSpecificTypeByPackage[line.package_item_id] || ""}
+                            onChange={(value) =>
+                              handleVehicleSpecificTypeChange(
+                                line.package_item_id,
+                                value === "labor" || value === "inventory" ? value : ""
+                              )
+                            }
+                            placeholder="Type..."
+                            options={[
+                              { value: "labor", label: "Labor" },
+                              { value: "inventory", label: "Inventory" },
+                            ]}
+                            className="bg-white"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <ModalSelect
+                            value={vehicleSpecificItemByPackage[line.package_item_id] || ""}
+                            onChange={(value) => handleVehicleSpecificItemChange(line.package_item_id, value)}
+                            placeholder={
+                              (vehicleSpecificTypeByPackage[line.package_item_id] || "") === "labor"
+                                ? "Select labor..."
+                                : (vehicleSpecificTypeByPackage[line.package_item_id] || "") === "inventory"
+                                  ? "Select inventory..."
+                                  : "Select item..."
+                            }
+                            options={
+                              (vehicleSpecificTypeByPackage[line.package_item_id] || "") === "labor"
+                                ? laborItemOptions
+                                : (vehicleSpecificTypeByPackage[line.package_item_id] || "") === "inventory"
+                                  ? inventoryItemOptions
+                                  : []
+                            }
+                            disabled={!(vehicleSpecificTypeByPackage[line.package_item_id] || "")}
+                            className="bg-white"
+                          />
+                        </div>
                         <button
                           type="button"
-                          onClick={() => removeDraftItem(item.package_item_id)}
-                          className="text-negative hover:text-negative-900 p-1"
+                          onClick={() => handleAddVehicleSpecificComponent(line.package_item_id)}
+                          disabled={!(vehicleSpecificTypeByPackage[line.package_item_id] || "") || !(vehicleSpecificItemByPackage[line.package_item_id] || "")}
+                          className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
                         >
-                          <LuX className="w-4 h-4" />
+                          <LuPlus className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
-                    {/* Inventory items with editable quantities and item selection */}
-                    {item.inventory_quantities.length > 0 && (
-                      <div className="mt-2 pl-3 border-l-2 border-neutral-200 space-y-2">
-                        {item.inventory_quantities.map((iq, slotIdx) => (
-                          <div key={slotIdx} className="text-xs text-neutral-900">
-                            <div className="flex items-center gap-2">
-                              {iq.available_items && iq.available_items.length > 1 ? (
-                                <select
-                                  value={iq.inventory_item_id}
-                                  onChange={(e) => changeDraftInventoryItem(item.package_item_id, slotIdx, e.target.value)}
-                                  className="appearance-none flex-1 min-w-0 text-xs focus:outline-none focus:ring-1 focus:ring-primary truncate"
-                                >
-                                  {iq.available_items.map((opt) => (
-                                    <option key={opt.id} value={opt.id}>
-                                      {opt.item_name} ({formatPrice(opt.cost_price)})
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <span className="truncate flex-1">{iq.inventory_item_name} ({formatPrice(iq.unit_cost * iq.quantity)})</span>
-                              )}
-                              <input
-                                type="number"
-                                min={0}
-                                value={iq.quantity}
-                                onChange={(e) =>
-                                  updateDraftInventoryQty(item.package_item_id, iq.inventory_item_id, parseInt(e.target.value) || 0)
-                                }
-                                className="w-14 px-1 py-0.5 bg-white rounded text-center text-xs text-neutral-950 focus:outline-none focus:ring-1 focus:ring-primary"
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 ))}
-
-                {/* Total */}
-                <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
-                  <span className="font-semibold text-neutral-950">Total</span>
-                  <span className="font-bold text-primary text-lg">{formatPrice(draftTotal)}</span>
-                </div>
               </div>
             )}
+          </ModalSection>
 
-            {draftItems.length === 0 && (
-              <p className="text-sm text-neutral-900 text-center py-4">
-                No items added yet. Select a Package item and click +.
-              </p>
+          <ModalSection title="Labor">
+            <div className="flex gap-2 items-end">
+              <div className="flex-1">
+                <ModalSelect value={selectedLaborItemId} onChange={setSelectedLaborItemId} placeholder="Select labor..." options={laborItemOptions} />
+              </div>
+              <div className="w-20">
+                <ModalInput type="number" value={selectedLaborQty} onChange={setSelectedLaborQty} placeholder="Qty" />
+              </div>
+              <button type="button" onClick={handleAddDraftLaborLine} className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 transition-colors shrink-0">
+                <LuPlus className="w-4 h-4" />
+              </button>
+            </div>
+            {draftLaborLines.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {draftLaborLines.map((line, idx) => (
+                  <div key={`${line.labor_item_id}-${idx}`} className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3">
+                    <div>
+                      <p className="font-medium text-neutral-950 text-sm">{line.labor_item_name}</p>
+                      <p className="text-xs text-neutral-900">Quantity: {line.quantity}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-semibold text-neutral-950 text-sm">{formatPrice(line.total)}</span>
+                      <button type="button" onClick={() => handleRemoveDraftLaborLine(line.labor_item_id, idx)} className="text-negative hover:text-negative-900 p-1">
+                        <LuX className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
+          </ModalSection>
+
+          <ModalSection title="Inventory">
+            <div className="flex gap-2 items-end">
+              <div className="flex-1">
+                <ModalSelect value={selectedInventoryItemId} onChange={setSelectedInventoryItemId} placeholder="Select inventory..." options={inventoryItemOptions} />
+              </div>
+              <div className="w-20">
+                <ModalInput type="number" value={selectedInventoryQty} onChange={setSelectedInventoryQty} placeholder="Qty" />
+              </div>
+              <button type="button" onClick={handleAddDraftInventoryLine} className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 transition-colors shrink-0">
+                <LuPlus className="w-4 h-4" />
+              </button>
+            </div>
+            {draftInventoryLines.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {draftInventoryLines.map((line, idx) => (
+                  <div key={`${line.inventory_item_id}-${idx}`} className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3">
+                    <div>
+                      <p className="font-medium text-neutral-950 text-sm">{line.inventory_item_name}</p>
+                      <p className="text-xs text-neutral-900">Quantity: {line.quantity}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-semibold text-neutral-950 text-sm">{formatPrice(line.total)}</span>
+                      <button type="button" onClick={() => handleRemoveDraftInventoryLine(line.inventory_item_id, idx)} className="text-negative hover:text-negative-900 p-1">
+                        <LuX className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ModalSection>
+
+          <ModalSection title="Items Total">
+            <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
+              <span className="font-semibold text-neutral-950">Grand Total</span>
+              <span className="font-bold text-primary text-lg">{formatPrice(draftTotal)}</span>
+            </div>
           </ModalSection>
 
           <ModalSection title="Third Party Repairs">
@@ -1971,7 +2714,7 @@ export function JobOrderManagement() {
                 />
                 <ModalInput
                   type="text"
-                  value={formatPrice(viewOrder.total_amount + repairs.reduce((sum, r) => sum + r.cost, 0))}
+                  value={formatPrice(computeOrderGrandTotal(viewOrder, repairs))}
                   onChange={() => { }}
                   placeholder="Total"
                   disabled
@@ -2046,61 +2789,185 @@ export function JobOrderManagement() {
             </ModalSection>
 
             {/* Items section */}
-            <ModalSection title="Items Lists">
-              {loadingView && !viewOrder.job_order_items ? (
-                <div className="space-y-4">
-                  {[1, 2].map((i) => (
-                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
-                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
-                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
-                    </div>
-                  ))}
-                </div>
-              ) : viewOrder.job_order_items && viewOrder.job_order_items.length > 0 ? (
-                <div className="space-y-4">
-                  {viewOrder.job_order_items.map((item) => (
-                    <div key={item.id} className="bg-neutral-100 rounded-xl px-4 py-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-neutral-950 text-sm truncate">
-                            {item.package_item_name}
-                          </p>
-                          <p className="text-xs text-neutral-900">
-                            Labor: {formatPrice(item.labor_price || 0)}
-                            {(item.inventory_cost ?? 0) > 0 && ` + Inventory: ${formatPrice(item.inventory_cost)}`}
-                            {" × "}{item.quantity}
-                          </p>
-                        </div>
-                        <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap ml-3">
-                          {formatPrice(item.line_total)}
-                        </span>
+            {viewOrder.job_order_lines && viewOrder.job_order_lines.length > 0 ? (
+              <>
+                {viewLinePackageLines.length > 0 && (
+                  <ModalSection title="Packages">
+                    {loadingView ? (
+                      <div className="space-y-4">
+                        {[1, 2].map((i) => (
+                          <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
+                            <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
+                            <div className="h-3 bg-neutral-200 rounded w-1/2" />
+                          </div>
+                        ))}
                       </div>
-                      {/* Inventory breakdown */}
-                      {item.job_order_item_inventories && item.job_order_item_inventories.length > 0 && (
-                        <div className="mt-2 pl-3 border-l-2 border-neutral-200 space-y-1">
-                          {item.job_order_item_inventories.map((inv) => (
-                            <div key={inv.id} className="flex items-center justify-between text-xs text-neutral-900">
-                              <span className="truncate">{inv.inventory_item_name}</span>
-                              <span className="whitespace-nowrap ml-2">
-                                {inv.quantity} · {formatPrice(inv.line_total)}
-                              </span>
+                    ) : (
+                      <div className="space-y-3">
+                        {viewLinePackageLines.map((line) => (
+                          <div key={line.id} className="bg-neutral-100 rounded-xl p-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-neutral-950 text-sm truncate">{line.name}</p>
+                                <p className="text-xs text-neutral-900">Package total: {formatPrice(line.total)}</p>
+                              </div>
+                              <span className="text-xs text-neutral-900 whitespace-nowrap">Qty: {line.quantity}</span>
                             </div>
-                          ))}
+
+                            <div className="mt-2 border-t border-neutral-200 pt-2 space-y-2">
+                              <p className="text-xs font-semibold text-primary uppercase">Base Components</p>
+                              <div>
+                                <p className="text-[11px] font-semibold text-neutral-900 uppercase">Labor</p>
+                                {(line.metadata?.base_components?.labor || []).length > 0 ? (
+                                  (line.metadata?.base_components?.labor || []).map((c, idx) => (
+                                    <div key={`view-base-labor-${line.id}-${idx}`} className="flex justify-between text-xs text-neutral-900">
+                                      <span>{c.name}</span>
+                                      <span>{formatPrice(c.unit_price * c.quantity)}</span>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <p className="text-xs text-neutral-900">None</p>
+                                )}
+                              </div>
+                              <div>
+                                <p className="text-[11px] font-semibold text-neutral-900 uppercase">Inventory</p>
+                                {(line.metadata?.base_components?.inventory || []).length > 0 ? (
+                                  (line.metadata?.base_components?.inventory || []).map((c, idx) => (
+                                    <div key={`view-base-inv-${line.id}-${idx}`} className="flex justify-between text-xs text-neutral-900">
+                                      <span>{c.name}</span>
+                                      <span>{formatPrice(c.unit_price * c.quantity)}</span>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <p className="text-xs text-neutral-900">None</p>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="mt-2 border-t border-neutral-200 pt-2 space-y-2">
+                              <p className="text-xs font-semibold text-primary uppercase">Vehicle-Specific Components</p>
+                              <div>
+                                <p className="text-[11px] font-semibold text-neutral-900 uppercase">Labor</p>
+                                {(line.metadata?.vehicle_specific_components?.labor || []).length > 0 ? (
+                                  (line.metadata?.vehicle_specific_components?.labor || []).map((c, idx) => (
+                                    <div key={`view-extra-labor-${line.id}-${idx}`} className="flex justify-between text-xs text-neutral-900">
+                                      <span>{c.name}</span>
+                                      <span>{formatPrice(c.unit_price * c.quantity)}</span>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <p className="text-xs text-neutral-900">None</p>
+                                )}
+                              </div>
+
+                              <div>
+                                <p className="text-[11px] font-semibold text-neutral-900 uppercase">Inventory</p>
+                                {(line.metadata?.vehicle_specific_components?.inventory || []).length > 0 ? (
+                                  (line.metadata?.vehicle_specific_components?.inventory || []).map((c, idx) => (
+                                    <div key={`view-extra-inv-${line.id}-${idx}`} className="flex justify-between text-xs text-neutral-900">
+                                      <span>{c.name}</span>
+                                      <span>{formatPrice(c.unit_price * c.quantity)}</span>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <p className="text-xs text-neutral-900">None</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </ModalSection>
+                )}
+
+                {viewLineLaborLines.length > 0 && (
+                  <ModalSection title="Labor">
+                    <div className="space-y-3">
+                      {viewLineLaborLines.map((line) => (
+                        <div key={line.id} className="bg-neutral-100 rounded-xl px-4 py-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium text-neutral-950 text-sm">{line.name}</p>
+                              <p className="text-xs text-neutral-900">Quantity: {line.quantity}</p>
+                            </div>
+                            <span className="font-semibold text-neutral-950 text-sm">{formatPrice(line.total)}</span>
+                          </div>
                         </div>
-                      )}
+                      ))}
                     </div>
-                  ))}
-                  <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
-                    <span className="font-semibold text-neutral-950">Items Total</span>
-                    <span className="font-bold text-primary text-lg">
-                      {formatPrice(viewOrder.total_amount)}
-                    </span>
+                  </ModalSection>
+                )}
+
+                {viewLineInventoryLines.length > 0 && (
+                  <ModalSection title="Inventory">
+                    <div className="space-y-3">
+                      {viewLineInventoryLines.map((line) => (
+                        <div key={line.id} className="bg-neutral-100 rounded-xl px-4 py-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium text-neutral-950 text-sm">{line.name}</p>
+                              <p className="text-xs text-neutral-900">Quantity: {line.quantity}</p>
+                            </div>
+                            <span className="font-semibold text-neutral-950 text-sm">{formatPrice(line.total)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ModalSection>
+                )}
+
+              </>
+            ) : (
+              <ModalSection title="Items Lists">
+                {loadingView && !viewOrder.job_order_items ? (
+                    <div className="space-y-4">
+                      {[1, 2].map((i) => (
+                        <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
+                          <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
+                          <div className="h-3 bg-neutral-200 rounded w-1/2" />
+                        </div>
+                      ))}
+                    </div>
+                ) : viewOrder.job_order_items && viewOrder.job_order_items.length > 0 ? (
+                  <div className="space-y-4">
+                    {viewOrder.job_order_items.map((item) => (
+                      <div key={item.id} className="bg-neutral-100 rounded-xl px-4 py-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-neutral-950 text-sm truncate">
+                              {item.package_item_name}
+                            </p>
+                            <p className="text-xs text-neutral-900">
+                              Labor: {formatPrice(item.labor_price || 0)}
+                              {(item.inventory_cost ?? 0) > 0 && ` + Inventory: ${formatPrice(item.inventory_cost)}`}
+                              {" × "}{item.quantity}
+                            </p>
+                          </div>
+                          <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap ml-3">
+                            {formatPrice(item.line_total)}
+                          </span>
+                        </div>
+                        {item.job_order_item_inventories && item.job_order_item_inventories.length > 0 && (
+                          <div className="mt-2 pl-3 border-l-2 border-neutral-200 space-y-1">
+                            {item.job_order_item_inventories.map((inv) => (
+                              <div key={inv.id} className="flex items-center justify-between text-xs text-neutral-900">
+                                <span className="truncate">{inv.inventory_item_name}</span>
+                                <span className="whitespace-nowrap ml-2">
+                                  {inv.quantity} · {formatPrice(inv.line_total)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ) : (
-                <p className="text-sm text-neutral-900 text-center py-3">No items.</p>
-              )}
-            </ModalSection>
+                ) : (
+                  <p className="text-sm text-neutral-900 text-center py-3">No items.</p>
+                )}
+              </ModalSection>
+            )}
 
             {/* Third Party Repairs section */}
             {repairs.length > 0 && (
@@ -2137,16 +3004,17 @@ export function JobOrderManagement() {
                         </span>
                       </div>
                     ))}
-                    <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
-                      <span className="font-semibold text-neutral-950">Repairs Total</span>
-                      <span className="font-bold text-primary text-lg">
-                        {formatPrice(repairs.reduce((sum, r) => sum + r.cost, 0))}
-                      </span>
-                    </div>
                   </div>
                 )}
               </ModalSection>
             )}
+
+            <ModalSection title="Grand Total">
+              <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
+                <span className="font-semibold text-neutral-950">Grand Total</span>
+                <span className="font-bold text-primary text-lg">{formatPrice(viewGrandTotal)}</span>
+              </div>
+            </ModalSection>
 
             {viewOrder.notes && (
               <ModalSection title="Notes">
@@ -2442,8 +3310,244 @@ export function JobOrderManagement() {
             />
           </ModalSection>
 
+          {/* Line-based items editor for draft orders */}
+          {editOrder && isEditableStatus(editOrder.status) && canEditItems && (editOrder.job_order_lines || []).length > 0 && (
+            <>
+              <ModalSection title="Packages">
+                <div className="flex gap-2 items-end">
+                  <div className="flex-1">
+                    <ModalSelect
+                      value={editLineSelectedPackageId}
+                      onChange={setEditLineSelectedPackageId}
+                      placeholder="Select package..."
+                      options={editPackageItemOptions}
+                    />
+                  </div>
+                  <div className="w-20">
+                    <ModalInput type="number" value={editLineSelectedPackageQty} onChange={setEditLineSelectedPackageQty} placeholder="Qty" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddEditLinePackage}
+                    disabled={!editLineSelectedPackageId || editResolvingPrice}
+                    className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+                  >
+                    {editResolvingPrice ? <LuRefreshCw className="w-4 h-4 animate-spin" /> : <LuPlus className="w-4 h-4" />}
+                  </button>
+                </div>
+
+                {editLinePackageLines.length > 0 && (
+                  <div className="mt-3 space-y-3">
+                    {editLinePackageLines.map((line) => (
+                      <div key={line.package_item_id} className="bg-neutral-100 rounded-xl p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-neutral-950 text-sm truncate">{line.package_item_name}</p>
+                            <p className="text-xs text-neutral-900">Package total: {formatPrice(line.total)}</p>
+                          </div>
+                          <input
+                            type="number"
+                            min={1}
+                            value={line.quantity}
+                            onChange={(e) => handleEditLinePackageQty(line.package_item_id, parseInt(e.target.value, 10) || 1)}
+                            className="w-14 px-2 py-1 bg-white rounded text-xs text-center text-neutral-950 focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                          <button type="button" onClick={() => handleRemoveEditLinePackage(line.package_item_id)} className="text-negative hover:text-negative-900 p-1">
+                            <LuX className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <div className="mt-2 border-t border-neutral-200 pt-2 space-y-2">
+                          <p className="text-xs font-semibold text-primary uppercase">Base Components</p>
+                          <div>
+                            <p className="text-[11px] font-semibold text-neutral-900 uppercase">Labor</p>
+                            {line.base_labor_components.length > 0 ? line.base_labor_components.map((c, idx) => (
+                              <div key={`edit-base-labor-${idx}`} className="flex justify-between text-xs text-neutral-900">
+                                <span>{c.labor_item_name}</span>
+                                <span>{formatPrice(c.unit_price * c.quantity)}</span>
+                              </div>
+                            )) : <p className="text-xs text-neutral-900">None</p>}
+                          </div>
+                          <div>
+                            <p className="text-[11px] font-semibold text-neutral-900 uppercase">Inventory</p>
+                            {line.base_inventory_components.length > 0 ? line.base_inventory_components.map((c, idx) => (
+                              <div key={`edit-base-inv-${idx}`} className="flex justify-between text-xs text-neutral-900">
+                                <span>{c.inventory_item_name}</span>
+                                <span>{formatPrice(c.unit_price * c.quantity)}</span>
+                              </div>
+                            )) : <p className="text-xs text-neutral-900">None</p>}
+                          </div>
+                        </div>
+
+                        <div className="mt-2 border-t border-neutral-200 pt-2 space-y-2">
+                          <p className="text-xs font-semibold text-primary uppercase">Vehicle-Specific Components - {(editOrder?.vehicle_class || "light").replace("_", " ")}</p>
+                          <div>
+                            <p className="text-[11px] font-semibold text-neutral-900 uppercase">Labor</p>
+                            {line.vehicle_specific_labor_components.length > 0 ? line.vehicle_specific_labor_components.map((c, idx) => (
+                              <div key={`edit-extra-labor-${idx}`} className="flex items-center justify-between gap-2 text-xs text-neutral-900">
+                                <span className="flex-1 truncate">{c.labor_item_name}</span>
+                                <span>{formatPrice(c.unit_price * c.quantity)}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveEditVehicleSpecificLabor(line.package_item_id, idx)}
+                                  className="text-negative hover:text-negative-900 p-0.5"
+                                  title="Remove item"
+                                >
+                                  <LuX className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            )) : <p className="text-xs text-neutral-900">None</p>}
+                          </div>
+
+                          <div>
+                            <p className="text-[11px] font-semibold text-neutral-900 uppercase">Inventory</p>
+                            {line.vehicle_specific_inventory_components.length > 0 ? line.vehicle_specific_inventory_components.map((c, idx) => (
+                              <div key={`edit-extra-inv-${idx}`} className="flex items-center justify-between gap-2 text-xs text-neutral-900">
+                                <span className="flex-1 truncate">{c.inventory_item_name}</span>
+                                <span>{formatPrice(c.unit_price * c.quantity)}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveEditVehicleSpecificInventory(line.package_item_id, idx)}
+                                  className="text-negative hover:text-negative-900 p-0.5"
+                                  title="Remove item"
+                                >
+                                  <LuX className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            )) : <p className="text-xs text-neutral-900">None</p>}
+                          </div>
+
+                          <div className="flex gap-2 items-end pt-1">
+                            <div className="w-40">
+                              <ModalSelect
+                                value={editVehicleSpecificTypeByPackage[line.package_item_id] || ""}
+                                onChange={(value) =>
+                                  handleEditVehicleSpecificTypeChange(
+                                    line.package_item_id,
+                                    value === "labor" || value === "inventory" ? value : ""
+                                  )
+                                }
+                                placeholder="Type..."
+                                options={[
+                                  { value: "labor", label: "Labor" },
+                                  { value: "inventory", label: "Inventory" },
+                                ]}
+                                className="bg-white"
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <ModalSelect
+                                value={editVehicleSpecificItemByPackage[line.package_item_id] || ""}
+                                onChange={(value) => handleEditVehicleSpecificItemChange(line.package_item_id, value)}
+                                placeholder={
+                                  (editVehicleSpecificTypeByPackage[line.package_item_id] || "") === "labor"
+                                    ? "Select labor..."
+                                    : (editVehicleSpecificTypeByPackage[line.package_item_id] || "") === "inventory"
+                                      ? "Select inventory..."
+                                      : "Select item..."
+                                }
+                                options={
+                                  (editVehicleSpecificTypeByPackage[line.package_item_id] || "") === "labor"
+                                    ? editLaborItemOptions
+                                    : (editVehicleSpecificTypeByPackage[line.package_item_id] || "") === "inventory"
+                                      ? editInventoryItemOptions
+                                      : []
+                                }
+                                disabled={!(editVehicleSpecificTypeByPackage[line.package_item_id] || "")}
+                                className="bg-white"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleAddEditVehicleSpecificComponent(line.package_item_id)}
+                              disabled={!(editVehicleSpecificTypeByPackage[line.package_item_id] || "") || !(editVehicleSpecificItemByPackage[line.package_item_id] || "")}
+                              className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+                            >
+                              <LuPlus className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ModalSection>
+
+              <ModalSection title="Labor">
+                <div className="flex gap-2 items-end">
+                  <div className="flex-1">
+                    <ModalSelect value={editLineSelectedLaborId} onChange={setEditLineSelectedLaborId} placeholder="Select labor..." options={editLaborItemOptions} />
+                  </div>
+                  <div className="w-20">
+                    <ModalInput type="number" value={editLineSelectedLaborQty} onChange={setEditLineSelectedLaborQty} placeholder="Qty" />
+                  </div>
+                  <button type="button" onClick={handleAddEditLineLabor} className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 transition-colors shrink-0">
+                    <LuPlus className="w-4 h-4" />
+                  </button>
+                </div>
+                {editLineLaborLines.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {editLineLaborLines.map((line, idx) => (
+                      <div key={`${line.labor_item_id}-${idx}`} className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3">
+                        <div>
+                          <p className="font-medium text-neutral-950 text-sm">{line.labor_item_name}</p>
+                          <p className="text-xs text-neutral-900">Quantity: {line.quantity}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-semibold text-neutral-950 text-sm">{formatPrice(line.total)}</span>
+                          <button type="button" onClick={() => handleRemoveEditLineLabor(idx)} className="text-negative hover:text-negative-900 p-1">
+                            <LuX className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ModalSection>
+
+              <ModalSection title="Inventory">
+                <div className="flex gap-2 items-end">
+                  <div className="flex-1">
+                    <ModalSelect value={editLineSelectedInventoryId} onChange={setEditLineSelectedInventoryId} placeholder="Select inventory..." options={editInventoryItemOptions} />
+                  </div>
+                  <div className="w-20">
+                    <ModalInput type="number" value={editLineSelectedInventoryQty} onChange={setEditLineSelectedInventoryQty} placeholder="Qty" />
+                  </div>
+                  <button type="button" onClick={handleAddEditLineInventory} className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 transition-colors shrink-0">
+                    <LuPlus className="w-4 h-4" />
+                  </button>
+                </div>
+                {editLineInventoryLines.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {editLineInventoryLines.map((line, idx) => (
+                      <div key={`${line.inventory_item_id}-${idx}`} className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3">
+                        <div>
+                          <p className="font-medium text-neutral-950 text-sm">{line.inventory_item_name}</p>
+                          <p className="text-xs text-neutral-900">Quantity: {line.quantity}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-semibold text-neutral-950 text-sm">{formatPrice(line.total)}</span>
+                          <button type="button" onClick={() => handleRemoveEditLineInventory(idx)} className="text-negative hover:text-negative-900 p-1">
+                            <LuX className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ModalSection>
+
+              <ModalSection title="Items Total">
+                <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
+                  <span className="font-semibold text-neutral-950">Grand Total</span>
+                  <span className="font-bold text-primary text-lg">{formatPrice(editLineItemsTotal)}</span>
+                </div>
+              </ModalSection>
+            </>
+          )}
+
           {/* Items section — only for created/rejected orders and roles with package access */}
-          {editOrder && isEditableStatus(editOrder.status) && canEditItems && (
+          {editOrder && isEditableStatus(editOrder.status) && canEditItems && (!editOrder.job_order_lines || editOrder.job_order_lines.length === 0) && (
             <ModalSection title="Items Lists">
               {editLoadingItems ? (
                 <p className="text-sm text-neutral-900 text-center py-4">Loading items...</p>
@@ -2459,6 +3563,14 @@ export function JobOrderManagement() {
                         options={editPackageItemOptions}
                       />
                     </div>
+                    <div className="flex-1">
+                      <ModalSelect
+                        value={editSelectedLaborId}
+                        onChange={setEditSelectedLaborId}
+                        placeholder="Select Labor"
+                        options={editLaborItemOptions}
+                      />
+                    </div>
                     <div className="w-20">
                       <ModalInput
                         type="number"
@@ -2470,7 +3582,7 @@ export function JobOrderManagement() {
                     <button
                       type="button"
                       onClick={handleAddEditDraftItem}
-                      disabled={!editSelectedPackageId || editResolvingPrice}
+                      disabled={!editSelectedPackageId || !editSelectedLaborId || editResolvingPrice}
                       className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
                     >
                       {editResolvingPrice ? (
@@ -2631,7 +3743,7 @@ export function JobOrderManagement() {
 
                   {editItems.length === 0 && editDraftItems.length === 0 && (
                     <p className="text-sm text-neutral-900 text-center py-4">
-                      No items. Select a Package item and click + to add.
+                      No items. Select a Package item and Labor, then click + to add.
                     </p>
                   )}
                 </>

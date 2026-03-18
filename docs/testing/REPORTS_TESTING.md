@@ -11,7 +11,9 @@ The Reports module allows authorized users to create, configure, view, edit, del
 3. Reports can have optional **date range filters** (start/end date).
 4. Report data is generated dynamically from the database each time it is viewed or exported.
 5. PDF and Excel exports are generated **client-side** using the theme's primary color.
-6. Deleting a report is a **soft delete** (sets `is_deleted = true`).
+6. Deleting a report is **mode-based**:
+  - hard delete when no references exist,
+  - soft deactivate (`is_deleted = true`) when references exist.
 7. All report actions (create, update, delete, export) are **audit-logged**.
 
 ### RBAC (Role-Based Access Control)
@@ -31,10 +33,11 @@ The Reports module allows authorized users to create, configure, view, edit, del
 | Method | Endpoint                           | Description                          |
 | ------ | ---------------------------------- | ------------------------------------ |
 | GET    | `/api/reports`                     | List reports with filtering/pagination |
+| GET    | `/api/reports/:id/delete-mode`     | Check delete mode (delete/deactivate) |
 | GET    | `/api/reports/:id`                 | Get a single report                  |
 | POST   | `/api/reports`                     | Create a new report                  |
 | PUT    | `/api/reports/:id`                 | Update a report's configuration      |
-| DELETE | `/api/reports/:id`                 | Soft delete a report                 |
+| DELETE | `/api/reports/:id`                 | Hard delete or soft deactivate based on references |
 | POST   | `/api/reports/:id/generate`        | Generate report data dynamically     |
 | POST   | `/api/reports/generate-preview`    | Generate preview without saving      |
 | GET    | `/api/reports/:id/export/:format`  | Export report as CSV (backend)       |
@@ -261,20 +264,22 @@ Verify:
 
 ---
 
-### Test 10 — Delete a Report
+### Test 10 — Delete/Deactivate a Report
 
-**Goal:** Verify soft delete works correctly.
+**Goal:** Verify dynamic delete mode works correctly.
 
 1. On a report card, click the **"Delete"** button (trash icon)
-2. A confirmation modal opens
+2. A confirmation modal opens and checks mode
 
 Verify:
-- ✅ Delete modal shows report name in the confirmation message
-- ✅ Confirmation message: `Are you sure you want to delete [Report Name]? This action cannot be undone.`
-- ✅ Two buttons: "Cancel" (outlined negative) and "Delete" (filled negative)
+- ✅ While mode is loading, primary button shows `Checking...`
+- ✅ Modal title and primary action adapt by mode:
+  - `Delete Report` + `Delete` when no references
+  - `Deactivate Report` + `Deactivate` when references exist
 - ✅ Clicking "Cancel" closes the modal without deleting
-- ✅ Clicking "Delete" removes the report from the list
-- ✅ Success toast: "Report deleted successfully"
+- ✅ Delete mode removes the report row from DB and list
+- ✅ Deactivate mode hides the report from active list
+- ✅ Success toast matches action (`deleted` or `deactivated`)
 - ✅ Report count in subtitle decreases
 
 ---
@@ -309,7 +314,24 @@ Verify:
 
 ---
 
-### Test 13 — Pagination
+### Test 13 — Filter by Status (Active/Deactivated)
+
+**Goal:** Verify the status filter supports deactivated reports.
+
+1. Open the **Status** filter
+2. Select **Active**
+3. Select **Deactivated**
+4. Select **All Status**
+
+Verify:
+- ✅ Active shows only `is_deleted = false` reports
+- ✅ Deactivated shows only `is_deleted = true` reports
+- ✅ All Status shows both active and deactivated reports
+- ✅ Status filter works in combination with search and type filter
+
+---
+
+### Test 14 — Pagination
 
 **Goal:** Verify pagination works with many reports.
 
@@ -324,7 +346,7 @@ Verify:
 
 ---
 
-### Test 14 — Card Dropdown Behavior
+### Test 15 — Card Dropdown Behavior
 
 **Goal:** Verify the "More" dropdown closes correctly.
 
@@ -339,7 +361,7 @@ Verify:
 
 ---
 
-### Test 15 — Error Handling
+### Test 16 — Error Handling
 
 **Goal:** Verify error states are handled gracefully.
 
@@ -362,9 +384,10 @@ Verify:
 | Create report with name, type, branch, dates  | ⬜     |
 | Edit report (pre-filled form)                 | ⬜     |
 | View report with generated data               | ⬜     |
-| Delete report (soft delete with confirmation) | ⬜     |
+| Delete/deactivate report (dynamic mode)       | ⬜     |
 | Search by name and type                       | ⬜     |
 | Filter by report type                         | ⬜     |
+| Filter by status (active/deactivated)         | ⬜     |
 | Pagination (12 per page)                      | ⬜     |
 | Export as PDF (styled, theme color)            | ⬜     |
 | Export as Excel (styled, theme color)          | ⬜     |

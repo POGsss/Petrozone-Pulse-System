@@ -133,13 +133,15 @@ export function ModalSelect({
   disabled,
   className = "",
 }: ModalSelectProps) {
+  const hasCustomBackground = /(^|\s)bg-[^\s]+/.test(className);
+
   return (
     <div className="relative">
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className={`w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 appearance-none focus:outline-none focus:ring-2 focus:ring-primary transition-all ${!value ? "text-neutral-900" : ""} ${disabled ? "cursor-default" : ""} ${className}`}
+        className={`w-full px-4 py-3.5 ${hasCustomBackground ? "" : "bg-neutral-100"} rounded-xl text-neutral-950 appearance-none focus:outline-none focus:ring-2 focus:ring-primary transition-all ${!value ? "text-neutral-900" : ""} ${disabled ? "cursor-default" : ""} ${className}`}
       >
         {placeholder && <option value="">{placeholder}</option>}
         {options.map((opt) => (

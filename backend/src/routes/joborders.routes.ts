@@ -11,6 +11,339 @@ const router = Router();
 // All job order routes require authentication
 router.use(requireAuth);
 
+type VehicleClass = "light" | "heavy" | "extra_heavy";
+type JobOrderLineType = "labor" | "package" | "inventory";
+
+interface IncomingJobOrderLine {
+  id?: string;
+  line_type: JobOrderLineType;
+  reference_id?: string | null;
+  quantity?: number;
+  vehicle_specific_components?: {
+    labor?: Array<{ labor_item_id: string; quantity?: number }>;
+    inventory?: Array<{ inventory_item_id: string; quantity?: number }>;
+  };
+}
+
+interface ResolvedJobOrderLine {
+  line_type: JobOrderLineType;
+  reference_id: string | null;
+  name: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
+  metadata: Record<string, unknown>;
+}
+
+const ORDER_SELECT_WITH_LINES = `
+  *,
+  customers(id, full_name, contact_number, email),
+  vehicles(id, plate_number, model, vehicle_type),
+  branches(id, name, code),
+  job_order_items(*, job_order_item_inventories(*)),
+  job_order_lines(*),
+  assigned_technician:user_profiles!job_orders_assigned_technician_id_fkey(id, full_name, email)
+`;
+
+function getLaborPriceByClass(
+  labor: { light_price: number; heavy_price: number; extra_heavy_price: number },
+  vehicleClass: VehicleClass
+): number {
+  if (vehicleClass === "heavy") return labor.heavy_price || 0;
+  if (vehicleClass === "extra_heavy") return labor.extra_heavy_price || 0;
+  return labor.light_price || 0;
+}
+
+async function resolveIncomingLines(
+  lines: IncomingJobOrderLine[],
+  branchId: string,
+  vehicleClass: VehicleClass
+): Promise<ResolvedJobOrderLine[]> {
+  const resolved: ResolvedJobOrderLine[] = [];
+
+  for (const line of lines) {
+    const qty = Number(line.quantity ?? 1);
+    if (Number.isNaN(qty) || qty <= 0) {
+      throw new Error("Line quantity must be greater than 0");
+    }
+
+    if (line.line_type === "labor") {
+      if (!line.reference_id) throw new Error("Labor line requires reference_id");
+
+      const { data: laborItem } = await supabaseAdmin
+        .from("labor_items")
+        .select("id, name, status, light_price, heavy_price, extra_heavy_price")
+        .eq("id", line.reference_id)
+        .single();
+
+      if (!laborItem || laborItem.status !== "active") {
+        throw new Error("Labor item not found or inactive");
+      }
+
+      const unitPrice = getLaborPriceByClass(laborItem, vehicleClass);
+      resolved.push({
+        line_type: "labor",
+        reference_id: laborItem.id,
+        name: laborItem.name,
+        quantity: qty,
+        unit_price: unitPrice,
+        total: unitPrice * qty,
+        metadata: {
+          source: "labor_items",
+          price_class: vehicleClass,
+        },
+      });
+      continue;
+    }
+
+    if (line.line_type === "inventory") {
+      if (!line.reference_id) throw new Error("Inventory line requires reference_id");
+
+      const { data: invItem } = await supabaseAdmin
+        .from("inventory_items")
+        .select("id, item_name, cost_price, status, branch_id")
+        .eq("id", line.reference_id)
+        .single();
+
+      if (!invItem || invItem.status !== "active") {
+        throw new Error("Inventory item not found or inactive");
+      }
+
+      if (invItem.branch_id !== branchId) {
+        throw new Error("Inventory item does not belong to the selected branch");
+      }
+
+      const unitPrice = Number(invItem.cost_price || 0);
+      resolved.push({
+        line_type: "inventory",
+        reference_id: invItem.id,
+        name: invItem.item_name,
+        quantity: qty,
+        unit_price: unitPrice,
+        total: unitPrice * qty,
+        metadata: {
+          source: "inventory_items",
+        },
+      });
+      continue;
+    }
+
+    if (line.line_type === "package") {
+      if (!line.reference_id) throw new Error("Package line requires reference_id");
+
+      const { data: packageItem } = await supabaseAdmin
+        .from("package_items")
+        .select("id, name, status")
+        .eq("id", line.reference_id)
+        .single();
+
+      if (!packageItem || packageItem.status !== "active") {
+        throw new Error("Package item not found or inactive");
+      }
+
+      const [pkgLaborLinksRes, pkgInventoryLinksRes] = await Promise.all([
+        supabaseAdmin
+          .from("package_labor_items")
+          .select("quantity, labor_items(id, name, light_price, heavy_price, extra_heavy_price, status)")
+          .eq("package_id", packageItem.id),
+        supabaseAdmin
+          .from("package_inventory_items")
+          .select("quantity, inventory_items(id, item_name, cost_price, status, branch_id)")
+          .eq("package_id", packageItem.id),
+      ]);
+
+      const baseLaborComponents: Array<{ labor_item_id: string; name: string; quantity: number; unit_price: number }> = [];
+      const baseInventoryComponents: Array<{ inventory_item_id: string; name: string; quantity: number; unit_price: number }> = [];
+
+      let unitPrice = 0;
+
+      for (const link of pkgLaborLinksRes.data || []) {
+        const labor = (link as any).labor_items;
+        if (!labor || labor.status !== "active") continue;
+        const compQty = Number((link as any).quantity || 1);
+        const compUnit = getLaborPriceByClass(labor, vehicleClass);
+        unitPrice += compQty * compUnit;
+        baseLaborComponents.push({
+          labor_item_id: labor.id,
+          name: labor.name,
+          quantity: compQty,
+          unit_price: compUnit,
+        });
+      }
+
+      for (const link of pkgInventoryLinksRes.data || []) {
+        const inv = (link as any).inventory_items;
+        if (!inv || inv.status !== "active") continue;
+        if (inv.branch_id !== branchId) continue;
+        const compQty = Number((link as any).quantity || 1);
+        const compUnit = Number(inv.cost_price || 0);
+        unitPrice += compQty * compUnit;
+        baseInventoryComponents.push({
+          inventory_item_id: inv.id,
+          name: inv.item_name,
+          quantity: compQty,
+          unit_price: compUnit,
+        });
+      }
+
+      const extraLabor: Array<{ labor_item_id: string; name: string; quantity: number; unit_price: number }> = [];
+      const extraInventory: Array<{ inventory_item_id: string; name: string; quantity: number; unit_price: number }> = [];
+
+      for (const extra of line.vehicle_specific_components?.labor || []) {
+        const extraQty = Number(extra.quantity ?? 1);
+        if (!extra.labor_item_id || Number.isNaN(extraQty) || extraQty <= 0) continue;
+
+        const { data: labor } = await supabaseAdmin
+          .from("labor_items")
+          .select("id, name, status, light_price, heavy_price, extra_heavy_price")
+          .eq("id", extra.labor_item_id)
+          .single();
+
+        if (!labor || labor.status !== "active") continue;
+        const compUnit = getLaborPriceByClass(labor, vehicleClass);
+        unitPrice += extraQty * compUnit;
+        extraLabor.push({
+          labor_item_id: labor.id,
+          name: labor.name,
+          quantity: extraQty,
+          unit_price: compUnit,
+        });
+      }
+
+      for (const extra of line.vehicle_specific_components?.inventory || []) {
+        const extraQty = Number(extra.quantity ?? 1);
+        if (!extra.inventory_item_id || Number.isNaN(extraQty) || extraQty <= 0) continue;
+
+        const { data: inv } = await supabaseAdmin
+          .from("inventory_items")
+          .select("id, item_name, cost_price, status, branch_id")
+          .eq("id", extra.inventory_item_id)
+          .single();
+
+        if (!inv || inv.status !== "active" || inv.branch_id !== branchId) continue;
+        const compUnit = Number(inv.cost_price || 0);
+        unitPrice += extraQty * compUnit;
+        extraInventory.push({
+          inventory_item_id: inv.id,
+          name: inv.item_name,
+          quantity: extraQty,
+          unit_price: compUnit,
+        });
+      }
+
+      resolved.push({
+        line_type: "package",
+        reference_id: packageItem.id,
+        name: packageItem.name,
+        quantity: qty,
+        unit_price: unitPrice,
+        total: unitPrice * qty,
+        metadata: {
+          vehicle_class: vehicleClass,
+          base_components: {
+            labor: baseLaborComponents,
+            inventory: baseInventoryComponents,
+          },
+          vehicle_specific_components: {
+            labor: extraLabor,
+            inventory: extraInventory,
+          },
+        },
+      });
+      continue;
+    }
+
+    throw new Error("Unsupported line type");
+  }
+
+  return resolved;
+}
+
+async function recalculateJobOrderTotal(jobOrderId: string): Promise<number> {
+  const { data: lines } = await supabaseAdmin
+    .from("job_order_lines")
+    .select("total")
+    .eq("job_order_id", jobOrderId);
+
+  const { data: repairs } = await supabaseAdmin
+    .from("third_party_repairs")
+    .select("cost")
+    .eq("job_order_id", jobOrderId)
+    .eq("is_deleted", false);
+
+  const linesTotal = (lines || []).reduce((sum, l: any) => sum + Number(l.total || 0), 0);
+  const repairsTotal = (repairs || []).reduce((sum, r: any) => sum + Number(r.cost || 0), 0);
+  const grandTotal = linesTotal + repairsTotal;
+
+  await supabaseAdmin.from("job_orders").update({ total_amount: grandTotal }).eq("id", jobOrderId);
+  return grandTotal;
+}
+
+async function deductStockForJobOrderLines(jobOrderId: string, branchId: string, userId: string): Promise<{ success: boolean; error?: string }> {
+  const { data: lines } = await supabaseAdmin
+    .from("job_order_lines")
+    .select("line_type, reference_id, quantity, metadata")
+    .eq("job_order_id", jobOrderId);
+
+  const deductions: Record<string, number> = {};
+
+  for (const line of lines || []) {
+    const qty = Number((line as any).quantity || 0);
+    if (qty <= 0) continue;
+
+    if ((line as any).line_type === "inventory") {
+      const invId = (line as any).reference_id as string | null;
+      if (invId) deductions[invId] = (deductions[invId] || 0) + qty;
+      continue;
+    }
+
+    if ((line as any).line_type === "package") {
+      const meta = ((line as any).metadata || {}) as any;
+      const baseInv: any[] = meta?.base_components?.inventory || [];
+      const extraInv: any[] = meta?.vehicle_specific_components?.inventory || [];
+      for (const comp of [...baseInv, ...extraInv]) {
+        const invId = comp.inventory_item_id as string | undefined;
+        const compQty = Number(comp.quantity || 0);
+        if (!invId || compQty <= 0) continue;
+        deductions[invId] = (deductions[invId] || 0) + compQty * qty;
+      }
+    }
+  }
+
+  for (const [inventoryItemId, neededQty] of Object.entries(deductions)) {
+    const { data: onHand } = await supabaseAdmin
+      .from("inventory_on_hand")
+      .select("quantity_on_hand")
+      .eq("inventory_item_id", inventoryItemId)
+      .maybeSingle();
+
+    const available = Number((onHand as any)?.quantity_on_hand || 0);
+    if (available < neededQty) {
+      return {
+        success: false,
+        error: `Insufficient stock. Inventory item ${inventoryItemId} requires ${neededQty}, available ${available}.`,
+      };
+    }
+
+    const { error } = await supabaseAdmin.from("stock_movements").insert({
+      inventory_item_id: inventoryItemId,
+      movement_type: "stock_out" as "stock_in" | "stock_out" | "adjustment",
+      quantity: neededQty,
+      reference_type: "job_order" as "purchase_order" | "job_order" | "adjustment",
+      reference_id: jobOrderId,
+      reason: "Auto-deduction for Job Order",
+      branch_id: branchId,
+      created_by: userId,
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  return { success: true };
+}
+
 /**
  * GET /api/job-orders
  * List job orders with filtering and pagination
@@ -41,6 +374,8 @@ router.get(
           customers(id, full_name, contact_number, email),
           vehicles(id, plate_number, model, vehicle_type),
           branches(id, name, code),
+          job_order_items(line_total),
+          job_order_lines(total),
           third_party_repairs(cost)
         `,
           { count: "exact" }
@@ -132,16 +467,7 @@ router.get(
 
       const { data: order, error } = await supabaseAdmin
         .from("job_orders")
-        .select(
-          `
-          *,
-          customers(id, full_name, contact_number, email),
-          vehicles(id, plate_number, model, vehicle_type),
-          branches(id, name, code),
-          job_order_items(*, job_order_item_inventories(*)),
-          assigned_technician:user_profiles!job_orders_assigned_technician_id_fkey(id, full_name, email)
-        `
-        )
+        .select(ORDER_SELECT_WITH_LINES)
         .eq("id", orderId)
         .single();
 
@@ -185,7 +511,7 @@ router.post(
   requireRoles("POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { customer_id, vehicle_id, branch_id, notes, items, vehicle_class, odometer_reading, vehicle_bay } = req.body;
+      const { customer_id, vehicle_id, branch_id, notes, items, lines, vehicle_class, odometer_reading, vehicle_bay } = req.body;
 
       // Validation
       if (!customer_id) {
@@ -204,8 +530,10 @@ router.post(
         res.status(400).json({ error: "Odometer reading is required" });
         return;
       }
-      if (!items || !Array.isArray(items) || items.length === 0) {
-        res.status(400).json({ error: "At least one item is required" });
+      const hasLegacyItems = Array.isArray(items) && items.length > 0;
+      const hasLineItems = Array.isArray(lines) && lines.length > 0;
+      if (!hasLegacyItems && !hasLineItems) {
+        res.status(400).json({ error: "At least one line is required" });
         return;
       }
 
@@ -259,9 +587,90 @@ router.post(
         return;
       }
 
+      // Module 3 flow: create line-based job order
+      if (hasLineItems) {
+        let resolvedLines: ResolvedJobOrderLine[] = [];
+        try {
+          resolvedLines = await resolveIncomingLines(lines as IncomingJobOrderLine[], branch_id, vehicle_class as VehicleClass);
+        } catch (lineErr) {
+          res.status(400).json({ error: lineErr instanceof Error ? lineErr.message : "Failed to resolve job order lines" });
+          return;
+        }
+
+        const totalAmount = resolvedLines.reduce((sum, l) => sum + l.total, 0);
+
+        const { data: order, error: orderError } = await supabaseAdmin
+          .from("job_orders")
+          .insert({
+            order_number: "",
+            customer_id,
+            vehicle_id,
+            branch_id,
+            vehicle_class,
+            notes: notes?.trim() || null,
+            total_amount: totalAmount,
+            odometer_reading: parsedOdometerReading,
+            vehicle_bay: vehicle_bay?.trim() || null,
+            created_by: req.user!.id,
+          })
+          .select("id, order_number")
+          .single();
+
+        if (orderError || !order) {
+          res.status(500).json({ error: orderError?.message || "Failed to create job order" });
+          return;
+        }
+
+        const { error: linesError } = await supabaseAdmin
+          .from("job_order_lines")
+          .insert(
+            resolvedLines.map((line) => ({
+              job_order_id: order.id,
+              line_type: line.line_type,
+              reference_id: line.reference_id,
+              name: line.name,
+              quantity: line.quantity,
+              unit_price: line.unit_price,
+              total: line.total,
+              metadata: line.metadata as any,
+            }))
+          );
+
+        if (linesError) {
+          await supabaseAdmin.from("job_orders").delete().eq("id", order.id);
+          res.status(500).json({ error: `Failed to create job order lines: ${linesError.message}` });
+          return;
+        }
+
+        await fixAuditLogUser("JOB_ORDER", order.id, "CREATE", req.user!.id, req.user!.branchIds[0] || null);
+
+        try {
+          await supabaseAdmin.rpc("log_admin_action", {
+            p_action: "JO_CREATED",
+            p_entity_type: "JOB_ORDER",
+            p_entity_id: order.id,
+            p_performed_by_user_id: req.user!.id,
+            p_performed_by_branch_id: req.user!.branchIds[0] || null,
+            p_new_values: { order_number: order.order_number, status: "draft", line_count: resolvedLines.length },
+          });
+        } catch (auditErr) {
+          console.error("Audit log error:", auditErr);
+        }
+
+        const { data: completeOrder } = await supabaseAdmin
+          .from("job_orders")
+          .select(ORDER_SELECT_WITH_LINES)
+          .eq("id", order.id)
+          .single();
+
+        res.status(201).json(completeOrder);
+        return;
+      }
+
       // Validate items and compute totals
       let totalAmount = 0;
       const orderItems: Array<{
+        labor_item_id: string;
         package_item_id: string;
         package_item_name: string;
         package_item_type: string;
@@ -282,6 +691,10 @@ router.post(
           res.status(400).json({ error: "Package item ID is required for each item" });
           return;
         }
+        if (!item.labor_item_id) {
+          res.status(400).json({ error: "Labor item ID is required for each item" });
+          return;
+        }
         const qty = item.quantity || 1;
         if (qty < 1) {
           res.status(400).json({ error: "Quantity must be at least 1" });
@@ -300,26 +713,34 @@ router.post(
           return;
         }
 
-        // Get active pricing matrix for this package item
-        const { data: pricingMatrix } = await supabaseAdmin
-          .from("pricing_matrices")
-          .select("*")
-          .eq("package_item_id", item.package_item_id)
-          .eq("status", "active")
-          .maybeSingle();
+        // Resolve labor item directly (decoupled from package)
+        const { data: laborItem, error: laborError } = await supabaseAdmin
+          .from("labor_items")
+          .select("id, light_price, heavy_price, extra_heavy_price, status")
+          .eq("id", item.labor_item_id)
+          .single();
 
-        // Select labor price based on vehicle_class
-        let laborPrice = 0;
-        if (pricingMatrix) {
-          const priceKey = `${vehicle_class}_price` as "light_price" | "heavy_price" | "extra_heavy_price";
-          laborPrice = pricingMatrix[priceKey] || 0;
+        if (laborError || !laborItem) {
+          res.status(400).json({ error: `Labor item not found: ${item.labor_item_id}` });
+          return;
         }
+        if (laborItem.status !== "active") {
+          res.status(400).json({ error: `Labor item ${item.labor_item_id} is not active` });
+          return;
+        }
+
+        const laborPrice =
+          vehicle_class === "light"
+            ? laborItem.light_price || 0
+            : vehicle_class === "heavy"
+              ? laborItem.heavy_price || 0
+              : laborItem.extra_heavy_price || 0;
 
         // Fetch package inventory template links (legacy support)
         const { data: templateLinks } = await supabaseAdmin
-          .from("package_inventory_links")
-          .select("inventory_item_id, inventory_items(id, item_name, cost_price, branch_id, status)")
-          .eq("package_item_id", item.package_item_id);
+          .from("package_inventory_items")
+          .select("inventory_item_id, quantity, inventory_items(id, item_name, cost_price, branch_id, status)")
+          .eq("package_id", item.package_item_id);
 
         const packageTemplateIds = (templateLinks ?? []).map((l: any) => l.inventory_item_id);
 
@@ -352,9 +773,10 @@ router.post(
               res.status(400).json({ error: `Inventory item ${uiq.inventory_item_id} is not active` });
               return;
             }
-            if (!catItemFull.inventory_types.includes(invItem.category)) {
+            const requiredTypes = catItemFull.inventory_types || [];
+            if (!requiredTypes.includes(invItem.category)) {
               res.status(400).json({
-                error: `Inventory item category "${invItem.category}" is not required by package "${packageItem.name}". Required categories: ${catItemFull.inventory_types.join(", ")}`,
+                error: `Inventory item category "${invItem.category}" is not required by package "${packageItem.name}". Required categories: ${requiredTypes.join(", ")}`,
               });
               return;
             }
@@ -429,6 +851,7 @@ router.post(
         const lineTotal = (laborPrice + inventoryCost) * qty;
 
         orderItems.push({
+          labor_item_id: laborItem.id,
           package_item_id: packageItem.id,
           package_item_name: packageItem.name,
           package_item_type: "labor_package",
@@ -546,15 +969,7 @@ router.post(
       // Fetch complete order with inventory details
       const { data: completeOrder } = await supabaseAdmin
         .from("job_orders")
-        .select(
-          `
-          *,
-          customers(id, full_name, contact_number, email),
-          vehicles(id, plate_number, model, vehicle_type),
-          branches(id, name, code),
-          job_order_items(*, job_order_item_inventories(*))
-        `
-        )
+        .select(ORDER_SELECT_WITH_LINES)
         .eq("id", order.id)
         .single();
 
@@ -684,6 +1099,128 @@ router.put(
 );
 
 /**
+ * PATCH /api/job-orders/:id
+ * Update draft job order with optional notes and full line replacement.
+ * Roles: POC, JS, R
+ */
+router.patch(
+  "/:id",
+  requireRoles("POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const orderId = req.params.id as string;
+      const { notes, lines } = req.body as { notes?: string | null; lines?: IncomingJobOrderLine[] };
+
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select("id, branch_id, status, vehicle_class")
+        .eq("id", orderId)
+        .eq("is_deleted", false)
+        .single();
+
+      if (fetchError || !existing) {
+        if (fetchError?.code === "PGRST116") {
+          res.status(404).json({ error: "Job order not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError?.message || "Failed to fetch job order" });
+        return;
+      }
+
+      if (!req.user!.roles.includes("HM") && !req.user!.branchIds.includes(existing.branch_id)) {
+        res.status(403).json({ error: "No access to this job order's branch" });
+        return;
+      }
+
+      if (existing.status !== "draft") {
+        res.status(400).json({ error: "Only draft job orders can be edited." });
+        return;
+      }
+
+      const updatePayload: Record<string, unknown> = {};
+      if (notes !== undefined) {
+        updatePayload.notes = notes?.trim() || null;
+      }
+
+      if (Object.keys(updatePayload).length > 0) {
+        const { error: updateError } = await supabaseAdmin
+          .from("job_orders")
+          .update(updatePayload)
+          .eq("id", orderId);
+        if (updateError) {
+          res.status(500).json({ error: updateError.message });
+          return;
+        }
+      }
+
+      if (Array.isArray(lines)) {
+        if (lines.length === 0) {
+          res.status(400).json({ error: "At least one line is required" });
+          return;
+        }
+
+        let resolvedLines: ResolvedJobOrderLine[] = [];
+        try {
+          resolvedLines = await resolveIncomingLines(lines, existing.branch_id, existing.vehicle_class as VehicleClass);
+        } catch (lineErr) {
+          res.status(400).json({ error: lineErr instanceof Error ? lineErr.message : "Failed to resolve lines" });
+          return;
+        }
+
+        const { error: deleteLinesError } = await supabaseAdmin
+          .from("job_order_lines")
+          .delete()
+          .eq("job_order_id", orderId);
+
+        if (deleteLinesError) {
+          res.status(500).json({ error: deleteLinesError.message });
+          return;
+        }
+
+        const { error: insertLinesError } = await supabaseAdmin
+          .from("job_order_lines")
+          .insert(
+            resolvedLines.map((line) => ({
+              job_order_id: orderId,
+              line_type: line.line_type,
+              reference_id: line.reference_id,
+              name: line.name,
+              quantity: line.quantity,
+              unit_price: line.unit_price,
+              total: line.total,
+              metadata: line.metadata as any,
+            }))
+          );
+
+        if (insertLinesError) {
+          res.status(500).json({ error: insertLinesError.message });
+          return;
+        }
+      }
+
+      await recalculateJobOrderTotal(orderId);
+
+      const { data: updated, error: refetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select(ORDER_SELECT_WITH_LINES)
+        .eq("id", orderId)
+        .eq("is_deleted", false)
+        .single();
+
+      if (refetchError || !updated) {
+        res.status(500).json({ error: refetchError?.message || "Failed to fetch updated job order" });
+        return;
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Patch job order error:", error);
+      res.status(500).json({ error: "Failed to patch job order" });
+    }
+  }
+);
+
+/**
  * DELETE /api/job-orders/:id
  * Conditional delete:
  *   - Hard delete if status is "draft" — cascades items, snapshots, repairs
@@ -748,6 +1285,12 @@ router.delete(
         // Delete third-party repairs
         await supabaseAdmin
           .from("third_party_repairs")
+          .delete()
+          .eq("job_order_id", orderId);
+
+        // Delete line-based items
+        await supabaseAdmin
+          .from("job_order_lines")
           .delete()
           .eq("job_order_id", orderId);
 
@@ -967,11 +1510,20 @@ router.patch(
         return;
       }
 
-      // Precondition: at least one line item
-      const { count: itemCount } = await supabaseAdmin
-        .from("job_order_items")
+      // Precondition: at least one line item (Module 3 lines first, legacy fallback)
+      const { count: lineCount } = await supabaseAdmin
+        .from("job_order_lines")
         .select("id", { count: "exact", head: true })
         .eq("job_order_id", orderId);
+
+      let itemCount = lineCount || 0;
+      if (itemCount < 1) {
+        const { count: legacyCount } = await supabaseAdmin
+          .from("job_order_items")
+          .select("id", { count: "exact", head: true })
+          .eq("job_order_id", orderId);
+        itemCount = legacyCount || 0;
+      }
 
       if (!itemCount || itemCount < 1) {
         res.status(400).json({ error: "Missing scope/total/contact or unresolved pricing. At least one line item is required." });
@@ -984,19 +1536,21 @@ router.patch(
         return;
       }
 
-      // Precondition: all matrix-priced items must have resolved pricing
-      const { data: unresolvedItems } = await supabaseAdmin
-        .from("job_order_items")
-        .select("id, package_item_name, labor_price, inventory_cost")
-        .eq("job_order_id", orderId)
-        .eq("labor_price", 0)
-        .eq("inventory_cost", 0);
+      // Legacy unresolved-pricing check (only when order has legacy rows and no line-based rows)
+      if ((lineCount || 0) < 1) {
+        const { data: unresolvedItems } = await supabaseAdmin
+          .from("job_order_items")
+          .select("id, package_item_name, labor_price, inventory_cost")
+          .eq("job_order_id", orderId)
+          .eq("labor_price", 0)
+          .eq("inventory_cost", 0);
 
-      if (unresolvedItems && unresolvedItems.length > 0) {
-        res.status(400).json({
-          error: `Missing scope/total/contact or unresolved pricing. Items with zero pricing: ${unresolvedItems.map((i: any) => i.package_item_name).join(", ")}`,
-        });
-        return;
+        if (unresolvedItems && unresolvedItems.length > 0) {
+          res.status(400).json({
+            error: `Missing scope/total/contact or unresolved pricing. Items with zero pricing: ${unresolvedItems.map((i: any) => i.package_item_name).join(", ")}`,
+          });
+          return;
+        }
       }
 
       // Update status and set approval fields
@@ -1145,26 +1699,30 @@ router.patch(
 
       // FR-3: If approving, check and deduct inventory stock first
       if (decision === "approved") {
-        // Fetch JO items to check stock
-        const { data: joItems } = await supabaseAdmin
-          .from("job_order_items")
-          .select("package_item_id, package_item_name, package_item_type, quantity")
+        const { count: lineCount } = await supabaseAdmin
+          .from("job_order_lines")
+          .select("id", { count: "exact", head: true })
           .eq("job_order_id", orderId);
 
-        if (joItems && joItems.length > 0) {
-          const deductResult = await deductStockForJobOrder(
-            orderId,
-            existing.branch_id,
-            joItems,
-            req.user!.id
-          );
+        let deductResult: { success: boolean; error?: string } = { success: true };
+        if ((lineCount || 0) > 0) {
+          deductResult = await deductStockForJobOrderLines(orderId, existing.branch_id, req.user!.id);
+        } else {
+          const { data: joItems } = await supabaseAdmin
+            .from("job_order_items")
+            .select("package_item_id, package_item_name, package_item_type, quantity")
+            .eq("job_order_id", orderId);
 
-          if (!deductResult.success) {
-            res.status(400).json({
-              error: deductResult.error || "Insufficient stock to approve this job order",
-            });
-            return;
+          if (joItems && joItems.length > 0) {
+            deductResult = await deductStockForJobOrder(orderId, existing.branch_id, joItems, req.user!.id);
           }
+        }
+
+        if (!deductResult.success) {
+          res.status(400).json({
+            error: deductResult.error || "Insufficient stock to approve this job order",
+          });
+          return;
         }
       }
 
@@ -1416,10 +1974,14 @@ router.post(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const orderId = req.params.id as string;
-      const { package_item_id, quantity, inventory_quantities } = req.body;
+      const { package_item_id, labor_item_id, quantity, inventory_quantities } = req.body;
 
       if (!package_item_id) {
         res.status(400).json({ error: "Package item ID is required" });
+        return;
+      }
+      if (!labor_item_id) {
+        res.status(400).json({ error: "Labor item ID is required" });
         return;
       }
       const qty = quantity || 1;
@@ -1482,25 +2044,34 @@ router.post(
         .single();
       const joVehicleClass = orderForClass?.vehicle_class || "light";
 
-      // Get active pricing matrix
-      const { data: pricingMatrix } = await supabaseAdmin
-        .from("pricing_matrices")
-        .select("*")
-        .eq("package_item_id", package_item_id)
-        .eq("status", "active")
-        .maybeSingle();
+      // Resolve labor item directly (decoupled from package)
+      const { data: laborItem, error: laborError } = await supabaseAdmin
+        .from("labor_items")
+        .select("id, light_price, heavy_price, extra_heavy_price, status")
+        .eq("id", labor_item_id)
+        .single();
 
-      let laborPrice = 0;
-      if (pricingMatrix) {
-        const priceKey = `${joVehicleClass}_price` as "light_price" | "heavy_price" | "extra_heavy_price";
-        laborPrice = pricingMatrix[priceKey] || 0;
+      if (laborError || !laborItem) {
+        res.status(400).json({ error: `Labor item not found: ${labor_item_id}` });
+        return;
       }
+      if (laborItem.status !== "active") {
+        res.status(400).json({ error: `Labor item ${labor_item_id} is not active` });
+        return;
+      }
+
+      const laborPrice =
+        joVehicleClass === "light"
+          ? laborItem.light_price || 0
+          : joVehicleClass === "heavy"
+            ? laborItem.heavy_price || 0
+            : laborItem.extra_heavy_price || 0;
 
       // Fetch package inventory template links (legacy support)
       const { data: templateLinks } = await supabaseAdmin
-        .from("package_inventory_links")
-        .select("inventory_item_id, inventory_items(id, item_name, cost_price, branch_id, status)")
-        .eq("package_item_id", package_item_id);
+        .from("package_inventory_items")
+        .select("inventory_item_id, quantity, inventory_items(id, item_name, cost_price, branch_id, status)")
+        .eq("package_id", package_item_id);
 
       const packageTemplateIds = (templateLinks ?? []).map((l: any) => l.inventory_item_id);
 
@@ -1532,7 +2103,8 @@ router.post(
             res.status(400).json({ error: `Inventory item ${uiq.inventory_item_id} is not active` });
             return;
           }
-          if (!catItemFull.inventory_types.includes(invItem.category)) {
+          const requiredTypes = catItemFull.inventory_types || [];
+          if (!requiredTypes.includes(invItem.category)) {
             res.status(400).json({
               error: `Inventory item category "${invItem.category}" is not required by package "${packageItem.name}"`,
             });
@@ -1605,6 +2177,7 @@ router.post(
         .from("job_order_items")
         .insert({
           job_order_id: orderId,
+          labor_item_id: laborItem.id,
           package_item_id: packageItem.id,
           package_item_name: packageItem.name,
           package_item_type: "labor_package",

@@ -181,39 +181,52 @@ export interface PackageInventoryLink {
   };
 }
 
-// Vehicle class type for job orders
-export type VehicleClass = "light" | "heavy" | "extra_heavy";
-
-// Pricing Matrix types
-export type PricingMatrixStatus = "active" | "inactive";
-
-export interface PricingMatrix {
+export interface PackageInventoryItem {
   id: string;
-  package_item_id: string;
-  light_price: number;
-  heavy_price: number;
-  extra_heavy_price: number;
-  status: PricingMatrixStatus;
-  created_by: string | null;
+  package_id: string;
+  inventory_item_id: string;
+  quantity: number;
   created_at: string;
-  updated_at: string;
-  package_items?: {
+  inventory_items?: {
     id: string;
-    name: string;
+    item_name: string;
+    sku_code: string;
+    cost_price: number;
+    unit_of_measure: string;
+    branch_id: string;
   };
 }
 
-export interface ResolvedPricing {
-  package_item: {
+export interface PackageLaborItem {
+  id: string;
+  package_id: string;
+  labor_id: string;
+  quantity: number;
+  created_at: string;
+  labor_items?: {
     id: string;
     name: string;
-  };
-  pricing: {
-    id: string;
     light_price: number;
     heavy_price: number;
     extra_heavy_price: number;
-  } | null;
+    status: string;
+  };
+}
+
+// Vehicle class type for job orders
+export type VehicleClass = "light" | "heavy" | "extra_heavy";
+
+// Labor types
+export type LaborItemStatus = "active" | "inactive";
+
+export interface LaborItem {
+  id: string;
+  name: string;
+  light_price: number;
+  heavy_price: number;
+  extra_heavy_price: number;
+  status: LaborItemStatus;
+  created_at: string;
 }
 
 // Job Order types
@@ -222,6 +235,7 @@ export type JobOrderStatus = "draft" | "pending_approval" | "approved" | "in_pro
 export interface JobOrderItem {
   id: string;
   job_order_id: string;
+  labor_item_id?: string | null;
   package_item_id: string;
   package_item_name: string;
   package_item_type: string;
@@ -244,6 +258,41 @@ export interface JobOrderItemInventory {
   created_at: string;
   category?: string;
   available_items?: Array<{ id: string; item_name: string; cost_price: number }>;
+}
+
+export type JobOrderLineType = "labor" | "package" | "inventory";
+
+export interface JobOrderLineComponent {
+  labor_item_id?: string;
+  inventory_item_id?: string;
+  name: string;
+  quantity: number;
+  unit_price: number;
+}
+
+export interface JobOrderLine {
+  id: string;
+  job_order_id: string;
+  line_type: JobOrderLineType;
+  reference_id: string | null;
+  name: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
+  metadata: {
+    vehicle_class?: VehicleClass;
+    base_components?: {
+      labor?: JobOrderLineComponent[];
+      inventory?: JobOrderLineComponent[];
+    };
+    vehicle_specific_components?: {
+      labor?: JobOrderLineComponent[];
+      inventory?: JobOrderLineComponent[];
+    };
+    [key: string]: unknown;
+  };
+  created_at: string;
+  updated_at: string;
 }
 
 export interface JobOrderHistory {
@@ -308,6 +357,7 @@ export interface JobOrder {
   };
   branches?: Branch;
   job_order_items?: JobOrderItem[];
+  job_order_lines?: JobOrderLine[];
   third_party_repairs?: { cost: number }[];
 }
 

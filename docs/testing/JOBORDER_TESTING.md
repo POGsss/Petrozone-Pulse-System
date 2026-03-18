@@ -1,126 +1,95 @@
-# Job Order Management — Testing Guide & Process Documentation
+# Job Order Module - Testing Guide & Process Documentation
 
----
+## How Job Orders Work in the Current System
 
-## How Job Order Management Works in the System
+The Job Order module now runs on a line-based workflow. A job order can contain any mix of:
+- Package lines
+- Labor lines
+- Inventory lines
 
-### Overview
-
-The Job Order (JO) module is the central workflow in the system. It manages service requests tied to a customer vehicle, tracking Package items with vehicle-class-based pricing, inventory consumption, third-party repairs (TPR), and a multi-step lifecycle workflow. When a JO is approved, the system automatically deducts stock from inventory based on the inventory template snapshots captured during JO creation. The module supports full CRUD for both JO items and third-party repairs, with conditional hard/soft delete logic depending on the JO's lifecycle stage.
+Third-party repairs are managed separately but are still included in the displayed Grand Total.
 
 ### Key Business Rules
 
-1. **Vehicle class pricing** — each JO has a `vehicle_class` (light / heavy / extra\_heavy) that is **automatically populated from the selected vehicle's `vehicle_class` field**. When a Package item is added, the system resolves its pricing matrix and selects the price column matching the vehicle class (e.g., `light_price`, `heavy_price`, or `extra_heavy_price`). The vehicle class is set on the vehicle record itself (via the Vehicle Management page) and cannot be manually overridden during JO creation.
-2. **Pricing formula** — `line_total = (labor_price + inventory_cost) × quantity`, where:
-   - `labor_price` = the vehicle-class-specific price from the pricing matrix (0 if no active pricing exists)
-   - `inventory_cost` = `Σ(unit_cost × quantity_per_unit)` for all linked inventory items on that Package item
-3. **Inventory snapshots** — when a Package item is added to a JO, the system fetches its inventory template (from `package_inventory_links`) and creates `job_order_item_inventories` snapshots. Each snapshot records `inventory_item_id`, `inventory_item_name`, `quantity_per_unit`, and `unit_cost` at the time of creation.
-4. **Editable inventory quantities** — during JO item creation and editing (only in `draft` status), users can modify `quantity_per_unit` for each inventory snapshot, which recalculates the `inventory_cost` and `line_total`.
-5. **Stock deduction on approval** — when a JO is approved, the system aggregates inventory quantities across all JO items and creates `stock_out` movements. If any item has insufficient stock, approval fails with an error.
-6. **Immutability** — once a JO moves past `draft` status, its notes and items are frozen and cannot be modified.
-7. **Branch-scoped** — HM sees all JOs; other roles see only JOs from their assigned branches.
-8. **Cascading lookups** — Branch → Customer (filtered by branch) → Vehicle (filtered by customer). When a vehicle is selected, the vehicle class is automatically populated from the vehicle record.
-9. **Conditional delete** — `draft` status → hard delete (cascades items, inventories, repairs); other statuses → soft delete (`is_deleted: true`, `deleted_at`, `deleted_by`).
-10. **Cancellation requires reason** — cancelling a JO requires a `cancellation_reason` field.
-11. **Rejection requires reason** — rejecting a JO requires a `rejection_reason` field.
-12. **Timestamp coherence** — `approval_requested_at ≤ approved_at ≤ start_time ≤ completion_time`.
+1. Job orders are branch-scoped; non-HM users only operate within assigned branches.
+2. Create requires customer, vehicle, branch, odometer reading, and vehicle bay.
+3. At least one line is required to create or save a valid draft.
+4. Labor pricing is vehicle-class-aware (`light`, `heavy`, `extra_heavy`).
+5. Package lines can include base components and vehicle-specific components.
+6. Draft line editing is supported in dedicated Packages, Labor, and Inventory sections.
+7. Deleting a job order is soft-delete (deactivated state), not physical removal.
+8. Grand Total includes line totals plus third-party repairs.
+9. Search/filter bar is shown only when job orders exist in the grid.
 
-### Status Flow (Lifecycle)
+### RBAC (Role-Based Access Control)
 
-```
-draft → pending_approval      (request-approval)
-pending_approval → approved   (record-approval: approve)
-pending_approval → rejected   (record-approval: reject, terminal)
-approved → in_progress        (start-work)
-in_progress → ready_for_release (mark-ready)
-ready_for_release → completed (complete)
+| Action | HM | POC | JS | R | T |
+| ------ | -- | --- | -- | - | - |
+| View Job Orders | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Create Draft Job Order | ❌ | ✅ | ✅ | ✅ | ❌ |
+| Edit Draft Job Order | ❌ | ✅ | ✅ | ✅ | ❌ |
+| Request Approval | ❌ | ✅ | ✅ | ✅ | ❌ |
+| Record Approval | ❌ | ❌ | ❌ | ✅ | ✅ |
+| Start Work | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Mark Ready | ❌ | ✅ | ❌ | ❌ | ✅ |
+| Record Payment | ❌ | ❌ | ❌ | ✅ | ✅ |
+| Complete Job Order | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Cancel Job Order | ❌ | ✅ | ✅ | ✅ | ❌ |
 
-draft → cancelled             (cancel)
-pending_approval → cancelled  (cancel)
-```
+## Core API Endpoints
 
-**Terminal statuses:** `rejected`, `cancelled`, `completed` — no further transitions allowed.
-
-### RBAC (Roles & Permissions)
-
-| Action                      | HM  | POC | JS  |  R  |  T  |
-| --------------------------- | :-: | :-: | :-: | :-: | :-: |
-| View Job Orders             | ✅  | ✅  | ✅  | ✅  | ✅  |
-| Create Job Order            |  —  | ✅  | ✅  | ✅  |  —  |
-| Update Notes (draft only)   |  —  | ✅  | ✅  | ✅  | ✅  |
-| Edit Items (draft only)     |  —  | ✅  | ✅  | ✅  |  —  |
-| Delete Job Order            |  —  | ✅  | ✅  | ✅  |  —  |
-| Request Approval            |  —  |  —  |  —  | ✅  | ✅  |
-| Record Approval             |  —  |  —  |  —  | ✅  | ✅  |
-| Cancel (draft)              |  —  | ✅  | ✅  | ✅  |  —  |
-| Cancel (pending_approval)   |  —  | ✅  |  —  | ✅  |  —  |
-| Start Work                  |  —  |  —  |  —  |  —  | ✅  |
-| Mark Ready                  |  —  | ✅  |  —  |  —  | ✅  |
-| Complete                    | ✅  | ✅  |  —  |  —  |  —  |
-| Manage Third-Party Repairs  | ✅  | ✅  | ✅  | ✅  | ✅  |
-
-### API Endpoints
-
-| Method   | Endpoint                                    | Description                                      |
-| -------- | ------------------------------------------- | ------------------------------------------------ |
-| `GET`    | `/api/job-orders`                           | List JOs (filtered, paginated, branch-scoped)    |
-| `GET`    | `/api/job-orders/:id`                       | Get single JO with items, customer, vehicle      |
-| `POST`   | `/api/job-orders`                           | Create JO with items + inventory snapshots        |
-| `PUT`    | `/api/job-orders/:id`                       | Update JO (notes only, draft status only)        |
-| `DELETE` | `/api/job-orders/:id`                       | Hard/soft delete based on status                 |
-| `PATCH`  | `/api/job-orders/:id/request-approval`      | draft → pending_approval                         |
-| `PATCH`  | `/api/job-orders/:id/record-approval`       | pending_approval → approved or rejected          |
-| `PATCH`  | `/api/job-orders/:id/cancel`                | draft/pending_approval → cancelled               |
-| `PATCH`  | `/api/job-orders/:id/start-work`            | approved → in_progress (T only)                  |
-| `PATCH`  | `/api/job-orders/:id/mark-ready`            | in_progress → ready_for_release (T, POC)         |
-| `PATCH`  | `/api/job-orders/:id/complete`              | ready_for_release → completed (HM, POC)          |
-| `POST`   | `/api/job-orders/:id/items`                 | Add item to draft JO                             |
-| `PUT`    | `/api/job-orders/:id/items/:itemId`         | Update item quantity (draft only)                |
-| `DELETE` | `/api/job-orders/:id/items/:itemId`         | Remove item (min 1 must remain, draft only)      |
-| `GET`    | `/api/job-orders/:id/history`               | Get JO history/audit trail                       |
-| `GET`    | `/api/third-party-repairs?job_order_id=...` | List repairs for a JO                            |
-| `POST`   | `/api/third-party-repairs`                  | Create repair                                    |
-| `PUT`    | `/api/third-party-repairs/:id`              | Update repair                                    |
-| `DELETE` | `/api/third-party-repairs/:id`              | Delete repair                                    |
-
-### New Database Columns
-
-| Column                   | Type        | Description                                    |
-| ------------------------ | ----------- | ---------------------------------------------- |
-| `start_time`             | timestamptz | When work begins (approved → in_progress)      |
-| `completion_time`        | timestamptz | When work is formally closed                   |
-| `approval_requested_at`  | timestamptz | When approval was first requested              |
-| `assigned_technician_id` | uuid (FK)   | The technician assigned to this JO             |
-| `cancellation_reason`    | text        | Required reason when cancelling                |
-| `rejection_reason`       | text        | Required reason when rejecting                 |
-| `cancelled_at`           | timestamptz | Timestamp of cancellation                      |
-| `cancelled_by`           | uuid (FK)   | Who cancelled                                  |
-| `deleted_at`             | timestamptz | Timestamp of soft delete                       |
-| `deleted_by`             | uuid (FK)   | Who soft-deleted                               |
-| `approval_status`        | text        | REQUESTED / APPROVED / REJECTED                |
-| `approval_method`        | text        | How approval was obtained (SMS, CALL, etc.)    |
+| Method | Endpoint | Description |
+| ------ | -------- | ----------- |
+| GET | `/api/job-orders` | List job orders with filters/pagination |
+| GET | `/api/job-orders/:id` | Get one job order with lines/details |
+| POST | `/api/job-orders` | Create line-based draft |
+| PATCH | `/api/job-orders/:id` | Update line-based draft |
+| DELETE | `/api/job-orders/:id` | Soft-delete (deactivate) job order |
+| PATCH | `/api/job-orders/:id/request-approval` | Draft -> Pending Approval |
+| PATCH | `/api/job-orders/:id/record-approval` | Pending Approval -> Approved (stock-validated) |
+| PATCH | `/api/job-orders/:id/reject` | Pending Approval -> Rejected |
+| PATCH | `/api/job-orders/:id/cancel` | Draft/Pending -> Cancelled |
+| PATCH | `/api/job-orders/:id/start-work` | Approved -> In Progress |
+| PATCH | `/api/job-orders/:id/mark-ready` | In Progress -> Ready for Release |
+| PATCH | `/api/job-orders/:id/record-payment` | Ready for Release -> Pending Payment |
+| PATCH | `/api/job-orders/:id/complete` | Pending Payment -> Completed |
 
 ---
 
 ## Sample Data to Populate
 
-### Pre-requisites Before Creating JOs
+Before testing, make sure all linked modules contain data.
 
-Ensure the following exist:
-- **Branches** (see `BRANCH_TESTING.md`)
-- **Customers** linked to branches (see `CUSTOMER_TESTING.md`)
-- **Vehicles** linked to customers (see `VEHICLE_TESTING.md`)
-- **Package items** with inventory links (see `PACKAGES_TESTING.md`)
-- **Pricing matrices** for Package items (see `PRICING_TESTING.md`)
-- **Inventory items** with sufficient stock (see `INVENTORY_TESTING.md`)
+### Branches
+- Main Branch
+- North Branch
 
-### Sample Job Orders
+### Customers and Vehicles
+| Customer | Vehicle | Plate | Vehicle Class | Branch |
+| -------- | ------- | ----- | ------------- | ------ |
+| Juan Dela Cruz | Isuzu NMR | NAA-1010 | light | Main Branch |
+| Maria Santos | Hino 500 | NAB-2020 | heavy | North Branch |
+| Logistics Corp | UD Quester | NAC-3030 | extra_heavy | Main Branch |
 
-| #   | Branch          | Customer       | Vehicle         | Vehicle Class | Package Items                                   | Notes                         |
-| --- | --------------- | -------------- | --------------- | ------------- | ----------------------------------------------- | ----------------------------- |
-| 1   | Main Branch     | Juan Dela Cruz | ABC-1234 Sedan  | Light         | Oil Change Service (×1), Air Filter Repl. (×1)  | Routine maintenance request   |
-| 2   | Main Branch     | Maria Santos   | XYZ-5678 SUV    | Heavy         | Brake Pad Replacement (×2)                      | Squeaking brakes complaint    |
-| 3   | Secondary Branch| Pedro Reyes    | DEF-9012 Truck  | Extra Heavy   | Engine Tune-Up Package (×1)                     | Engine performance issue      |
+### Labor Items
+| Name | Light | Heavy | Extra Heavy | Status |
+| ---- | ----- | ----- | ----------- | ------ |
+| Brake Cleaning | 350 | 500 | 700 | active |
+| Oil Change Labor | 400 | 600 | 850 | active |
+| Underchassis Inspection | 300 | 450 | 650 | active |
+
+### Inventory Items
+| Item | Cost Price | Stock | Branch | Status |
+| ---- | ---------- | ----- | ------ | ------ |
+| Engine Oil 15W40 | 420 | 200 | Main Branch | active |
+| Oil Filter OF-22 | 180 | 100 | Main Branch | active |
+| Brake Fluid 1L | 220 | 75 | North Branch | active |
+
+### Packages
+| Package | Base Labor | Base Inventory | Status |
+| ------- | ---------- | -------------- | ------ |
+| Basic PMS | Oil Change Labor x1 | Engine Oil 15W40 x6, Oil Filter OF-22 x1 | active |
+| Brake Service | Brake Cleaning x1 | Brake Fluid 1L x2 | active |
 
 ---
 
@@ -128,540 +97,197 @@ Ensure the following exist:
 
 ### Pre-requisites
 
-- Backend and frontend servers are running
-- Logged in as the appropriate role for each test
-- All dependency data populated (branches, customers, vehicles, Package, pricing, inventory)
+- Logged in as role appropriate for each step
+- Test data above is available
+- At least one branch assignment exists for test user
 
 ---
 
-### Test 1 — View Job Orders
+### Test 1 - Empty State and Search/Filter Visibility
 
-**Goal:** Verify the JO list loads correctly.
+Goal: Verify empty-state behavior and conditional search/filter visibility.
 
-1. Navigate to **Job Orders** from the sidebar
-2. Verify the header shows **"Job Orders"** with a count subtitle (e.g., `"{n} orders"`)
-3. Verify items display as cards showing:
-   - ✅ Order number (e.g., `JO-20250101-001`)
-   - ✅ Status badge (Draft / Pending Approval / Approved / In Progress / Ready for Release / Completed / Rejected / Cancelled)
-   - ✅ Customer name
-   - ✅ Vehicle info (plate number)
-   - ✅ Branch name
-   - ✅ Vehicle class badge
-   - ✅ Total amount (₱ formatted)
-   - ✅ Action buttons appropriate to status and role
-4. Verify pagination: **12 items per page**
+1. Ensure no active job orders exist.
+2. Open Job Orders page.
+
+Verify:
+- ✅ Header loads correctly with `0 orders total`
+- ✅ Search/filter bar is hidden
+- ✅ Empty message appears in grid
 
 ---
 
-### Test 2 — Create Job Order (Full Flow with Pricing Resolution)
+### Test 2 - Create Draft with Package Line Only
 
-**Goal:** Verify the complete JO creation flow including cascading lookups, pricing resolution, and inventory template.
+Goal: Verify package-only draft creation.
 
-1. Log in as **POC**, **JS**, or **R**
-2. Click **"Create Job Order"** → the **"Create Job Order"** modal opens
-3. **Step 1 — Order Details:**
-   - Select a **Branch** from dropdown (HM sees all, others see assigned branches)
-   - Select a **Customer** from dropdown (filtered by selected branch)
-   - Select a **Vehicle** from dropdown (filtered by selected customer)
-   - ✅ **Vehicle Class** is **automatically populated** from the selected vehicle (read-only, displayed as disabled text field)
-   - Enter **Notes** (optional)
-4. **Step 2 — Add Package Items:**
-   - Select a Package item from the dropdown (shows active items)
-   - Pricing is resolved automatically via API (`pricingApi.resolve`)
-   - Verify:
-     - ✅ **Labor price** populated from the pricing matrix column matching vehicle class
-     - ✅ If no active pricing exists: labor price = 0, warning toast shown
-     - ✅ **Inventory items** loaded from Package template (from `package_inventory_links`)
-     - ✅ Each inventory item shows: name, unit cost, quantity (editable, default = 1)
-     - ✅ **Inventory cost** = sum of (unit\_cost × quantity) across all linked inventory items
-     - ✅ **Line total** = (labor\_price + inventory\_cost) × quantity
-   - Add the item to the draft list
-   - Repeat for additional items
-5. **Step 3 — Third-Party Repairs (optional):**
-   - Click "Add Repair" to add a third-party repair:
-     - Provider Name, Description, Cost (₱), Repair Date
-   - Repairs appear in a list below
-6. **Review the draft:**
-   - ✅ Each item row shows: Package item name, quantity, labor price, inventory cost, line total
-   - ✅ Expanding an item row shows inventory detail sub-rows
-   - ✅ Grand total is calculated correctly
-7. Click **"Create Job Order"**
-8. Verify:
-   - ✅ Toast: success message
-   - ✅ New JO card appears in the list with status **`Draft`**
-   - ✅ Order number is auto-generated
-   - ✅ Audit log entry: `JO_CREATED`
+1. Click Create Job Order.
+2. Fill required order fields.
+3. Add one package line.
+4. Save draft.
 
-**Pricing calculation example (Oil Change Service, Light vehicle, qty=1):**
-- Light price from pricing matrix: ₱500
-- Inventory: Shell Helix 5W-40 (₱650 × 1) + Denso Oil Filter (₱280 × 1) = ₱930
-- Line total: (500 + 930) × 1 = **₱1,430**
+Verify:
+- ✅ Draft is created successfully
+- ✅ New card appears in grid
+- ✅ Package line total is computed
+- ✅ Grand Total reflects package line amount
 
 ---
 
-### Test 3 — View Job Order Details
+### Test 3 - Create Draft with Labor + Inventory Mix
 
-**Goal:** Verify the detail view shows complete JO information.
+Goal: Verify mixed line creation and totals.
 
-1. Click on a JO card to open the **View modal**
-2. Verify the modal shows:
-   - ✅ **Order #** and status badge
-   - ✅ **Customer** name
-   - ✅ **Vehicle** (plate number, type)
-   - ✅ **Branch** name
-   - ✅ **Vehicle Class** badge
-   - ✅ **Notes**
-   - ✅ **Items list**:
-     - For each item: Package item name, quantity, labor price (₱), inventory cost (₱), line total (₱)
-     - Expandable inventory sub-rows: inventory item name, qty per unit, unit cost
-   - ✅ **Third-Party Repairs** section (if any)
-   - ✅ **History timeline** (status changes, user actions)
-   - ✅ **Timestamps** (created, updated)
-   - ✅ **Total amount** (sum of all line totals)
+1. Create another draft.
+2. Add one labor line and one inventory line.
+3. Save draft.
+
+Verify:
+- ✅ Draft saves successfully
+- ✅ Both sections are represented in View
+- ✅ Grand Total equals labor + inventory totals
 
 ---
 
-### Test 4 — Edit Job Order (Notes + Items — Draft Only)
+### Test 4 - Package Breakdown in View Modal
 
-**Goal:** Verify JO editing is restricted to `draft` status only (immutability enforcement).
+Goal: Ensure package composition details are visible in View.
 
-**Part A — Notes editing (draft status only):**
+1. Open a draft containing package lines.
+2. Open View modal.
 
-1. Click Edit on a JO with status `Draft`
-2. Verify the **Edit modal** opens
-3. Modify the **Notes** field
-4. Click **"Save Changes"**
-5. Verify toast: update success
-6. Verify audit log entry: `JO_UPDATED`
-
-**Part B — Item editing (draft status only, by POC/JS/R):**
-
-1. Open Edit on a `Draft` JO
-2. **Modify item quantity:**
-   - Change quantity of an existing item
-   - Verify line total recalculates: `(labor_price + inventory_cost) × new_quantity`
-3. **Remove an item:**
-   - Click remove on an item
-   - Verify the item is deleted (API call)
-   - ✅ Cannot remove the last item — at least 1 must remain
-4. **Add a new item:**
-   - Select a new Package item from dropdown
-   - Pricing resolves, inventory loads
-   - Add to the JO
-   - Verify it appears in the items list
-5. **Modify inventory quantities on a draft item:**
-   - Change `quantity_per_unit` for an inventory sub-item
-   - Verify `inventory_cost` and `line_total` update accordingly
-
-**Part C — Immutability enforcement:**
-
-1. Try to edit notes on a JO with status **other than `Draft`** (e.g., `Approved`, `In Progress`)
-2. Verify:
-   - ✅ Error: `Cannot update a job order with status "approved". Only draft orders can be edited.`
-3. Try to add/remove/update items on a non-draft JO
-4. Verify:
-   - ✅ Error: `Cannot modify items on a job order with status "approved".`
+Verify:
+- ✅ Packages section is visible when package lines exist
+- ✅ Base components are listed
+- ✅ Vehicle-specific components are listed when present
+- ✅ Empty sections are hidden
 
 ---
 
-### Test 5 — Request Approval
+### Test 5 - Edit Draft with Section-Based Lines
 
-**Goal:** Verify a JO can transition from `draft` → `pending_approval`.
+Goal: Verify Edit modal supports independent sections.
 
-**Preconditions checked by backend:**
-- ✅ JO must have ≥ 1 line item
-- ✅ `total_amount` > 0
-- ✅ No line items with zero price (labor_price + inventory_cost > 0)
-- ✅ Only **R** and **T** roles can request approval
+1. Open Edit for a draft.
+2. Add/remove/update package, labor, and inventory lines.
+3. Save.
 
-1. Log in as **R** or **T**
-2. Find a JO with status `Draft`
-3. Open the **More** (⋮) dropdown → click **"Customer Approval"**
-4. Click **"Request"**
-5. Verify:
-   - ✅ Status changes to `Pending Approval`
-   - ✅ Toast: "Approval requested — status changed to Pending Approval"
-   - ✅ `approval_requested_at` is set
-   - ✅ `approval_status` = `REQUESTED`
-   - ✅ Audit log entries: `APPROVAL_REQUESTED` + `STATUS_CHANGED`
-
-**Idempotency test:**
-1. Try to request approval on a JO that is already `Pending Approval`
-2. Verify: ✅ Returns 200 with a message that approval was already requested (no error)
-
-**Precondition failure tests:**
-1. Create a JO with no items → try to request approval → ✅ Error: "At least one line item is required"
-2. Create a JO with total_amount = 0 → try to request approval → ✅ Error: "Total amount must be greater than 0"
+Verify:
+- ✅ Packages/Labor/Inventory sections work independently
+- ✅ Validation blocks save if all lines are removed
+- ✅ Saved data matches latest edits in View modal
 
 ---
 
-### Test 6 — Record Approval (Approve)
+### Test 6 - Third-Party Repairs and Grand Total
 
-**Goal:** Verify approval triggers stock deduction.
+Goal: Verify repairs are included in totals.
 
-**Pre-requisite:** Ensure sufficient inventory stock for all items in the JO.
+1. Open repair management for an order.
+2. Add at least one third-party repair with cost.
+3. Return to card and View modal.
 
-1. Log in as **R** or **T** (roles with approval permission)
-2. Find a `Pending Approval` JO
-3. Open **More** (⋮) → **"Customer Approval"** → Click **"Approve"**
-4. Verify:
-   - ✅ Status changes to `Approved`
-   - ✅ Toast: "Customer approved the job order"
-   - ✅ `approved_at` timestamp is set
-   - ✅ `approval_status` = `APPROVED`
-   - ✅ Audit log entries: `APPROVAL_RECORDED` + `STATUS_CHANGED`
-5. Navigate to **Inventory** → check the relevant items:
-   - ✅ Stock quantities decreased by the amounts from the JO item inventories
-   - ✅ New `stock_out` movement entries with `reference_type: "job_order"` and `reference_id` = JO ID
-
-**Timestamp coherence test:**
-- ✅ `approved_at` ≥ `approval_requested_at` (enforced by backend)
-
-**Insufficient stock test:**
-1. Create a JO with inventory items that exceed available stock
-2. Request approval, then try to approve
-3. Verify:
-   - ✅ Error toast: `"Insufficient stock for {item_name}: need {X} but only {Y} available"`
-   - ✅ JO remains `Pending Approval` — approval is blocked
+Verify:
+- ✅ Repair appears in repair list
+- ✅ Grand Total includes repair cost
+- ✅ Total consistency: card, order info, and modal all match
 
 ---
 
-### Test 7 — Record Approval (Reject)
+### Test 7 - Request Approval Validation
 
-**Goal:** Verify rejection workflow.
+Goal: Verify draft -> pending approval flow.
 
-1. Log in as **R** or **T**
-2. Find a `Pending Approval` JO
-3. Open **More** (⋮) → **"Customer Approval"** → Click **"Reject"**
-4. Verify:
-   - ✅ Status changes to `Rejected` (terminal — no further transitions)
-   - ✅ Toast: "Customer rejected the job order"
-   - ✅ `rejection_reason` is stored (if provided)
-   - ✅ `approval_status` = `REJECTED`
-   - ✅ Audit log entries: `APPROVAL_RECORDED` + `STATUS_CHANGED`
+1. From draft, click Request Approval.
 
-> **Note:** `Rejected` is now a terminal status. Unlike the previous flow, there is no re-request from rejected. If the customer wants to proceed, a new JO must be created.
+Verify:
+- ✅ Status changes to Pending Approval
+- ✅ Validation rejects invalid quantities/invalid lines
 
 ---
 
-### Test 8 — Start Work (approved → in_progress)
+### Test 8 - Record Approval with Stock Check
 
-**Goal:** Verify the technician can start work on an approved JO and is auto-assigned.
+Goal: Verify stock-sensitive approval.
 
-1. Log in as **T** (Technician)
-2. Find a JO with status `Approved`
-3. Open **More** (⋮) → Click **"Start Work"**
-4. Verify:
-   - ✅ Status changes to `In Progress`
-   - ✅ Toast: "Work started — status changed to In Progress"
-   - ✅ `start_time` is set
-   - ✅ `assigned_technician_id` is automatically set to the logged-in technician’s ID
-   - ✅ Timestamp coherence: `start_time` ≥ `approved_at`
-   - ✅ Audit log entries: `WORK_STARTED` + `STATUS_CHANGED`
+1. Open pending order with sufficient stock and approve.
+2. Repeat with insufficient stock scenario.
 
-**Role restriction test:**
-1. Log in as **POC** → no "Start Work" button visible for approved JOs (T-only)
+Verify:
+- ✅ Sufficient stock: status becomes Approved
+- ✅ Insufficient stock: approval is blocked with error
 
 ---
 
-### Test 9 — Mark Ready (in_progress → ready_for_release)
+### Test 9 - Work Execution Status Flow
 
-**Goal:** Verify marking a JO as ready for release.
+Goal: Verify full lifecycle transitions.
 
-1. Log in as **T** or **POC**
-2. Find a JO with status `In Progress`
-3. Open **More** (⋮) → Click **"Mark Ready"**
-4. Verify:
-   - ✅ Status changes to `Ready for Release`
-   - ✅ Toast: "Marked ready for release"
-   - ✅ Audit log entries: `MARKED_READY` + `STATUS_CHANGED`
+1. Approved -> Start Work
+2. In Progress -> Mark Ready
+3. Ready for Release -> Record Payment
+4. Pending Payment -> Complete
 
-**Role restriction test:**
-1. Log in as **JS** or **R** → no "Mark Ready" button visible (T and POC only)
+Verify:
+- ✅ Each transition is allowed only in valid prior status
+- ✅ Final status is Completed
 
 ---
 
-### Test 10 — Complete (ready_for_release → completed)
+### Test 10 - Reject and Cancel Flows
 
-**Goal:** Verify completing a JO.
+Goal: Verify alternate transition paths.
 
-1. Log in as **HM** or **POC**
-2. Find a JO with status `Ready for Release`
-3. Open **More** (⋮) → Click **"Complete"**
-4. Verify:
-   - ✅ Status changes to `Completed` (terminal)
-   - ✅ Toast: "Job order completed"
-   - ✅ `completion_time` is set
-   - ✅ Timestamp coherence: `completion_time` ≥ `start_time`
-   - ✅ Audit log entries: `JO_COMPLETED` + `STATUS_CHANGED`
+1. Reject one pending order with reason.
+2. Cancel one draft/pending order with reason.
 
-**Role restriction test:**
-1. Log in as **T**, **JS**, or **R** → no "Complete" button visible (HM and POC only)
+Verify:
+- ✅ Rejected status is stored with rejection reason
+- ✅ Cancelled status is stored with cancellation reason
 
 ---
 
-### Test 11 — Cancel Job Order
+### Test 11 - Delete (Soft Deactivate) Behavior
 
-**Goal:** Verify cancellation with required reason.
+Goal: Verify delete does not hard-remove records.
 
-**Part A — Cancel a Draft JO:**
+1. Delete a job order from the list.
+2. Switch to status filter `deactivated`.
 
-1. Log in as **POC**, **JS**, or **R**
-2. Find a JO with status `Draft`
-3. Open **More** (⋮) → Click **"Cancel Job Order"**
-4. Verify:
-   - ✅ Cancel modal opens with a **Cancellation Reason** textarea (required)
-   - ✅ "Cancel Order" button is disabled until a reason is entered
-5. Enter a reason and click **"Cancel Order"**
-6. Verify:
-   - ✅ Status changes to `Cancelled`
-   - ✅ `cancellation_reason`, `cancelled_at`, `cancelled_by` are set
-   - ✅ Audit log entries: `JO_CANCELLED` + `STATUS_CHANGED`
-
-**Part B — Cancel a Pending Approval JO:**
-
-1. Log in as **POC** or **R** (JS cannot cancel pending_approval per spec)
-2. Find a JO with status `Pending Approval`
-3. Cancel with reason
-4. Verify:
-   - ✅ Status changes to `Cancelled`
-   - ✅ Same fields set as above
-   - ✅ No stock restoration needed (stock was never deducted)
-
-**Part C — Cannot cancel approved/in_progress/completed/rejected JOs:**
-
-1. Find JOs in these statuses
-2. Verify: ✅ No "Cancel" option in the dropdown menu
+Verify:
+- ✅ Order is removed from default active list
+- ✅ Order is visible under deactivated status
+- ✅ Historical references remain intact
 
 ---
 
-### Test 12 — Delete Job Order
+### Test 12 - Search and Filter Behavior with Records
 
-**Goal:** Verify conditional delete behavior.
+Goal: Verify list filtering once records exist.
 
-**Part A — Hard delete (status = draft):**
+1. Ensure at least one order exists.
+2. Use search by order number/customer/vehicle.
+3. Filter by status and branch.
 
-1. Find a JO with status `Draft`
-2. Click **Delete**
-3. Confirm
-4. Verify:
-   - ✅ JO is permanently removed (not found in list even with filters)
-   - ✅ Related items, inventory snapshots, and repairs are cascaded deleted
-   - ✅ Audit log entry: `JO_SOFT_DELETED` with `type: "hard_delete"`
-
-**Part B — Soft delete (other statuses):**
-
-1. Find a JO with any non-draft status
-2. Click **Delete**
-3. Confirm
-4. Verify:
-   - ✅ JO disappears from the list (`is_deleted = true`)
-   - ✅ `deleted_at` and `deleted_by` are set
-   - ✅ Record still exists in database (soft deleted)
-   - ✅ Audit log entry: `JO_SOFT_DELETED`
-
----
-
-### Test 13 — Third-Party Repairs (Draft Only)
-
-**Goal:** Verify TPR CRUD within a job order. **TPR can only be managed when the JO is in `draft` status.**
-
-1. Open the **Third-Party Repair** action (wrench icon) on a `Draft` JO
-2. **Add a repair:**
-   - Provider Name: `AutoGlass Shop`
-   - Description: `Windshield replacement`
-   - Cost: `5000`
-   - Repair Date: _(today)_
-   - Click "Add" / "Save"
-   - ✅ Toast: success
-   - ✅ Repair appears in the list
-   - ✅ Repairs total displayed at the bottom
-   - ✅ `total_amount` on JO recalculates (items total + repairs total)
-3. **Edit a repair:**
-   - Click edit on an existing repair
-   - Modify the cost
-   - Save → toast: update success
-   - ✅ `total_amount` recalculates if cost changed
-4. **Delete a repair:**
-   - Click delete on a repair
-   - Confirm → repair is hard-deleted (since always draft)
-   - ✅ `total_amount` recalculates
-5. **Draft-only enforcement:**
-   - Verify the wrench icon is **not visible** for non-draft JOs
-   - Attempt API calls to add/edit/delete repairs on non-draft JOs
-   - ✅ Backend returns: `Third-party repairs can only be managed when the job order is in draft status`
-
----
-
-### Test 14 — Cascading Lookups (Branch → Customer → Vehicle)
-
-**Goal:** Verify dropdown filtering in the create modal.
-
-1. Open the Create JO modal
-2. Select a **Branch** → Customer dropdown populates with only that branch's customers
-3. Select a **Customer** → Vehicle dropdown populates with only that customer's vehicles
-4. Change the **Branch** → Customer and Vehicle selections reset
-5. Change the **Customer** → Vehicle selection resets
-
----
-
-### Test 15 — Vehicle Class Auto-Population & Price Calculation
-
-**Goal:** Verify that vehicle class is automatically fetched from the vehicle record and prices are calculated accordingly.
-
-1. **Pre-requisite:** Ensure vehicles exist with different vehicle classes (Light, Heavy, Extra Heavy) set in Vehicle Management.
-2. In the Create JO modal:
-   - Select a branch and customer
-   - Select a vehicle that has **Vehicle Class = Heavy**
-   - ✅ The Vehicle Class field automatically shows "Heavy Vehicle" (read-only)
-   - Add a Package item → pricing resolves using the **heavy\_price** column
-3. Change the vehicle to one with **Vehicle Class = Light**
-   - ✅ The Vehicle Class field updates to "Light Vehicle"
-   - ✅ If items were already added, their labor prices recalculate using the **light\_price** column
-   - ✅ Toast: "Prices updated for the vehicle class."
-4. Verify that the Vehicle Class field is **not manually editable** — it is always derived from the selected vehicle.
-
----
-
-### Test 16 — Search and Filter
-
-**Goal:** Verify filter controls.
-
-1. **Search** by order number, customer name, or vehicle plate → matching results shown
-2. **Filter by status**: Draft / Pending Approval / Approved / In Progress / Ready for Release / Completed / Rejected / Cancelled
-3. **Filter by branch** (if HM or multi-branch user)
-4. Combine search + filters → verify correct results
-5. Clear all → full list restored
-
----
-
-### Test 17 — RBAC Enforcement
-
-**Goal:** Verify role-based access controls.
-
-1. **Log in as HM:**
-   - ✅ Can view all JOs across all branches
-   - ✅ **No** Create button
-   - ✅ **No** Delete button
-   - ✅ Can complete ready-for-release JOs
-   - ✅ Can manage third-party repairs
-2. **Log in as T (Technician):**
-   - ✅ Can view JOs from assigned branches
-   - ✅ **No** Create button
-   - ✅ **No** Delete button
-   - ✅ Can request approval, record approval
-   - ✅ Can start work (approved → in_progress)
-   - ✅ Can mark ready (in_progress → ready_for_release)
-   - ✅ Cannot complete JOs
-   - ✅ Can update notes (draft only)
-   - ✅ Can manage third-party repairs
-   - ✅ Cannot edit items
-3. **Log in as POC:**
-   - ✅ Can create, edit, delete, cancel
-   - ✅ Cannot request/record approval
-   - ✅ Can mark ready (in_progress → ready_for_release)
-   - ✅ Can complete (ready_for_release → completed)
-   - ✅ Can cancel pending_approval JOs
-4. **Log in as JS:**
-   - ✅ Can create, edit items, delete
-   - ✅ Cannot request/record approval
-   - ✅ Can cancel draft JOs only (not pending_approval)
-   - ✅ Cannot start work, mark ready, or complete
-5. **Log in as R:**
-   - ✅ Can create, edit items, delete
-   - ✅ Can request approval, record approval
-   - ✅ Can cancel both draft and pending_approval JOs
-   - ✅ Cannot start work, mark ready, or complete
-
----
-
-### Test 18 — Full Lifecycle Walkthrough
-
-**Goal:** Verify the complete happy path from creation to completion.
-
-1. **Create** a JO as **R** → status: `Draft`
-2. **Add items** to the JO → verify pricing, inventory
-3. **Request approval** as **R** → status: `Pending Approval`
-4. **Approve** as **R** → status: `Approved` → verify stock deduction
-5. **Start work** as **T** → status: `In Progress` → verify `start_time` set
-6. **Mark ready** as **T** → status: `Ready for Release`
-7. **Complete** as **POC** or **HM** → status: `Completed` → verify `completion_time` set
-8. Verify the full history timeline shows all transitions
-9. Verify all audit log entries are present
-
----
-
-### Test 19 — History Timeline
-
-**Goal:** Verify order history tracking for the full lifecycle.
-
-1. Complete a full lifecycle (Test 18)
-2. Open the JO → scroll to **History** section
-3. Verify history entries:
-   - ✅ `JO_CREATED`
-   - ✅ `APPROVAL_REQUESTED` + `STATUS_CHANGED` (draft → pending_approval)
-   - ✅ `APPROVAL_RECORDED` + `STATUS_CHANGED` (pending_approval → approved)
-   - ✅ `WORK_STARTED` + `STATUS_CHANGED` (approved → in_progress)
-   - ✅ `MARKED_READY` + `STATUS_CHANGED` (in_progress → ready_for_release)
-   - ✅ `JO_COMPLETED` + `STATUS_CHANGED` (ready_for_release → completed)
-   - ✅ Each entry shows user, action, timestamp
-
----
-
-### Test 20 — Audit Logging
-
-**Goal:** Verify JO operations are logged.
-
-1. Navigate to **Audit Logs**
-2. Verify entries exist for:
-   - ✅ `JO_CREATED` — Job order creation
-   - ✅ `STATUS_CHANGED` — All status transitions with from/to values
-   - ✅ `APPROVAL_REQUESTED` — Approval requests
-   - ✅ `APPROVAL_RECORDED` — Approval decisions
-   - ✅ `WORK_STARTED` — Work started
-   - ✅ `MARKED_READY` — Marked ready
-   - ✅ `JO_COMPLETED` — Completion
-   - ✅ `JO_CANCELLED` — Cancellations (with reason)
-   - ✅ `JO_UPDATED` — Notes updates
-   - ✅ `JO_SOFT_DELETED` — Deletions
+Verify:
+- ✅ Search/filter bar is visible when records exist
+- ✅ Search narrows results correctly
+- ✅ Status and branch filters apply correctly
+- ✅ Pagination resets to page 1 when filter/search changes
 
 ---
 
 ## Summary Checklist
 
-| Requirement                                           | Status |
-| ----------------------------------------------------- | ------ |
-| View Job Orders (Cards with 8 status badges)          | ⬜     |
-| Create JO with Cascading Lookups                      | ⬜     |
-| Vehicle Class Auto-Population from Vehicle        | ⬜     |
-| Pricing Resolution (labor from pricing matrix)        | ⬜     |
-| Inventory Template Loading (from Package links)       | ⬜     |
-| Editable Inventory Quantities per Item                | ⬜     |
-| Pricing Formula: (labor + inv_cost) × qty             | ⬜     |
-| Inventory Snapshots (job_order_item_inventories)      | ⬜     |
-| View JO Details (Items, Inventory, TPR, History)      | ⬜     |
-| Edit Notes (draft only — immutability)                | ⬜     |
-| Edit Items (Add/Remove/Quantity — draft only)         | ⬜     |
-| Request Approval (draft → pending_approval, R/T)      | ⬜     |
-| Preconditions: ≥1 item, total > 0, no zero prices    | ⬜     |
-| Idempotent approval request                           | ⬜     |
-| Record Approval — Approve (stock deduction)           | ⬜     |
-| Record Approval — Reject (terminal, rejection_reason) | ⬜     |
-| Start Work (approved → in_progress, T only, auto-assign) | ⬜     |
-| Start Work precondition: auto-assigns technician      | ⬜     |
-| Mark Ready (in_progress → ready_for_release, T/POC)   | ⬜     |
-| Complete (ready_for_release → completed, HM/POC)      | ⬜     |
-| Cancel with required reason (draft/pending_approval)  | ⬜     |
-| Cancel role enforcement (per status)                  | ⬜     |
-| Hard Delete (draft status — cascade)                  | ⬜     |
-| Soft Delete (other statuses — deleted_at/deleted_by)  | ⬜     |
-| Third-Party Repairs CRUD (draft only)                  | ⬜     |
-| Cascading Lookups (Branch → Customer → Vehicle)       | ⬜     |
-| Search and Filter (8 status options)                  | ⬜     |
-| Pagination (12 per page)                              | ⬜     |
-| RBAC per Role (all 5 roles verified)                  | ⬜     |
-| Timestamp Coherence                                   | ⬜     |
-| History Timeline (full lifecycle)                     | ⬜     |
-| Audit Logging (standardized event names)              | ⬜     |
-| Insufficient Stock Blocks Approval                    | ⬜     |
-| Full Lifecycle Walkthrough                            | ⬜     |
+| Requirement | Status |
+| ----------- | ------ |
+| Line-based Create/Edit (Package/Labor/Inventory) | ⬜ |
+| View modal shows package breakdown details | ⬜ |
+| Empty sections hidden in View modal | ⬜ |
+| Grand Total includes lines + repairs | ⬜ |
+| Draft -> Approval -> Execution -> Completion flow | ⬜ |
+| Reject/Cancel paths with reasons | ⬜ |
+| Soft delete (deactivated) behavior | ⬜ |
+| Search/filter hidden on empty state | ⬜ |
+| Search/filter shown when records exist | ⬜ |
+| Branch-scoped access and RBAC | ⬜ |

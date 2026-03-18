@@ -24,6 +24,7 @@ router.get(
         report_type,
         branch_id,
         is_template,
+        status,
         search,
         limit = "50",
         offset = "0",
@@ -35,8 +36,13 @@ router.get(
           "*, user_profiles!reports_generated_by_fkey(id, full_name, email), branches!reports_branch_id_fkey(id, name, code)",
           { count: "exact" }
         )
-        .eq("is_deleted", false)
         .order("generated_at", { ascending: false });
+
+      if (status === "deactivated") {
+        query = query.eq("is_deleted", true);
+      } else {
+        query = query.eq("is_deleted", false);
+      }
 
       if (report_type && VALID_REPORT_TYPES.includes(report_type as string)) {
         query = query.eq("report_type", report_type as "sales" | "inventory" | "job_order" | "staff_performance");
@@ -72,6 +78,52 @@ router.get(
     } catch (error) {
       console.error("Get reports error:", error);
       res.status(500).json({ error: "Failed to fetch reports" });
+    }
+  }
+);
+
+/**
+ * GET /api/reports/:id/delete-mode
+ * Returns whether report can be hard-deleted or will be deactivated.
+ * Rule: if report has GENERATE audit entries, keep as soft-delete for history.
+ * RBAC: HM, POC, JS, R
+ */
+router.get(
+  "/:id/delete-mode",
+  requireRoles("HM", "POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const reportId = req.params.id as string;
+
+      const { data: existing, error: findError } = await supabaseAdmin
+        .from("reports")
+        .select("id")
+        .eq("id", reportId)
+        .single();
+
+      if (findError || !existing) {
+        res.status(404).json({ error: "Report not found" });
+        return;
+      }
+
+      const { count: generateRefCount } = await supabaseAdmin
+        .from("audit_logs")
+        .select("id", { count: "exact", head: true })
+        .or("entity_type.eq.report,entity_type.eq.REPORT")
+        .eq("entity_id", reportId)
+        .eq("action", "GENERATE");
+
+      const references = generateRefCount || 0;
+      const mode = references > 0 ? "deactivate" : "delete";
+
+      res.json({
+        deletable: references === 0,
+        mode,
+        reference_count: references,
+      });
+    } catch (error) {
+      console.error("Get report delete mode error:", error);
+      res.status(500).json({ error: "Failed to determine report delete mode" });
     }
   }
 );
@@ -232,7 +284,9 @@ router.put(
 
 /**
  * DELETE /api/reports/:id
- * Soft delete a report
+ * Delete a report:
+ * - hard delete if unreferenced
+ * - soft delete (deactivate) if referenced
  * RBAC: HM, POC, JS, R
  */
 router.delete(
@@ -243,12 +297,11 @@ router.delete(
       const userId = req.user!.id;
       const reportId = req.params.id as string;
 
-      // Check existence
+      // Check existence (allow deleting previously deactivated reports too)
       const { data: existing, error: findError } = await supabaseAdmin
         .from("reports")
-        .select("id")
+        .select("id, is_deleted")
         .eq("id", reportId)
-        .eq("is_deleted", false)
         .single();
 
       if (findError || !existing) {
@@ -256,22 +309,48 @@ router.delete(
         return;
       }
 
-      const { error } = await supabaseAdmin
-        .from("reports")
-        .update({
-          is_deleted: true,
-          deleted_at: new Date().toISOString(),
-          deleted_by: userId,
-        })
-        .eq("id", reportId);
+      const { count: generateRefCount } = await supabaseAdmin
+        .from("audit_logs")
+        .select("id", { count: "exact", head: true })
+        .or("entity_type.eq.report,entity_type.eq.REPORT")
+        .eq("entity_id", reportId)
+        .eq("action", "GENERATE");
 
-      if (error) {
-        await logFailedAction(req, "DELETE", "report", reportId, error.message);
-        res.status(500).json({ error: error.message });
+      const hasReferences = (generateRefCount || 0) > 0;
+
+      if (hasReferences) {
+        const { error: softDeleteError } = await supabaseAdmin
+          .from("reports")
+          .update({
+            is_deleted: true,
+            deleted_at: new Date().toISOString(),
+            deleted_by: userId,
+          })
+          .eq("id", reportId);
+
+        if (softDeleteError) {
+          await logFailedAction(req, "DELETE", "report", reportId, softDeleteError.message);
+          res.status(500).json({ error: softDeleteError.message });
+          return;
+        }
+
+        await fixAuditLogUser("report", reportId, "UPDATE", userId);
+        res.json({ message: "Report is referenced and has been deactivated instead" });
         return;
       }
 
-      await fixAuditLogUser("report", reportId, "UPDATE", userId);
+      const { error: hardDeleteError } = await supabaseAdmin
+        .from("reports")
+        .delete()
+        .eq("id", reportId);
+
+      if (hardDeleteError) {
+        await logFailedAction(req, "DELETE", "report", reportId, hardDeleteError.message);
+        res.status(500).json({ error: hardDeleteError.message });
+        return;
+      }
+
+      await fixAuditLogUser("report", reportId, "DELETE", userId);
 
       res.json({ message: "Report deleted successfully" });
     } catch (error) {
@@ -463,7 +542,9 @@ async function generateInventoryReport(
 
   if (branchId) query = query.eq("branch_id", branchId);
   if (filters.category) query = query.eq("category", filters.category);
-  if (filters.status) query = query.eq("status", filters.status);
+  if (filters.status) {
+    query = query.eq("status", filters.status as "draft" | "active" | "inactive");
+  }
 
   query = query.order("item_name", { ascending: true }).limit(500);
 
@@ -471,8 +552,8 @@ async function generateInventoryReport(
   if (error) return { error: error.message, rows: [], summary: {} };
 
   const rows = data || [];
-  const lowStock = rows.filter(r => r.current_quantity <= r.reorder_threshold);
-  const totalValue = rows.reduce((sum, r) => sum + (r.cost_price * r.current_quantity), 0);
+  const lowStock = rows.filter(r => (r.current_quantity || 0) <= (r.reorder_threshold || 0));
+  const totalValue = rows.reduce((sum, r) => sum + ((r.cost_price || 0) * (r.current_quantity || 0)), 0);
 
   return {
     rows,
@@ -537,7 +618,12 @@ async function generateStaffPerformanceReport(
     .eq("is_deleted", false);
 
   if (branchId) query = query.eq("branch_id", branchId);
-  if (filters.metric_type) query = query.eq("metric_type", filters.metric_type);
+  if (filters.metric_type) {
+    query = query.eq(
+      "metric_type",
+      filters.metric_type as "jobs_completed" | "avg_completion_time" | "revenue_generated" | "on_time_completion_rate"
+    );
+  }
   if (filters.date_from) query = query.gte("period_start", filters.date_from);
   if (filters.date_to) query = query.lte("period_end", filters.date_to);
 

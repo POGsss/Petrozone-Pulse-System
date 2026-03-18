@@ -1,64 +1,73 @@
-# Packages Management — Testing Guide & Process Documentation
+# Packages Module - Testing Guide & Process Documentation
 
----
+## How Packages Work in the Current System
 
-## How Packages Management Works in the System
-
-### Overview
-
-The Packages Management module manages the master list of service/product items offered by the business. Package items are **global** (no branch scoping) and serve as the building blocks for job orders. When creating a JO, users select package items and pricing is resolved from pricing matrices. Each package item can be linked to one or more inventory items, forming a template of materials consumed when that service is performed.
+Packages are global service templates composed of labor and inventory components. These package templates are used in Job Order package lines and expanded into full component breakdowns.
 
 ### Key Business Rules
 
-1. **Global items** — all Package items are visible to all users regardless of branch assignment. There is no branch scoping or global toggle.
-2. **Inventory links** — Package items can be linked to inventory items (template associations). These links define which materials are consumed when the Package item is added to a job order. Links can be managed during creation (Add modal) or editing (Edit modal).
-3. **No base price** — Package items do not have a base price. Pricing is handled entirely by the Pricing Matrix module (light/heavy/extra\_heavy prices by vehicle class).
-4. **No item types** — Package items have no type classification (no service/product/package). They are all generic items.
-5. **Conditional delete** — attempts hard delete first. If the item is referenced by job order items (FK constraint), it falls back to soft delete (deactivation).
-6. **Card grid display** — items display as cards in a responsive grid, not a table.
-7. **Two actions per card** — Edit and Delete buttons appear directly on each card (no "More" dropdown).
+1. Packages are global (not branch-specific).
+2. Package name is required.
+3. Package composition supports both labor and inventory links with quantity > 0.
+4. Duplicate labor/inventory links are blocked per package.
+5. Active packages are selectable for new job orders.
+6. Delete behavior is dynamic:
+   - hard delete if unreferenced
+   - deactivate (`status=inactive`) if referenced
+7. Delete modal checks mode first and updates copy/actions dynamically.
 
-### RBAC (Roles & Permissions)
+### RBAC (Role-Based Access Control)
 
-| Action                     | HM  | POC | JS  |  R  |  T  |
-| -------------------------- | :-: | :-: | :-: | :-: | :-: |
-| View Packages              | ✅  | ✅  | ✅  | ✅  |  —  |
-| Create Item                | ✅  | ✅  | ✅  |  —  |  —  |
-| Update Item                | ✅  | ✅  | ✅  |  —  |  —  |
-| Delete Item                | ✅  | ✅  | ✅  |  —  |  —  |
-| Manage Inventory Links     | ✅  | ✅  | ✅  |  —  |  —  |
+| Action | HM | POC | JS | R |
+| ------ | -- | --- | -- | - |
+| View packages | ✅ | ✅ | ✅ | ✅ |
+| Create package | ✅ | ✅ | ✅ | ❌ |
+| Edit package | ✅ | ✅ | ✅ | ❌ |
+| Delete/Deactivate package | ✅ | ✅ | ✅ | ❌ |
 
-> **Note:** T (Technician) does not have access to the Packages page at all. R (Receptionist) is view-only.
+## Core API Endpoints
 
-### API Endpoints
-
-| Method   | Endpoint                                          | Description                          |
-| -------- | ------------------------------------------------- | ------------------------------------ |
-| `GET`    | `/api/packages`                                    | List Package items (filtered)        |
-| `GET`    | `/api/packages/:id`                                | Get single Package item              |
-| `POST`   | `/api/packages`                                    | Create Package item                  |
-| `PUT`    | `/api/packages/:itemId`                            | Update Package item                  |
-| `DELETE` | `/api/packages/:itemId`                            | Delete/deactivate Package item       |
-| `GET`    | `/api/packages/:itemId/inventory-links`            | Get linked inventory items           |
-| `POST`   | `/api/packages/:itemId/inventory-links`            | Link an inventory item               |
-| `DELETE` | `/api/packages/:itemId/inventory-links/:linkId`    | Remove an inventory link             |
+| Method | Endpoint | Description |
+| ------ | -------- | ----------- |
+| GET | `/api/packages` | List packages with filters |
+| GET | `/api/packages/:itemId` | Get package by ID |
+| GET | `/api/packages/:itemId/delete-mode` | Determine delete vs deactivate mode |
+| POST | `/api/packages` | Create package |
+| PUT | `/api/packages/:itemId` | Update package |
+| DELETE | `/api/packages/:itemId` | Delete/deactivate package |
+| GET | `/api/packages/:itemId/labor-items` | List labor links |
+| POST | `/api/packages/:itemId/labor-items` | Add labor link |
+| PUT | `/api/packages/:itemId/labor-items/:linkId` | Update labor link quantity |
+| DELETE | `/api/packages/:itemId/labor-items/:linkId` | Remove labor link |
+| GET | `/api/packages/:itemId/inventory-items` | List inventory links |
+| POST | `/api/packages/:itemId/inventory-items` | Add inventory link |
+| PUT | `/api/packages/:itemId/inventory-items/:linkId` | Update inventory link quantity |
+| DELETE | `/api/packages/:itemId/inventory-items/:linkId` | Remove inventory link |
 
 ---
 
 ## Sample Data to Populate
 
-Use the **"Add New Package"** button. Create each item below:
+### Labor Items
+| Name | Light | Heavy | Extra Heavy | Status |
+| ---- | ----- | ----- | ----------- | ------ |
+| Oil Change Labor | 400 | 600 | 850 | active |
+| Brake Cleaning | 350 | 500 | 700 | active |
+| Wheel Alignment | 600 | 850 | 1200 | active |
 
-| #   | Name                         | Description                               | Inventory Items to Link                             |
-| --- | ---------------------------- | ----------------------------------------- | --------------------------------------------------- |
-| 1   | Oil Change Service           | Standard oil change service               | Shell Helix Ultra 5W-40, Denso Oil Filter           |
-| 2   | Brake Pad Replacement        | Front brake pad replacement service       | Brembo Brake Pad Set (Front)                        |
-| 3   | Engine Tune-Up Package       | Full engine tune-up                       | NGK Spark Plug (Iridium IX)                         |
-| 4   | Wheel Alignment              | 4-wheel alignment service                 | _(no inventory)_                                    |
-| 5   | Air Filter Replacement       | OEM air filter replacement service        | _(no inventory)_                                    |
-| 6   | Tire Replacement             | Tire mounting and balancing               | Bridgestone Ecopia 195/65R15                        |
+### Inventory Items
+| Item | Cost Price | Branch | Status |
+| ---- | ---------- | ------ | ------ |
+| Engine Oil 15W40 | 420 | Main Branch | active |
+| Oil Filter OF-22 | 180 | Main Branch | active |
+| Brake Fluid 1L | 220 | North Branch | active |
 
-> **Note:** Items are global — any authorized user (HM/POC/JS) can create them. Inventory links are set during creation in the Add modal.
+### Package Samples
+| Name | Description | Labor Links | Inventory Links | Status |
+| ---- | ----------- | ----------- | --------------- | ------ |
+| Basic PMS | Standard maintenance | Oil Change Labor x1 | Engine Oil x6, Oil Filter x1 | active |
+| Brake Service | Brake line package | Brake Cleaning x1 | Brake Fluid x2 | active |
+| Legacy Promo | Inactive archived package | Wheel Alignment x1 | - | inactive |
 
 ---
 
@@ -66,226 +75,149 @@ Use the **"Add New Package"** button. Create each item below:
 
 ### Pre-requisites
 
-- Backend and frontend servers are running
-- You are logged in as **HM**, **POC**, or **JS**
-- Inventory items exist (see `INVENTORY_TESTING.md`) for linking
+- Logged in as HM/POC/JS for create/update/delete tests
+- Labor and inventory modules have active records
+- At least one package referenced by a job order, one unreferenced package
 
 ---
 
-### Test 1 — View Package Items
+### Test 1 - Empty State and Search/Filter Visibility
 
-**Goal:** Verify the Packages card grid loads correctly.
+Goal: Verify empty grid behavior.
 
-1. Navigate to **Packages** from the sidebar
-2. Verify the header shows **"Packages"** with subtitle `"{count} items total"`
-3. Verify items display as cards in a responsive grid (1 / 2 / 3 columns depending on screen width)
-4. Each card should show:
-   - ✅ **Package icon** with primary-colored background circle
-   - ✅ **Name** (bold header text)
-   - ✅ **"GLOBAL"** badge (blue/gray)
-   - ✅ **Status badge** — `"Active"` (green) or `"Inactive"` (red)
-   - ✅ **Inventory count** — e.g., `"2 inventory items"` or `"0 inventory items"`
-   - ✅ **Description** (truncated to 2 lines, or `"No description"` if empty)
-   - ✅ **Edit** (pencil) and **Delete** (trash) buttons — visible only for HM/POC/JS
-5. Clicking a card (not on Edit/Delete) opens the **View modal**
+1. Ensure no packages exist.
+2. Open Packages page.
+
+Verify:
+- ✅ Empty message is shown
+- ✅ Search/filter bar is hidden when there are no package cards
 
 ---
 
-### Test 2 — Create Package Item (with Inventory Links)
+### Test 2 - Create Package (Metadata + Components)
 
-**Goal:** Verify a Package item can be created with inventory links in the same modal.
+Goal: Verify end-to-end package creation.
 
-1. Log in as **HM**, **POC**, or **JS**
-2. Click **"Add New Package"** → the **"Add Package Item"** modal opens
-3. Fill in the form:
-   - **Section: "Item Information"**
-     - Name: `Oil Change Service` _(required)_
-     - Description: `Standard oil change service` _(optional)_
-   - **Section: "Inventory Items"**
-     - The dropdown shows active inventory items with format: `{name} ({sku}) — ₱{cost}`
-     - Select `Shell Helix Ultra 5W-40 (OIL-SHU540) — ₱650.00` → click the **"+"** button
-     - Select `Denso Oil Filter (FLT-DNSO01) — ₱280.00` → click the **"+"** button
-     - Verify both items appear in the **draft list** below the dropdown
-     - Each drafted item shows: item name, SKU, cost/unit
-     - Each has an **"×"** button to remove it from the draft
-4. Click **"Create Package"**
-5. Verify:
-   - ✅ Toast: `"Package item created successfully"`
-   - ✅ Card appears in the grid with `"2 inventory items"` in the details
-   - ✅ Modal closes
+1. Click Add Package.
+2. Enter name and description.
+3. Add labor component(s) with quantity.
+4. Add inventory component(s) with quantity.
+5. Save.
 
-**Edge cases to test:**
-
-- Submit with empty Name → validation error: `"Name is required"`
-- Create with zero inventory links → should succeed (inventory is optional)
-- Try to add the same inventory item twice → item should not appear in dropdown after being drafted
-- Create item with only a description and no inventory → succeeds
+Verify:
+- ✅ Package is created successfully
+- ✅ Card appears in grid
+- ✅ Component counts match added links
 
 ---
 
-### Test 3 — View Package Item Details
+### Test 3 - Validation Rules
 
-**Goal:** Verify the view modal shows all item data including linked inventory.
+Goal: Verify required and numeric validation.
 
-1. Click on a package card (not on the Edit/Delete buttons) to open the view modal
-2. Verify the **"Package Item Details"** modal shows:
-   - ✅ **"Item Information"** section:
-     - Name input (read-only / disabled)
-     - Status dropdown (read-only / disabled) — shows Active or Inactive
-     - Description textarea (read-only / disabled)
-   - ✅ **"Linked Inventory"** section:
-     - Loading skeleton while fetching link data
-     - List of linked inventory items, each showing:
-       - **Item name** (bold)
-       - `SKU: {sku} · ₱{cost} / {unit}`
-     - Scrollable container if many items
-     - If no links: `"No inventory items linked to this Package item."`
-   - ✅ **"Timestamps"** section:
-     - Created At and Updated At dates
+1. Try creating with empty name.
+2. Try adding component with quantity <= 0.
+3. Try duplicate labor and duplicate inventory links.
+
+Verify:
+- ✅ Name required validation is enforced
+- ✅ Quantity validation is enforced
+- ✅ Duplicate links are prevented
 
 ---
 
-### Test 4 — Edit Package Item (with Live Inventory Management)
+### Test 4 - View Package Breakdown
 
-**Goal:** Verify Package item details and inventory links can be edited.
+Goal: Verify package detail modal shows composition.
 
-1. Click the **Edit** (pencil icon) button on a package card
-2. Verify the **"Edit Package Item"** modal opens with pre-filled data
-3. Verify the modal has two sections:
-   - **"Item Information"** — Name, Status (dropdown: active/inactive), Description
-   - **"Inventory Items"** — Dropdown + "+" button, list of currently linked items
-4. **Edit the item info:**
-   - Change the **Name** to a new value
-   - Change the **Status** to `Inactive`
-   - Modify the **Description**
-5. **Add an inventory link:**
-   - Select an inventory item from the dropdown → click "+"
-   - Verify toast: `"Inventory item linked successfully"` (API call happens immediately)
-   - Verify the item appears in the list right away
-6. **Remove an inventory link:**
-   - Click the **"×"** button next to an existing linked item
-   - Verify toast: `"Inventory link removed successfully"` (API call happens immediately)
-   - Verify the item disappears from the list
-7. Click **"Save Changes"**
-8. Verify:
-   - ✅ Toast: `"Package item updated successfully"`
-   - ✅ Card reflects the updated name, status, and inventory count
-   - ✅ Modal closes
+1. Open View modal on a package card.
 
-**Important:** Inventory link changes in the Edit modal are **live** — they are persisted via API immediately when you click +/×. This differs from the Add modal where links are drafted locally and submitted together.
+Verify:
+- ✅ Labor components list is accurate
+- ✅ Inventory components list is accurate
+- ✅ Quantities and item labels are correct
 
 ---
 
-### Test 5 — Search Package Items
+### Test 5 - Edit Package Metadata and Composition
 
-**Goal:** Verify search filters items correctly.
+Goal: Verify package update flow.
 
-1. Type `"Oil"` in the search field → only items with "Oil" in name or description appear
-2. Type a description keyword → matching items appear
-3. Clear the search → all items reappear
-4. Verify search is case-insensitive
+1. Edit package name/description/status.
+2. Add/remove component links.
+3. Update link quantities.
+4. Save.
 
----
-
-### Test 6 — Filter by Status
-
-**Goal:** Verify status filter functionality.
-
-1. Select **"Active"** from the status filter → only active items shown
-2. Select **"Inactive"** → only inactive items shown
-3. Select **"All"** or reset → all items shown
-4. Combine search + status filter → check correct combined results
+Verify:
+- ✅ Updated metadata persists
+- ✅ Composition changes persist
+- ✅ Card/list reflects updates
 
 ---
 
-### Test 7 — Pagination
+### Test 6 - Filter and Search
 
-**Goal:** Verify pagination works correctly.
+Goal: Verify list filtering and search behavior.
 
-1. Create more than 12 Package items
-2. Verify only **12 items per page** are displayed
-3. Click the next page button → the next batch of items loads
-4. Verify page indicator shows correct current page and total
+1. Search by package name and description.
+2. Filter by status.
 
----
-
-### Test 8 — Delete Package Item (No FK References — Hard Delete)
-
-**Goal:** Verify a Package item not referenced by job orders is permanently deleted.
-
-1. Find a Package item that has **not** been used in any job order
-2. Click the **Delete** (trash icon) button on the card
-3. Verify the confirmation modal:
-   - ✅ Title: **"Delete Package Item"**
-   - ✅ Message: `"Are you sure you want to delete {name}?"`
-   - ✅ Warning: `"This item will be permanently removed. If it is referenced by other records, it will be deactivated instead."`
-4. Click **"Delete"**
-5. Verify:
-   - ✅ Toast: `"Package item deleted successfully"`
-   - ✅ Card disappears from the grid
+Verify:
+- ✅ Results update correctly
+- ✅ Combined filter + search behavior is correct
+- ✅ Pagination resets to page 1 on filter/search change
 
 ---
 
-### Test 9 — Delete Package Item (FK Reference Exists — Soft Delete / Deactivation)
+### Test 7 - Delete Mode Check (Unreferenced)
 
-**Goal:** Verify a Package item used in job orders is deactivated instead of deleted.
+Goal: Verify hard delete path.
 
-1. Create a job order that references a Package item (via Job Order Management)
-2. Return to Packages and click **Delete** on that package item
-3. Confirm the deletion
-4. Verify:
-   - ✅ Toast (info): `"Package item is referenced by other records and has been deactivated instead of deleted."`
-   - ✅ The card remains in the grid but now shows **"Inactive"** status badge
+1. Open delete modal for an unreferenced package.
 
----
-
-### Test 10 — RBAC Enforcement
-
-**Goal:** Verify access control per role.
-
-1. **Log in as R (Receptionist):**
-   - Navigate to Packages
-   - ✅ Cards are visible, clicking a card opens the View modal
-   - ✅ **No** "Add New Package" button visible
-   - ✅ **No** Edit or Delete buttons on cards
-2. **Log in as T (Technician):**
-   - ✅ Package should **not** appear in the sidebar navigation
-3. **Log in as HM, POC, or JS:**
-   - ✅ "Add New Package" button is visible
-   - ✅ Edit and Delete buttons are visible on cards
-   - ✅ All CRUD operations work
+Verify:
+- ✅ Modal checks references first
+- ✅ Action shows Delete mode
+- ✅ Confirming removes package permanently from list
 
 ---
 
-### Test 11 — Audit Logging
+### Test 8 - Delete Mode Check (Referenced)
 
-**Goal:** Verify Package operations are logged.
+Goal: Verify deactivate fallback path.
 
-1. Perform create, update, delete operations on Package items
-2. Navigate to **Audit Logs**
-3. Verify entries exist for:
-   - ✅ Package item creation (action: CREATE, entity_type: package_items)
-   - ✅ Package item update (action: UPDATE)
-   - ✅ Package item deletion or deactivation (action: DELETE / UPDATE)
+1. Open delete modal for a package used by job orders.
+
+Verify:
+- ✅ Modal switches to Deactivate mode
+- ✅ Confirmation text explains deactivation fallback
+- ✅ Confirming sets package status to inactive
+- ✅ Success toast indicates deactivation
+
+---
+
+### Test 9 - Job Order Integration
+
+Goal: Verify package availability and use in JO flow.
+
+1. Open Job Order create modal.
+2. Check package options.
+
+Verify:
+- ✅ Active packages are available for selection
+- ✅ Inactive/deactivated packages are excluded from active selection
 
 ---
 
 ## Summary Checklist
 
-| Requirement                                  | Status |
-| -------------------------------------------- | ------ |
-| View Package Items (Card Grid)               | ⬜     |
-| Inventory Count on Cards                     | ⬜     |
-| "GLOBAL" Badge on Cards                      | ⬜     |
-| Create Item with Name + Description          | ⬜     |
-| Add Inventory Links in Add Modal (Draft)     | ⬜     |
-| View Item Details with Linked Inventory      | ⬜     |
-| Edit Item (Name, Status, Description)        | ⬜     |
-| Edit Inventory Links (Live Add/Remove)       | ⬜     |
-| Search (Name, Description)                   | ⬜     |
-| Filter by Status                             | ⬜     |
-| Pagination (12 per page)                     | ⬜     |
-| Delete — Hard Delete (No References)         | ⬜     |
-| Delete — Soft Delete (Referenced by JOs)     | ⬜     |
-| RBAC (HM/POC/JS manage, R view-only, T N/A) | ⬜     |
-| Audit Logging                                | ⬜     |
+| Requirement | Status |
+| ----------- | ------ |
+| Package create/edit with labor + inventory composition | ⬜ |
+| Name/quantity/duplicate validation rules | ⬜ |
+| View breakdown accuracy | ⬜ |
+| Search and status filter behavior | ⬜ |
+| Dynamic delete/deactivate modal behavior | ⬜ |
+| Hard delete for unreferenced packages | ⬜ |
+| Deactivate fallback for referenced packages | ⬜ |
+| Active-only package selection in Job Orders | ⬜ |

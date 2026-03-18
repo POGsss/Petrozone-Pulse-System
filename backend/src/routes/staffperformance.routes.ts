@@ -112,7 +112,7 @@ async function recomputeStaffPerformanceMetrics(
 
   const toInsert: Array<{
     staff_id: string;
-    metric_type: string;
+    metric_type: "jobs_completed" | "revenue_generated" | "avg_completion_time" | "on_time_completion_rate";
     metric_value: number;
     period_start: string;
     period_end: string;
@@ -248,7 +248,12 @@ router.get(
 
       if (staff_id) query = query.eq("staff_id", staff_id as string);
       if (branch_id) query = query.eq("branch_id", branch_id as string);
-      if (metric_type) query = query.eq("metric_type", metric_type as string);
+      if (metric_type) {
+        query = query.eq(
+          "metric_type",
+          metric_type as "jobs_completed" | "avg_completion_time" | "revenue_generated" | "on_time_completion_rate"
+        );
+      }
       if (period_start) query = query.gte("period_start", period_start as string);
       if (period_end) query = query.lte("period_end", period_end as string);
 
