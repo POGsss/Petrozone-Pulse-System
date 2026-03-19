@@ -815,6 +815,16 @@ export const jobOrdersApi = {
     });
   },
 
+  updatePaymentDetails: async (
+    id: string,
+    data: { invoice_number: string; payment_reference: string; payment_mode: "cash" | "gcash" | "other" }
+  ) => {
+    return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/payment-details`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
   recordPayment: async (id: string) => {
     return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/record-payment`, {
       method: "PATCH",

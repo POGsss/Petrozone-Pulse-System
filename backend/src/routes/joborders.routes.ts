@@ -311,13 +311,17 @@ async function deductStockForJobOrderLines(jobOrderId: string, branchId: string,
   }
 
   for (const [inventoryItemId, neededQty] of Object.entries(deductions)) {
-    const { data: onHand } = await supabaseAdmin
+    const { data: onHand, error: onHandError } = await supabaseAdmin
       .from("inventory_on_hand")
-      .select("quantity_on_hand")
+      .select("current_quantity")
       .eq("inventory_item_id", inventoryItemId)
       .maybeSingle();
 
-    const available = Number((onHand as any)?.quantity_on_hand || 0);
+    if (onHandError) {
+      return { success: false, error: onHandError.message };
+    }
+
+    const available = Number((onHand as any)?.current_quantity || 0);
     if (available < neededQty) {
       return {
         success: false,
@@ -2804,10 +2808,133 @@ router.patch(
 );
 
 /**
+ * PATCH /api/job-orders/:id/payment-details
+ * Save payment method details without changing status.
+ * Roles: R, T
+ */
+router.patch(
+  "/:id/payment-details",
+  requireRoles("R", "T"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const orderId = req.params.id as string;
+      const { invoice_number, payment_reference, payment_mode } = req.body as {
+        invoice_number?: string;
+        payment_reference?: string;
+        payment_mode?: string;
+      };
+
+      if (!invoice_number || !invoice_number.trim()) {
+        res.status(400).json({ error: "Invoice number is required." });
+        return;
+      }
+
+      if (!payment_reference || !payment_reference.trim()) {
+        res.status(400).json({ error: "Payment reference is required." });
+        return;
+      }
+
+      const normalizedPaymentMode = (payment_mode || "other").toLowerCase();
+      if (!["cash", "gcash", "other"].includes(normalizedPaymentMode)) {
+        res.status(400).json({ error: "Payment mode must be one of: cash, gcash, other." });
+        return;
+      }
+
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select("id, branch_id, order_number, status")
+        .eq("id", orderId)
+        .eq("is_deleted", false)
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === "PGRST116") {
+          res.status(404).json({ error: "Job order not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError.message });
+        return;
+      }
+
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(existing.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this job order's branch" });
+        return;
+      }
+
+      if (!["ready_for_release", "pending_payment"].includes(existing.status)) {
+        res.status(400).json({
+          error: `Cannot update payment details for a job order with status "${existing.status}".`,
+        });
+        return;
+      }
+
+      const { error: updateError } = await supabaseAdmin
+        .from("job_orders")
+        .update({
+          invoice_number: invoice_number.trim(),
+          payment_reference: payment_reference.trim(),
+          payment_mode: normalizedPaymentMode,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", orderId);
+
+      if (updateError) {
+        res.status(500).json({ error: updateError.message });
+        return;
+      }
+
+      const { data: updated, error: refetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select(
+          `*,
+          customers(id, full_name, contact_number, email),
+          vehicles(id, plate_number, model, vehicle_type),
+          branches(id, name, code),
+          job_order_items(*, job_order_item_inventories(*))`
+        )
+        .eq("id", orderId)
+        .eq("is_deleted", false)
+        .single();
+
+      if (refetchError) {
+        res.status(500).json({ error: refetchError.message });
+        return;
+      }
+
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "PAYMENT_DETAILS_UPDATED",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: orderId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: {
+            order_number: existing.order_number,
+            invoice_number: invoice_number.trim(),
+            payment_reference: payment_reference.trim(),
+            payment_mode: normalizedPaymentMode,
+          },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Update payment details error:", error);
+      await logFailedAction(req, "PAYMENT_DETAILS_UPDATED", "JOB_ORDER", (req.params.id as string) || null, error instanceof Error ? error.message : "Failed to update payment details");
+      res.status(500).json({ error: "Failed to update payment details" });
+    }
+  }
+);
+
+/**
  * PATCH /api/job-orders/:id/record-payment
  * Transition: ready_for_release -> pending_payment
- * Records payment details before job order can be completed.
- * Same modal pattern as customer approval.
+ * Confirmation-only action. Requires payment details to be saved first.
  * Roles: R, T (same as approval)
  */
 router.patch(
@@ -2816,15 +2943,16 @@ router.patch(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const orderId = req.params.id as string;
-      // No form fields required - just a confirmation action
 
       // Get existing order
-      const { data: existing, error: fetchError } = await supabaseAdmin
+      const { data: existingRaw, error: fetchError } = await supabaseAdmin
         .from("job_orders")
-        .select("id, branch_id, order_number, status, start_time, total_amount")
+        .select("*")
         .eq("id", orderId)
         .eq("is_deleted", false)
         .single();
+
+      const existing = existingRaw as any;
 
       if (fetchError) {
         if (fetchError.code === "PGRST116") {
@@ -2848,6 +2976,13 @@ router.patch(
       if (existing.status !== "ready_for_release") {
         res.status(400).json({
           error: `Cannot record payment for a job order with status "${existing.status}". Only ready-for-release orders can have payment recorded.`,
+        });
+        return;
+      }
+
+      if (!existing.invoice_number || !String(existing.invoice_number).trim() || !existing.payment_reference || !String(existing.payment_reference).trim()) {
+        res.status(400).json({
+          error: "Payment details are required before confirming record payment.",
         });
         return;
       }
@@ -2894,7 +3029,13 @@ router.patch(
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
-          p_new_values: { order_number: existing.order_number, total_amount: existing.total_amount },
+          p_new_values: {
+            order_number: existing.order_number,
+            total_amount: existing.total_amount,
+            invoice_number: existing.invoice_number,
+            payment_reference: existing.payment_reference,
+            payment_mode: existing.payment_mode,
+          },
         });
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);
@@ -2939,12 +3080,14 @@ router.patch(
       const orderId = req.params.id as string;
 
       // Get existing order
-      const { data: existing, error: fetchError } = await supabaseAdmin
+      const { data: existingRaw, error: fetchError } = await supabaseAdmin
         .from("job_orders")
-        .select("id, branch_id, order_number, status, start_time")
+        .select("*")
         .eq("id", orderId)
         .eq("is_deleted", false)
         .single();
+
+      const existing = existingRaw as any;
 
       if (fetchError) {
         if (fetchError.code === "PGRST116") {
@@ -2968,6 +3111,13 @@ router.patch(
       if (existing.status !== "pending_payment") {
         res.status(400).json({
           error: `Cannot complete a job order with status "${existing.status}". Only orders with payment recorded can be completed.`,
+        });
+        return;
+      }
+
+      if (!existing.invoice_number || !String(existing.invoice_number).trim() || !existing.payment_reference || !String(existing.payment_reference).trim()) {
+        res.status(400).json({
+          error: "Payment details are incomplete. Invoice number and payment reference are required before completion.",
         });
         return;
       }

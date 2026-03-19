@@ -340,6 +340,9 @@ export interface JobOrder {
   is_deleted: boolean;
   approval_status: string | null;
   approval_method: string | null;
+  invoice_number: string | null;
+  payment_reference: string | null;
+  payment_mode: "cash" | "gcash" | "other" | null;
   created_at: string;
   updated_at: string;
   customers?: {

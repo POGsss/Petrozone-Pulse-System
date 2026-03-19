@@ -16,6 +16,7 @@ import {
   LuPackageCheck,
   LuCircleCheck,
   LuCreditCard,
+  LuFileText,
 } from "react-icons/lu";
 import { jobOrdersApi, branchesApi, customersApi, vehiclesApi, packagesApi, laborItemsApi, thirdPartyRepairsApi, inventoryApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
@@ -329,6 +330,12 @@ export function JobOrderManagement() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentOrder, setPaymentOrder] = useState<JobOrder | null>(null);
   const [processingPayment, setProcessingPayment] = useState(false);
+  const [showPaymentDetailsModal, setShowPaymentDetailsModal] = useState(false);
+  const [paymentDetailsOrder, setPaymentDetailsOrder] = useState<JobOrder | null>(null);
+  const [savingPaymentDetails, setSavingPaymentDetails] = useState(false);
+  const [paymentInvoiceNumber, setPaymentInvoiceNumber] = useState("");
+  const [paymentReference, setPaymentReference] = useState("");
+  const [paymentMode, setPaymentMode] = useState<"cash" | "gcash" | "other">("cash");
 
   // Shared reason modal (for cancel & reject actions)
   const [showReasonModal, setShowReasonModal] = useState(false);
@@ -400,7 +407,7 @@ export function JobOrderManagement() {
 
       const statusFilter = activeFilters.status;
       const matchStatus =
-        !statusFilter || statusFilter === "all" || statusFilter === "deactivated" || order.status === statusFilter;
+        !statusFilter || statusFilter === "all" || order.status === statusFilter;
 
       return matchSearch && matchBranch && matchStatus;
     });
@@ -415,7 +422,7 @@ export function JobOrderManagement() {
 
   useEffect(() => {
     fetchData();
-  }, [activeFilters.status]);
+  }, []);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -425,11 +432,10 @@ export function JobOrderManagement() {
     try {
       setLoading(true);
       setError(null);
-      const statusFilter = activeFilters.status;
-      const apiParams: Parameters<typeof jobOrdersApi.getAll>[0] = { limit: 1000 };
-      if (statusFilter === "deactivated") {
-        apiParams.status = "deactivated";
-      }
+      const apiParams: Parameters<typeof jobOrdersApi.getAll>[0] = {
+        limit: 1000,
+        include_deleted: true,
+      };
       const [ordersRes, branchesData] = await Promise.all([
         jobOrdersApi.getAll(apiParams),
         branchesApi.getAll(),
@@ -1935,6 +1941,15 @@ export function JobOrderManagement() {
     setShowPaymentModal(true);
   }
 
+  // --- Open Payment Details Modal from card/dropdown ---
+  function openPaymentDetailsModal(order: JobOrder) {
+    setPaymentDetailsOrder(order);
+    setPaymentInvoiceNumber(order.invoice_number || "");
+    setPaymentReference(order.payment_reference || "");
+    setPaymentMode((order.payment_mode as "cash" | "gcash" | "other") || "cash");
+    setShowPaymentDetailsModal(true);
+  }
+
   // --- Repair Action Modal (wrench button) ---
   async function openRepairActionModal(order: JobOrder) {
     setRepairActionOrder(order);
@@ -2284,6 +2299,14 @@ export function JobOrderManagement() {
                         className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
                       >
                         <LuWrench className="w-4 h-4" /> Manage Repairs
+                      </button>
+                    )}
+                    {canPayment && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); closeDropdown(); openPaymentDetailsModal(order); }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                      >
+                        <LuFileText className="w-4 h-4" /> Payment Method
                       </button>
                     )}
                   </div>
@@ -3953,7 +3976,10 @@ export function JobOrderManagement() {
       {/* --- Payment Modal --- */}
       <Modal
         isOpen={showPaymentModal && !!paymentOrder}
-        onClose={() => setShowPaymentModal(false)}
+        onClose={() => {
+          setShowPaymentModal(false);
+          setPaymentOrder(null);
+        }}
         title="Record Payment"
         maxWidth="sm"
       >
@@ -3964,19 +3990,27 @@ export function JobOrderManagement() {
                 Confirm payment for <strong className="text-neutral-950">{paymentOrder.order_number}</strong>? The total amount to be paid is <strong className="text-neutral-950">{new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(paymentOrder.total_amount)}</strong>
               </p>
             </div>
-            <p className="text-sm text-neutral-900 mb-2">This will mark the job order as payment received and change the status to Pending Payment.</p>
+
+            {!paymentOrder.invoice_number || !paymentOrder.payment_reference ? (
+              <p className="text-sm text-neutral-900 mb-2">Add Payment Method details first before confirming Record Payment.</p>
+            ) : (
+              <p className="text-sm text-neutral-900 mb-2">This will mark the job order as payment received and change the status to Pending Payment.</p>
+            )}
 
             <div className="flex gap-3 mt-6">
               <button
                 type="button"
-                onClick={() => setShowPaymentModal(false)}
+                onClick={() => {
+                  setShowPaymentModal(false);
+                  setPaymentOrder(null);
+                }}
                 className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                disabled={processingPayment}
+                disabled={processingPayment || !paymentOrder.invoice_number || !paymentOrder.payment_reference}
                 onClick={async () => {
                   try {
                     setProcessingPayment(true);
@@ -3994,6 +4028,105 @@ export function JobOrderManagement() {
                 className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {processingPayment ? "Processing..." : "Confirm"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* --- Payment Details Modal --- */}
+      <Modal
+        isOpen={showPaymentDetailsModal && !!paymentDetailsOrder}
+        onClose={() => {
+          setShowPaymentDetailsModal(false);
+          setPaymentDetailsOrder(null);
+        }}
+        title="Payment Method"
+        maxWidth="lg"
+      >
+        {paymentDetailsOrder && (
+          <div>
+            <ModalSection title="Basic Information">
+              <ModalInput
+                type="text"
+                value={paymentDetailsOrder.order_number}
+                onChange={() => {}}
+                placeholder="Job Order"
+                disabled
+              />
+              <ModalInput
+                type="text"
+                value={new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(paymentDetailsOrder.total_amount)}
+                onChange={() => {}}
+                placeholder="Total Amount"
+                disabled
+              />
+            </ModalSection>
+
+            <ModalSection title="Payment Details">
+              <ModalInput
+                type="text"
+                value={paymentInvoiceNumber}
+                onChange={setPaymentInvoiceNumber}
+                placeholder="Invoice #"
+                disabled={paymentDetailsOrder.status !== "ready_for_release"}
+                required
+              />
+              <ModalInput
+                type="text"
+                value={paymentReference}
+                onChange={setPaymentReference}
+                placeholder="Payment Reference"
+                disabled={paymentDetailsOrder.status !== "ready_for_release"}
+                required
+              />
+              <ModalSelect
+                value={paymentMode}
+                onChange={(value) => setPaymentMode((value as "cash" | "gcash" | "other") || "cash")}
+                disabled={paymentDetailsOrder.status !== "ready_for_release"}
+                options={[
+                  { value: "cash", label: "Cash" },
+                  { value: "gcash", label: "GCash" },
+                  { value: "other", label: "Other" },
+                ]}
+              />
+            </ModalSection>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPaymentDetailsModal(false);
+                  setPaymentDetailsOrder(null);
+                }}
+                className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={paymentDetailsOrder.status !== "ready_for_release" || savingPaymentDetails || !paymentInvoiceNumber.trim() || !paymentReference.trim()}
+                onClick={async () => {
+                  try {
+                    setSavingPaymentDetails(true);
+                    await jobOrdersApi.updatePaymentDetails(paymentDetailsOrder.id, {
+                      invoice_number: paymentInvoiceNumber.trim(),
+                      payment_reference: paymentReference.trim(),
+                      payment_mode: paymentMode,
+                    });
+                    setShowPaymentDetailsModal(false);
+                    setPaymentDetailsOrder(null);
+                    showToast.success("Payment details saved");
+                    fetchData();
+                  } catch (err) {
+                    showToast.error(err instanceof Error ? err.message : "Failed to save payment details");
+                  } finally {
+                    setSavingPaymentDetails(false);
+                  }
+                }}
+                className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {savingPaymentDetails ? "Saving..." : "Save"}
               </button>
             </div>
           </div>
