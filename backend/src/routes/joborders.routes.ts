@@ -491,7 +491,7 @@ router.post(
 
       const { data: original, error: originalError } = await supabaseAdmin
         .from("job_orders")
-        .select("id, order_number, branch_id, status, customer_id, vehicle_id, vehicle_class, odometer_reading, vehicle_bay")
+        .select("id, order_number, branch_id, status, customer_id, vehicle_id, vehicle_class, odometer_reading, vehicle_bay, total_amount")
         .eq("id", reference_job_order_id)
         .eq("is_deleted", false)
         .single();

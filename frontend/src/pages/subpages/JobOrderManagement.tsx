@@ -80,6 +80,10 @@ function computeOrderItemsTotal(order: JobOrder): number {
 }
 
 function computeOrderGrandTotal(order: JobOrder, repairsOverride?: ThirdPartyRepair[]): number {
+  if (order.job_type === "backorder") {
+    return Number(order.total_amount || 0);
+  }
+
   const itemsTotal = computeOrderItemsTotal(order);
   const repairsTotal = repairsOverride
     ? repairsOverride.reduce((sum, repair) => sum + (repair.cost || 0), 0)
