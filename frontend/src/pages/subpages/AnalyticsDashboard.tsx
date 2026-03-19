@@ -176,7 +176,6 @@ export function AnalyticsDashboard() {
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
   const [dateRange] = useState<string>("30d");
   const [salesPeriod, setSalesPeriod] = useState<string>("daily");
-  const [topServicesPeriod, setTopServicesPeriod] = useState<string>("daily");
   const [revenuePeriod, setRevenuePeriod] = useState<string>("daily");
 
   // Determine branch filter param
@@ -207,7 +206,7 @@ export function AnalyticsDashboard() {
       const [summaryData, salesData, servicesData, distributionData, ordersData, branchRevenueData] = await Promise.all([
         dashboardApi.getSummary(filterParams),
         dashboardApi.getSalesOverTime({ ...filterParams, period: salesPeriod }),
-        dashboardApi.getTopServices({ ...filterParams, limit: 8 }),
+        dashboardApi.getTopServices({ branch_id: branchParam, limit: 8 }),
         dashboardApi.getJobStatusDistribution(filterParams),
         dashboardApi.getRecentOrders({ branch_id: branchParam, limit: 8 }),
         dashboardApi.getRevenuePerBranch({ date_from: dateParams.date_from, date_to: dateParams.date_to }),
@@ -493,14 +492,13 @@ export function AnalyticsDashboard() {
           </div>
         </DashboardCard>
 
-        {/* Bottom-left spanning 2 cols under pie + inventory: Top Services */}
+        {/* Bottom-left spanning 2 cols under pie + inventory: Top Packages */}
         <ChartCard
           className="lg:col-span-2"
-          title="Top Services"
+          title="Top Packages"
           actions={
             <>
-              <PeriodSelect value={topServicesPeriod} onChange={setTopServicesPeriod} />
-              <span className="text-xs text-neutral-900">{selectedDateLabel}</span>
+              <span className="text-xs text-neutral-900">All Completed Orders</span>
             </>
           }
         >

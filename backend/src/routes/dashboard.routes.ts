@@ -182,16 +182,16 @@ router.get(
 );
 
 // GET /api/dashboard/top-services
-// Returns top package items by revenue for bar chart
+// Returns top packages by revenue for bar chart
 router.get(
   "/top-services",
   requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { branch_id, date_from, date_to, limit = "10" } = req.query;
+      const { branch_id, limit = "10" } = req.query;
       const branchScope = getBranchScope(req);
 
-      // Get completed job order IDs first (for branch / date filtering)
+      // Get completed job order IDs first (for branch filtering)
       let joQuery = supabaseAdmin
         .from("job_orders")
         .select("id")
@@ -199,8 +199,6 @@ router.get(
 
       if (branch_id) joQuery = joQuery.eq("branch_id", branch_id as string);
       else if (branchScope) joQuery = joQuery.in("branch_id", branchScope);
-      if (date_from) joQuery = joQuery.gte("created_at", date_from as string);
-      if (date_to) joQuery = joQuery.lte("created_at", date_to as string);
 
       const { data: joIds } = await joQuery;
       const ids = (joIds || []).map((j: any) => j.id);
@@ -210,23 +208,26 @@ router.get(
         return;
       }
 
-      // Get job_order_items for those orders
-      const { data: items } = await supabaseAdmin
-        .from("job_order_items")
-        .select("package_item_name, line_total, quantity")
+      // Get line-based package rows for those completed orders.
+      const { data: lines } = await supabaseAdmin
+        .from("job_order_lines")
+        .select("job_order_id, name, total")
+        .eq("line_type", "package")
         .in("job_order_id", ids);
 
-      // Aggregate by package_item_name
-      const serviceMap: Record<string, { revenue: number; count: number }> = {};
-      (items || []).forEach((item: any) => {
-        const name = item.package_item_name;
-        if (!serviceMap[name]) serviceMap[name] = { revenue: 0, count: 0 };
-        serviceMap[name].revenue += item.line_total || 0;
-        serviceMap[name].count += item.quantity || 1;
+      // Aggregate by package name, counting how many completed orders used each package.
+      const packageMap: Record<string, { revenue: number; orderIds: Set<string> }> = {};
+      (lines || []).forEach((line: any) => {
+        const name = line.name;
+        if (!name) return;
+
+        if (!packageMap[name]) packageMap[name] = { revenue: 0, orderIds: new Set<string>() };
+        packageMap[name].revenue += line.total || 0;
+        if (line.job_order_id) packageMap[name].orderIds.add(line.job_order_id);
       });
 
-      const result = Object.entries(serviceMap)
-        .map(([name, { revenue, count }]) => ({ name, revenue, count }))
+      const result = Object.entries(packageMap)
+        .map(([name, { revenue, orderIds }]) => ({ name, revenue, count: orderIds.size }))
         .sort((a, b) => b.revenue - a.revenue)
         .slice(0, parseInt(limit as string));
 
