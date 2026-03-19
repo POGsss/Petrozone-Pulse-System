@@ -217,6 +217,90 @@ router.post(
 );
 
 /**
+ * GET /api/staff-performance/freshness
+ * Check whether staff performance snapshots are stale
+ * View: HM, POC, JS, R, T
+ */
+router.get(
+  "/freshness",
+  requireRoles("HM", "POC", "JS", "R", "T"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const branchScope = getBranchScope(req);
+      const branchId = req.query.branch_id as string | undefined;
+
+      if (branchId && branchScope && !branchScope.includes(branchId)) {
+        res.status(403).json({ error: "No access to this branch" });
+        return;
+      }
+
+      let latestJobQuery = supabaseAdmin
+        .from("job_orders")
+        .select("completion_time")
+        .eq("status", "completed")
+        .eq("is_deleted", false)
+        .not("completion_time", "is", null)
+        .order("completion_time", { ascending: false })
+        .limit(1);
+
+      if (branchId) {
+        latestJobQuery = latestJobQuery.eq("branch_id", branchId);
+      } else if (branchScope) {
+        latestJobQuery = latestJobQuery.in("branch_id", branchScope);
+      }
+
+      const { data: latestJobRows, error: latestJobError } = await latestJobQuery;
+      if (latestJobError) {
+        res.status(500).json({ error: latestJobError.message });
+        return;
+      }
+
+      let latestSnapshotQuery = supabaseAdmin
+        .from("staff_performance")
+        .select("created_at")
+        .eq("is_deleted", false)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (branchId) {
+        latestSnapshotQuery = latestSnapshotQuery.eq("branch_id", branchId);
+      } else if (branchScope) {
+        latestSnapshotQuery = latestSnapshotQuery.in("branch_id", branchScope);
+      }
+
+      const { data: latestSnapshotRows, error: latestSnapshotError } = await latestSnapshotQuery;
+      if (latestSnapshotError) {
+        res.status(500).json({ error: latestSnapshotError.message });
+        return;
+      }
+
+      const latestCompletedJobAt =
+        latestJobRows && latestJobRows.length > 0
+          ? (latestJobRows[0] as { completion_time: string | null }).completion_time
+          : null;
+      const latestSnapshotAt =
+        latestSnapshotRows && latestSnapshotRows.length > 0
+          ? (latestSnapshotRows[0] as { created_at: string | null }).created_at
+          : null;
+
+      const needsRecompute = Boolean(
+        latestCompletedJobAt &&
+          (!latestSnapshotAt || new Date(latestCompletedJobAt).getTime() > new Date(latestSnapshotAt).getTime())
+      );
+
+      res.json({
+        latest_completed_job_at: latestCompletedJobAt,
+        latest_snapshot_at: latestSnapshotAt,
+        needs_recompute: needsRecompute,
+      });
+    } catch (error) {
+      console.error("Get staff performance freshness error:", error);
+      res.status(500).json({ error: "Failed to check staff performance freshness" });
+    }
+  }
+);
+
+/**
  * GET /api/staff-performance
  * List staff performance records with filtering and pagination
  * View: HM, POC, JS, R, T

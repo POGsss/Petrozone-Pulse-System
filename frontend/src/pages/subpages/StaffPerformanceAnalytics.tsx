@@ -102,12 +102,18 @@ export function StaffPerformanceAnalytics() {
 
       let res = await staffPerformanceApi.getAll(params as Parameters<typeof staffPerformanceApi.getAll>[0]);
 
-      // Self-heal empty dataset by generating snapshots from completed job orders.
-      if ((!res.data || res.data.length === 0) && canRecompute) {
-        await staffPerformanceApi.recompute(
+      // Recompute only when data is stale to avoid unnecessary full rebuilds.
+      if (canRecompute) {
+        const freshness = await staffPerformanceApi.getFreshness(
           selectedBranch !== "all" ? { branch_id: selectedBranch } : {}
         );
-        res = await staffPerformanceApi.getAll(params as Parameters<typeof staffPerformanceApi.getAll>[0]);
+
+        if (freshness.needs_recompute) {
+          await staffPerformanceApi.recompute(
+            selectedBranch !== "all" ? { branch_id: selectedBranch } : {}
+          );
+          res = await staffPerformanceApi.getAll(params as Parameters<typeof staffPerformanceApi.getAll>[0]);
+        }
       }
 
       setRecords(res.data || []);

@@ -1657,6 +1657,20 @@ export const staffPerformanceApi = {
       }
     );
   },
+
+  getFreshness: async (params?: { branch_id?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.branch_id) {
+      searchParams.append("branch_id", params.branch_id);
+    }
+    const query = searchParams.toString();
+
+    return fetchWithAuth<{
+      latest_completed_job_at: string | null;
+      latest_snapshot_at: string | null;
+      needs_recompute: boolean;
+    }>(`/api/staff-performance/freshness${query ? `?${query}` : ""}`);
+  },
 };
 
 // Reports API
