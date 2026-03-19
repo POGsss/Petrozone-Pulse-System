@@ -53,6 +53,8 @@ Third-party repairs are managed separately but are still included in the display
 | PATCH | `/api/job-orders/:id/mark-ready` | In Progress -> Ready for Release |
 | PATCH | `/api/job-orders/:id/record-payment` | Ready for Release -> Pending Payment |
 | PATCH | `/api/job-orders/:id/complete` | Pending Payment -> Completed |
+| POST | `/api/job-orders/rework` | Create backorder rework from completed JO |
+| PATCH | `/api/job-orders/:id/approve-rework` | HM approves/rejects rework backorder |
 
 ---
 
@@ -274,6 +276,96 @@ Verify:
 - ✅ Search narrows results correctly
 - ✅ Status and branch filters apply correctly
 - ✅ Pagination resets to page 1 when filter/search changes
+
+---
+
+### Test 13 - Create Rework from Completed Job
+
+Goal: Verify rework creates a new backorder JO linked to a completed original.
+
+1. Open a completed job order card.
+2. Click `More` -> `Rework Job`.
+3. Enter required reason and submit.
+
+Verify:
+- ✅ New JO is created as a separate record (not nested item)
+- ✅ New JO has `job_type = backorder`
+- ✅ New JO status is `pending_approval` with approval status requested
+- ✅ New JO references original job order ID and shows `Rework of JO-XXXX`
+
+---
+
+### Test 14 - Reject Invalid Rework Source
+
+Goal: Ensure rework cannot be created from non-completed jobs.
+
+1. Attempt rework creation on a non-completed JO.
+
+Verify:
+- ✅ API blocks request with clear validation message
+
+---
+
+### Test 15 - Rework Approval and Start Guard
+
+Goal: Ensure backorder must be approved before work start.
+
+1. Create a rework and keep it pending approval.
+2. Attempt `Start Work`.
+3. Approve rework via HM `approve-rework`.
+4. Attempt `Start Work` again.
+
+Verify:
+- ✅ Start is blocked while unapproved
+- ✅ Start succeeds after approval
+
+---
+
+### Test 16 - Rework Completion Payment Rules
+
+Goal: Validate free vs paid rework payment requirements.
+
+1. Create free rework (`is_free_rework = true`) and progress lifecycle.
+2. Complete without payment details.
+3. Create paid rework (`is_free_rework = false`) and progress lifecycle.
+4. Attempt completion without payment details.
+
+Verify:
+- ✅ Free rework can complete without payment detail enforcement
+- ✅ Paid rework still enforces existing payment detail requirements
+
+---
+
+### Test 17 - Rework UI Indicators
+
+Goal: Ensure list and details show rework traceability.
+
+1. Open card list with original + rework jobs.
+2. Inspect rework card and original card.
+3. Open both details modals.
+
+Verify:
+- ✅ Rework card shows `BACKORDER` badge
+- ✅ Rework card shows `Rework of JO-XXXX`
+- ✅ Original card shows `Reworks: X` when children exist
+- ✅ Rework details show approval status, rework reason, free redo flag
+- ✅ Original details show related rework JO numbers/statuses
+
+---
+
+### Test 18 - Rework Audit and Branch Access
+
+Goal: Verify rework actions are logged and branch restrictions remain enforced.
+
+1. Create and approve/reject rework.
+2. Review audit logs.
+3. Attempt cross-branch rework operations as non-HM user.
+
+Verify:
+- ✅ Audit includes `REWORK_CREATED`
+- ✅ Audit includes `REWORK_APPROVED` or `REWORK_REJECTED`
+- ✅ Audit payload includes `job_type = backorder`
+- ✅ Branch access restrictions still apply
 
 ---
 

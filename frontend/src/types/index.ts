@@ -231,6 +231,7 @@ export interface LaborItem {
 
 // Job Order types
 export type JobOrderStatus = "draft" | "pending_approval" | "approved" | "in_progress" | "ready_for_release" | "pending_payment" | "completed" | "rejected" | "cancelled" | "deactivated";
+export type JobOrderType = "normal" | "backorder";
 
 export interface JobOrderItem {
   id: string;
@@ -314,6 +315,10 @@ export interface JobOrder {
   vehicle_id: string;
   branch_id: string;
   vehicle_class: VehicleClass;
+  job_type: JobOrderType;
+  reference_job_order_id: string | null;
+  rework_reason: string | null;
+  is_free_rework: boolean;
   status: JobOrderStatus;
   total_amount: number;
   notes: string | null;
@@ -362,6 +367,12 @@ export interface JobOrder {
   job_order_items?: JobOrderItem[];
   job_order_lines?: JobOrderLine[];
   third_party_repairs?: { cost: number }[];
+  related_reworks?: Array<{
+    id: string;
+    order_number: string;
+    status: JobOrderStatus;
+    job_type: JobOrderType;
+  }>;
 }
 
 // Third-Party Repair types

@@ -746,6 +746,18 @@ export const jobOrdersApi = {
     });
   },
 
+  createRework: async (data: {
+    reference_job_order_id: string;
+    rework_reason: string;
+    is_free_rework?: boolean;
+    vehicle_bay?: string;
+  }) => {
+    return fetchWithAuth<import("../types").JobOrder>("/api/job-orders/rework", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
   update: async (id: string, data: { notes?: string | null }) => {
     return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}`, {
       method: "PUT",
@@ -791,6 +803,16 @@ export const jobOrdersApi = {
 
   recordApproval: async (id: string, data: { decision: "approved" | "rejected"; rejection_reason?: string; approval_method?: string }) => {
     return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/record-approval`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  approveRework: async (
+    id: string,
+    data: { decision: "approved" | "rejected"; rejection_reason?: string; approval_method?: string }
+  ) => {
+    return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/approve-rework`, {
       method: "PATCH",
       body: JSON.stringify(data),
     });

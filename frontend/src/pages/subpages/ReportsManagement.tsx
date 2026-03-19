@@ -191,14 +191,16 @@ export function ReportsManagement() {
       setLoading(true);
       setError(null);
       const statusFilter = activeFilters.status;
+      const normalizedStatusFilter: "active" | "deactivated" | undefined =
+        statusFilter === "active" || statusFilter === "deactivated" ? statusFilter : undefined;
       const reportsPromise =
-        !statusFilter || statusFilter === "all"
+        !normalizedStatusFilter
           ? Promise.all([
               reportsApi.getAll({ limit: 1000, status: "active" }),
               reportsApi.getAll({ limit: 1000, status: "deactivated" }),
             ]).then(([activeRes, deactivatedRes]) => [...activeRes.data, ...deactivatedRes.data])
           : reportsApi
-              .getAll({ limit: 1000, status: statusFilter })
+              .getAll({ limit: 1000, status: normalizedStatusFilter })
               .then((res) => res.data);
 
       const [reportsData, branchesRes] = await Promise.all([reportsPromise, branchesApi.getAll()]);

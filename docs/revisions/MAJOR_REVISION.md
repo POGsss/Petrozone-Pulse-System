@@ -244,54 +244,202 @@ Customer brings oil:
 
 ---
 
-# PRIORITY 5 (WORKFLOW – 2 DAYS)
-Ok that's a great implementation, im happy with the current Job Order Flow, now let's move on to more revisions.
+# PRIORITY 5 ( 2 DAYS)
+# MODULE 5: Rework / Backorder Job Orders
 
-This is under the Job Order Flow also I just need to add a new process which is the Job Redo or Rework Workflow, here is the instruction:
+## IMPORTANT DESIGN DECISION
 
-## MODULE 5: Rework / Backorder Job Orders
-
-### Objective
-Introduce rework job flow with approval control.
-
----
-
-### Implementation Prompt (Backend)
-
-1. Add fields:
-
-job_orders
-
-job_type (normal | backorder)
-
-reference_job_order_id
-
-
-2. Validation:
-- If backorder:
-  - reference_job_order_id REQUIRED
-  - HM approval REQUIRED
-
-3. Lifecycle update:
-- Add approval checkpoint
+- A Rework Job is a **NEW Job Order**
+- It MUST NOT be implemented as a job_order_item
+- It MUST reference an existing COMPLETED Job Order
+- It MUST follow its own lifecycle and approval flow
 
 ---
 
-### Implementation Prompt (Frontend)
+## OBJECTIVE
 
-- Add "Rework Job" Button to the More Action Button
-- Create a Modal similar to the attached image
-- Dont copy the layout of the image, use the current styling and consistency
+Introduce a Rework / Backorder workflow that:
+
+- Allows creating a new Job Order from a completed one
+- Requires Hiring Manager (HM) approval
+- Maintains full traceability between original and rework job
+- Supports free or controlled-cost redo
 
 ---
 
-### Sample Scenario
+# BACKEND IMPLEMENTATION
 
-Customer returns:
-- Select Customer previous Job Order
-- Click More Actions and Rework Job
-- Fillout the Rework Form and Save
-- Requires HM approval
+## 1. Schema Changes (job_orders)
+
+Add the following fields:
+
+- job_type: enum ('normal', 'backorder') DEFAULT 'normal'
+- reference_job_order_id: uuid (nullable, FK → job_orders.id)
+- rework_reason: text (required if backorder)
+- is_free_rework: boolean DEFAULT true
+- approval_status: enum ('pending', 'approved', 'rejected') DEFAULT 'pending'
+
+---
+
+## 2. Validation Rules
+
+### On Create:
+
+IF job_type = 'backorder':
+- reference_job_order_id is REQUIRED
+- rework_reason is REQUIRED
+- original job MUST be status = 'completed'
+- approval_status = 'pending'
+
+---
+
+### On Start Work:
+
+IF job_type = 'backorder' AND approval_status != 'approved':
+→ BLOCK action
+
+---
+
+### On Completion:
+
+IF is_free_rework = true:
+→ SKIP payment validation
+
+ELSE:
+→ enforce existing payment rules
+
+---
+
+## 3. Lifecycle Update
+
+Rework Job Order flow:
+
+draft  
+→ pending_approval (REQUIRED)  
+→ approved / rejected  
+→ in_progress  
+→ ready_for_release  
+→ completed  
+
+NO shortcuts allowed.
+
+---
+
+## 4. API Requirements
+
+Implement:
+
+- POST /job-orders/rework
+  - Creates a new backorder JO from existing JO
+
+- PATCH /job-orders/:id/approve-rework
+  - HM approval endpoint
+
+Ensure:
+- Proper validation
+- Clear error messages
+- Reuse existing JO lifecycle endpoints where possible
+
+---
+
+# FRONTEND IMPLEMENTATION
+
+## 1. Job Card (List View)
+
+Rework Job Orders MUST:
+
+- Appear as a NORMAL job order card
+- Include a badge: "BACKORDER"
+- Display reference:
+  "Rework of JO-XXXX"
+
+DO NOT nest inside original job card.
+
+---
+
+## 2. Original Job Card
+
+If job has rework(s):
+
+- Show indicator:
+  "Has Rework" or "Reworks: X"
+
+---
+
+## 3. Rework Button
+
+Add inside:
+More Actions → "Rework Job"
+
+ONLY visible when:
+job.status === 'completed'
+
+---
+
+## 4. Rework Modal
+
+Fields:
+
+- Original Job Order (readonly)
+- Rework Reason (required)
+- Free Redo Toggle same as the toggle in the Edit User modal (User Management Page)
+- Notes (optional)
+
+Actions:
+- Cancel
+- Submit
+
+---
+
+## 5. Job Details Page
+
+If REWORK:
+
+Show:
+- "Rework of JO-XXXX"
+- Approval Status
+- Reason
+
+If ORIGINAL:
+
+Show:
+- List of related rework job orders
+
+---
+
+# SAMPLE FLOW
+
+1. User opens a COMPLETED Job Order
+2. Clicks More → Rework Job
+3. Fills out form (reason, free redo)
+4. Submits → New JO created (status: pending approval)
+5. HM approves
+6. Work proceeds like normal JO
+
+---
+
+# STRICT RULES
+
+DO NOT:
+- Implement rework as a job_order_item
+- Modify original job order items
+- Skip approval flow
+- Mix original and rework data
+
+---
+
+# EXPECTED OUTPUT
+
+Before implementing, analyze current system and provide:
+
+1. Required schema changes
+2. Affected backend routes
+3. UI components to modify
+4. Potential risks or breaking changes
+5. Step-by-step implementation plan
+
+DO NOT start coding immediately.
+Focus on analysis and safe integration first.
 
 ---
 

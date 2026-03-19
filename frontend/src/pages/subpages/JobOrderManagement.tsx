@@ -188,6 +188,7 @@ export function JobOrderManagement() {
   const canDelete = userRoles.some((r) => ["POC", "JS", "R"].includes(r));
   const canRepair = userRoles.some((r) => ["HM", "POC", "JS", "R", "T"].includes(r));
   const canApproval = userRoles.some((r) => ["R", "T"].includes(r));
+  const canApproveRework = userRoles.includes("HM");
   const canPayment = userRoles.some((r) => ["R", "T"].includes(r));
   const canStartWork = userRoles.includes("T");
   const canMarkReady = userRoles.some((r) => ["T", "POC"].includes(r));
@@ -337,6 +338,15 @@ export function JobOrderManagement() {
   const [paymentReference, setPaymentReference] = useState("");
   const [paymentMode, setPaymentMode] = useState<"cash" | "gcash" | "other">("cash");
 
+  // Rework modal state
+  const [showReworkModal, setShowReworkModal] = useState(false);
+  const [reworkSourceOrder, setReworkSourceOrder] = useState<JobOrder | null>(null);
+  const [reworkReason, setReworkReason] = useState("");
+  const [reworkVehicleBay, setReworkVehicleBay] = useState("");
+  const [isFreeRework, setIsFreeRework] = useState(true);
+  const [creatingRework, setCreatingRework] = useState(false);
+  const [reworkError, setReworkError] = useState<string | null>(null);
+
   // Shared reason modal (for cancel & reject actions)
   const [showReasonModal, setShowReasonModal] = useState(false);
   const [reasonModalAction, setReasonModalAction] = useState<"cancel" | "reject">("cancel");
@@ -419,6 +429,29 @@ export function JobOrderManagement() {
       filteredCount: filtered.length,
     };
   }, [allOrders, searchQuery, activeFilters, currentPage]);
+
+  const orderNumberById = useMemo(() => {
+    const map = new Map<string, string>();
+    allOrders.forEach((order) => {
+      map.set(order.id, order.order_number);
+    });
+    return map;
+  }, [allOrders]);
+
+  const reworksByReference = useMemo(() => {
+    const map = new Map<string, JobOrder[]>();
+    allOrders.forEach((order) => {
+      if (order.job_type !== "backorder" || !order.reference_job_order_id) return;
+      const current = map.get(order.reference_job_order_id) || [];
+      map.set(order.reference_job_order_id, [...current, order]);
+    });
+    return map;
+  }, [allOrders]);
+
+  const viewRelatedReworks = useMemo(() => {
+    if (!viewOrder) return [] as JobOrder[];
+    return reworksByReference.get(viewOrder.id) || [];
+  }, [viewOrder, reworksByReference]);
 
   useEffect(() => {
     fetchData();
@@ -1079,6 +1112,44 @@ export function JobOrderManagement() {
       .finally(() => { setLoadingHistory(false); });
 
     await Promise.allSettled([fullPromise, repairsPromise, historyPromise]);
+  }
+
+  function openReworkModal(order: JobOrder) {
+    setReworkSourceOrder(order);
+    setReworkReason("");
+    setReworkVehicleBay(order.vehicle_bay || "");
+    setIsFreeRework(true);
+    setReworkError(null);
+    setShowReworkModal(true);
+  }
+
+  async function handleCreateRework() {
+    if (!reworkSourceOrder) return;
+    if (!reworkReason.trim()) {
+      setReworkError("Rework reason is required");
+      return;
+    }
+
+    try {
+      setCreatingRework(true);
+      setReworkError(null);
+      await jobOrdersApi.createRework({
+        reference_job_order_id: reworkSourceOrder.id,
+        rework_reason: reworkReason.trim(),
+        is_free_rework: isFreeRework,
+        vehicle_bay: reworkVehicleBay || undefined,
+      });
+      setShowReworkModal(false);
+      setReworkSourceOrder(null);
+      showToast.success("Rework job order created and submitted for approval");
+      fetchData();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to create rework job order";
+      setReworkError(msg);
+      showToast.error(msg);
+    } finally {
+      setCreatingRework(false);
+    }
   }
 
   // --- Edit ---
@@ -2151,14 +2222,24 @@ export function JobOrderManagement() {
             : 'No job orders found. Click "Create Job Order" to create one.'
         }
       >
-        {paginatedItems.map((order) => (
+        {paginatedItems.map((order) => {
+          const referenceOrderNumber = order.reference_job_order_id
+            ? orderNumberById.get(order.reference_job_order_id)
+            : null;
+          const relatedReworks = reworksByReference.get(order.id) || [];
+
+          return (
           <GridCard
             key={order.id}
             onClick={() => openViewModal(order)}
             icon={<LuClipboardList className="w-5 h-5 text-primary" />}
             title={`Job - ${order.order_number}`}
             subtitle={
-              order.branches ? (
+              order.job_type === "backorder" ? (
+                <span className="text-xs font-semibold bg-secondary-100 text-secondary-950 px-2 py-0.5 rounded">
+                  BACKORDER
+                </span>
+              ) : order.branches ? (
                 <span className="text-xs font-mono bg-neutral-100 text-primary px-2 py-0.5 rounded">
                   {order.branches.code}
                 </span>
@@ -2173,7 +2254,13 @@ export function JobOrderManagement() {
                 <p className="text-neutral-900">{formatPrice(computeOrderGrandTotal(order))}</p>
                 <p className="text-neutral-900">{order.vehicles ? `${order.vehicles.plate_number} ${order.vehicles.model}` : "—"}</p>
                 <p className="text-neutral-900">{order.customers?.full_name || "—"}</p>
-                <p className="text-neutral-900">{formatDate(order.created_at)}</p>
+                <p className="text-neutral-900">
+                  {order.job_type === "backorder"
+                    ? `Rework of ${referenceOrderNumber || "Unknown"}`
+                    : relatedReworks.length > 0
+                      ? `Reworks: ${relatedReworks.length}`
+                      : formatDate(order.created_at)}
+                </p>
               </>
             }
             actions={[
@@ -2218,12 +2305,13 @@ export function JobOrderManagement() {
                     >
                       <LuHistory className="w-4 h-4" /> Job Order History
                     </button>
-                    {canApproval && (order.status === "draft" || order.status === "pending_approval") && (
+                    {((order.job_type !== "backorder" && canApproval && (order.status === "draft" || order.status === "pending_approval")) ||
+                      (order.job_type === "backorder" && canApproveRework && order.status === "pending_approval")) && (
                       <button
                         onClick={(e) => { e.stopPropagation(); closeDropdown(); openApprovalModal(order); }}
                         className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
                       >
-                        <LuSend className="w-4 h-4" /> Customer Approval
+                        <LuSend className="w-4 h-4" /> {order.job_type === "backorder" ? "Rework Approval" : "Customer Approval"}
                       </button>
                     )}
                     {canApproval && (order.status === "draft" || order.status === "pending_approval") && (
@@ -2301,6 +2389,14 @@ export function JobOrderManagement() {
                         <LuWrench className="w-4 h-4" /> Manage Repairs
                       </button>
                     )}
+                    {canCreate && order.status === "completed" && order.job_type !== "backorder" && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); closeDropdown(); openReworkModal(order); }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                      >
+                        <LuRefreshCw className="w-4 h-4" /> Rework Job
+                      </button>
+                    )}
                     {canPayment && (
                       <button
                         onClick={(e) => { e.stopPropagation(); closeDropdown(); openPaymentDetailsModal(order); }}
@@ -2314,7 +2410,8 @@ export function JobOrderManagement() {
               </div>
             }
           />
-        ))}
+          );
+        })}
       </CardGrid>
 
       {/* Pagination */}
@@ -2761,7 +2858,56 @@ export function JobOrderManagement() {
                   disabled
                 />
               )}
+              {viewOrder.job_type === "backorder" && (
+                <>
+                  <ModalInput
+                    type="text"
+                    value={`Rework of ${viewOrder.reference_job_order_id ? (orderNumberById.get(viewOrder.reference_job_order_id) || viewOrder.reference_job_order_id) : "—"}`}
+                    onChange={() => {}}
+                    placeholder="Reference Job Order"
+                    disabled
+                  />
+                  <div className="grid grid-cols-2 gap-4">
+                    <ModalInput
+                      type="text"
+                      value={viewOrder.approval_status?.toLocaleLowerCase() || "—"}
+                      onChange={() => {}}
+                      placeholder="Approval Status"
+                      disabled
+                    />
+                    <ModalInput
+                      type="text"
+                      value={viewOrder.is_free_rework ? "Free" : "Paid"}
+                      onChange={() => {}}
+                      placeholder="Free Rework"
+                      disabled
+                    />
+                  </div>
+                  <textarea
+                    value={viewOrder.rework_reason || "—"}
+                    readOnly
+                    disabled
+                    rows={3}
+                    className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 focus:outline-none transition-all resize-none cursor-readonly"
+                  />
+                </>
+              )}
             </ModalSection>
+
+            {viewOrder.job_type !== "backorder" && viewRelatedReworks.length > 0 && (
+              <ModalSection title="Related Reworks">
+                <div className="space-y-2">
+                  {viewRelatedReworks.map((rework) => (
+                    <div key={rework.id} className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3.5">
+                      <span className="text-neutral-950">{rework.order_number}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded ${getStatusColors(rework.status)}`}>
+                        {getStatusLabel(rework.status)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </ModalSection>
+            )}
 
             <ModalSection title="Customer & Vehicle">
               <ModalInput
@@ -2941,7 +3087,7 @@ export function JobOrderManagement() {
                 )}
 
               </>
-            ) : (
+            ) : viewOrder.job_type !== "backorder" ? (
               <ModalSection title="Items Lists">
                 {loadingView && !viewOrder.job_order_items ? (
                     <div className="space-y-4">
@@ -2990,7 +3136,7 @@ export function JobOrderManagement() {
                   <p className="text-sm text-neutral-900 text-center py-3">No items.</p>
                 )}
               </ModalSection>
-            )}
+            ) : null}
 
             {/* Third Party Repairs section */}
             {repairs.length > 0 && (
@@ -3889,13 +4035,20 @@ export function JobOrderManagement() {
                   <>Request customer approval for <strong className="text-neutral-950">{approvalOrder.order_number}</strong>?</>
                 )}
                 {approvalOrder.status === "pending_approval" && (
-                  <>Record the customer's decision for <strong className="text-neutral-950">{approvalOrder.order_number}</strong>?</>
+                  <>
+                    {approvalOrder.job_type === "backorder"
+                      ? <>Record HM rework decision for <strong className="text-neutral-950">{approvalOrder.order_number}</strong>?</>
+                      : <>Record the customer's decision for <strong className="text-neutral-950">{approvalOrder.order_number}</strong>?</>}
+                  </>
                 )}
               </p>
             </div>
             <p className="text-sm text-neutral-900 mb-2">
               {approvalOrder.status === "draft" && "This will change the status to Pending Approval and notify the customer for review."}
-              {approvalOrder.status === "pending_approval" && "Select whether the customer approved or rejected this job order."}
+              {approvalOrder.status === "pending_approval" &&
+                (approvalOrder.job_type === "backorder"
+                  ? "Select whether HM approves or rejects this rework job order."
+                  : "Select whether the customer approved or rejected this job order.")}
             </p>
 
             {approvalOrder.status === "draft" && (
@@ -3952,10 +4105,18 @@ export function JobOrderManagement() {
                   onClick={async () => {
                     try {
                       setProcessingApproval(true);
-                      await jobOrdersApi.recordApproval(approvalOrder.id, { decision: "approved" });
+                      if (approvalOrder.job_type === "backorder") {
+                        await jobOrdersApi.approveRework(approvalOrder.id, { decision: "approved" });
+                      } else {
+                        await jobOrdersApi.recordApproval(approvalOrder.id, { decision: "approved" });
+                      }
                       setShowApprovalModal(false);
                       setApprovalOrder(null);
-                      showToast.success("Customer approved the job order");
+                      showToast.success(
+                        approvalOrder.job_type === "backorder"
+                          ? "Rework approved"
+                          : "Customer approved the job order"
+                      );
                       fetchData();
                     } catch (err) {
                       showToast.error(err instanceof Error ? err.message : "Failed to record approval");
@@ -3985,13 +4146,17 @@ export function JobOrderManagement() {
       >
         {paymentOrder && (
           <div>
+            {(() => {
+              const requiresPaymentDetails = !paymentOrder.is_free_rework;
+              return (
+                <>
             <div className="bg-neutral-100 rounded-xl p-4 my-4">
               <p className="text-neutral-900">
                 Confirm payment for <strong className="text-neutral-950">{paymentOrder.order_number}</strong>? The total amount to be paid is <strong className="text-neutral-950">{new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(paymentOrder.total_amount)}</strong>
               </p>
             </div>
 
-            {!paymentOrder.invoice_number || !paymentOrder.payment_reference ? (
+            {requiresPaymentDetails && (!paymentOrder.invoice_number || !paymentOrder.payment_reference) ? (
               <p className="text-sm text-neutral-900 mb-2">Add Payment Method details first before confirming Record Payment.</p>
             ) : (
               <p className="text-sm text-neutral-900 mb-2">This will mark the job order as payment received and change the status to Pending Payment.</p>
@@ -4010,7 +4175,7 @@ export function JobOrderManagement() {
               </button>
               <button
                 type="button"
-                disabled={processingPayment || !paymentOrder.invoice_number || !paymentOrder.payment_reference}
+                disabled={processingPayment || (requiresPaymentDetails && (!paymentOrder.invoice_number || !paymentOrder.payment_reference))}
                 onClick={async () => {
                   try {
                     setProcessingPayment(true);
@@ -4030,6 +4195,9 @@ export function JobOrderManagement() {
                 {processingPayment ? "Processing..." : "Confirm"}
               </button>
             </div>
+                </>
+              );
+            })()}
           </div>
         )}
       </Modal>
@@ -4133,6 +4301,129 @@ export function JobOrderManagement() {
         )}
       </Modal>
 
+      {/* --- Rework Job Modal --- */}
+      <Modal
+        isOpen={showReworkModal && !!reworkSourceOrder}
+        onClose={() => {
+          setShowReworkModal(false);
+          setReworkSourceOrder(null);
+        }}
+        title="Rework Job"
+        maxWidth="lg"
+      >
+        {reworkSourceOrder && (
+          <div>
+            <ModalSection title="Original Job Order">
+              <div className="bg-primary-100 rounded-xl px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-neutral-950 truncate">Job - {reworkSourceOrder.order_number}</p>
+                  <p className="text-xs text-primary truncate">
+                    {reworkSourceOrder.vehicles?.plate_number || "—"} {reworkSourceOrder.vehicles?.model || ""} - {reworkSourceOrder.customers?.full_name || "—"} - {formatDate(reworkSourceOrder.created_at)}
+                  </p>
+                </div>
+              </div>
+            </ModalSection>
+
+            <ModalSection title="Pre-filled Information">
+              <ModalInput
+                type="text"
+                value={reworkSourceOrder.order_number}
+                onChange={() => {}}
+                placeholder="Job Reference"
+                disabled
+              />
+
+              <div className="grid grid-cols-2 gap-4">
+                <ModalInput
+                  type="text"
+                  value={reworkSourceOrder.customers?.full_name || "—"}
+                  onChange={() => {}}
+                  placeholder="Name"
+                  disabled
+                />
+                <ModalInput
+                  type="text"
+                  value={reworkSourceOrder.vehicles ? `${reworkSourceOrder.vehicles.plate_number} ${reworkSourceOrder.vehicles.model}` : "—"}
+                  onChange={() => {}}
+                  placeholder="Vehicle"
+                  disabled
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <ModalInput
+                  type="text"
+                  value={reworkSourceOrder.vehicle_class ? reworkSourceOrder.vehicle_class.replace("_", " ") : "—"}
+                  onChange={() => {}}
+                  placeholder="Type"
+                  disabled
+                />
+                <ModalInput
+                  type="text"
+                  value={reworkSourceOrder.branches?.code || reworkSourceOrder.branches?.name || "—"}
+                  onChange={() => {}}
+                  placeholder="Branch"
+                  disabled
+                />
+              </div>
+
+              <ModalSelect
+                value={reworkVehicleBay}
+                onChange={setReworkVehicleBay}
+                placeholder="Vehicle Bay *"
+                options={[
+                  { value: "bay1", label: "Bay 1" },
+                  { value: "bay2", label: "Bay 2" },
+                ]}
+              />
+            </ModalSection>
+
+            <ModalSection title="Rework Details">
+              <textarea
+                value={reworkReason}
+                onChange={(e) => setReworkReason(e.target.value)}
+                placeholder="Rework Reason *"
+                rows={3}
+                className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
+              />
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsFreeRework((prev) => !prev)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isFreeRework ? "bg-primary" : "bg-neutral-200"}`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isFreeRework ? "translate-x-6" : "translate-x-1"}`}
+                  />
+                </button>
+                <span className="text-sm text-neutral-900">{isFreeRework ? "Free" : "Paid"}</span>
+              </div>
+
+              <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
+                <span className="font-semibold text-neutral-950">Grand Total</span>
+                <span className="font-bold text-primary text-lg">{formatPrice(isFreeRework ? 0 : (reworkSourceOrder.total_amount || 0))}</span>
+              </div>
+            </ModalSection>
+
+            <ModalError message={reworkError} />
+
+            <ModalButtons
+              onCancel={() => {
+                setShowReworkModal(false);
+                setReworkSourceOrder(null);
+              }}
+              submitText={creatingRework ? "Submitting..." : "Submit"}
+              cancelText="Cancel"
+              loading={creatingRework}
+              type="button"
+              onSubmit={handleCreateRework}
+              disabled={!reworkReason.trim() || !reworkVehicleBay}
+            />
+          </div>
+        )}
+      </Modal>
+
       {/* --- Shared Reason Modal (Cancel / Reject) --- */}
       <Modal
         isOpen={showReasonModal && (reasonModalAction === "cancel" ? !!orderToCancel : !!approvalOrder)}
@@ -4191,14 +4482,25 @@ export function JobOrderManagement() {
                   } else if (reasonModalAction === "reject" && approvalOrder) {
                     try {
                       setProcessingApproval(true);
-                      await jobOrdersApi.recordApproval(approvalOrder.id, {
-                        decision: "rejected",
-                        rejection_reason: reasonText.trim(),
-                      });
+                      if (approvalOrder.job_type === "backorder") {
+                        await jobOrdersApi.approveRework(approvalOrder.id, {
+                          decision: "rejected",
+                          rejection_reason: reasonText.trim(),
+                        });
+                      } else {
+                        await jobOrdersApi.recordApproval(approvalOrder.id, {
+                          decision: "rejected",
+                          rejection_reason: reasonText.trim(),
+                        });
+                      }
                       setShowReasonModal(false);
                       setReasonText("");
                       setApprovalOrder(null);
-                      showToast.success("Customer rejected the job order");
+                      showToast.success(
+                        approvalOrder.job_type === "backorder"
+                          ? "Rework rejected"
+                          : "Customer rejected the job order"
+                      );
                       fetchData();
                     } catch (err) {
                       showToast.error(err instanceof Error ? err.message : "Failed to record rejection");

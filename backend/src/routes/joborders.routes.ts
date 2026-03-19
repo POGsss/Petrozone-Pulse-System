@@ -458,6 +458,161 @@ router.get(
 );
 
 /**
+ * POST /api/job-orders/rework
+ * Create a new backorder (rework) job order linked to a completed job order.
+ * Roles: HM, POC, JS, R
+ */
+router.post(
+  "/rework",
+  requireRoles("HM", "POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const {
+        reference_job_order_id,
+        rework_reason,
+        is_free_rework,
+        vehicle_bay,
+      } = req.body as {
+        reference_job_order_id?: string;
+        rework_reason?: string;
+        is_free_rework?: boolean;
+        vehicle_bay?: string;
+      };
+
+      if (!reference_job_order_id) {
+        res.status(400).json({ error: "reference_job_order_id is required." });
+        return;
+      }
+
+      if (!rework_reason || !rework_reason.trim()) {
+        res.status(400).json({ error: "rework_reason is required for rework jobs." });
+        return;
+      }
+
+      const { data: original, error: originalError } = await supabaseAdmin
+        .from("job_orders")
+        .select("id, order_number, branch_id, status, customer_id, vehicle_id, vehicle_class, odometer_reading, vehicle_bay")
+        .eq("id", reference_job_order_id)
+        .eq("is_deleted", false)
+        .single();
+
+      if (originalError || !original) {
+        if (originalError?.code === "PGRST116") {
+          res.status(404).json({ error: "Referenced job order not found." });
+          return;
+        }
+        res.status(500).json({ error: originalError?.message || "Failed to verify referenced job order." });
+        return;
+      }
+
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(original.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to the referenced job order's branch." });
+        return;
+      }
+
+      if (original.status !== "completed") {
+        res.status(400).json({ error: "Rework can only be created from a completed job order." });
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const freeRework = is_free_rework ?? true;
+      const effectiveTotal = freeRework ? 0 : Number((original as any).total_amount || 0);
+      const selectedBay = vehicle_bay?.trim() || original.vehicle_bay || null;
+
+      const { data: created, error: createError } = await supabaseAdmin
+        .from("job_orders")
+        .insert({
+          order_number: "",
+          customer_id: original.customer_id,
+          vehicle_id: original.vehicle_id,
+          branch_id: original.branch_id,
+          vehicle_class: original.vehicle_class,
+          notes: null,
+          total_amount: effectiveTotal,
+          odometer_reading: original.odometer_reading,
+          vehicle_bay: selectedBay,
+          created_by: req.user!.id,
+          status: "pending_approval",
+          approval_status: "REQUESTED",
+          approval_requested_at: now,
+          job_type: "backorder",
+          reference_job_order_id: original.id,
+          rework_reason: rework_reason.trim(),
+          is_free_rework: freeRework,
+        })
+        .select("id, order_number")
+        .single();
+
+      if (createError || !created) {
+        res.status(500).json({ error: createError?.message || "Failed to create rework job order." });
+        return;
+      }
+
+      const { data: createdOrder, error: fetchCreatedError } = await supabaseAdmin
+        .from("job_orders")
+        .select(ORDER_SELECT_WITH_LINES)
+        .eq("id", created.id)
+        .single();
+
+      if (fetchCreatedError) {
+        res.status(500).json({ error: fetchCreatedError.message });
+        return;
+      }
+
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "REWORK_CREATED",
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: created.id,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || original.branch_id,
+          p_new_values: {
+            order_number: created.order_number,
+            job_type: "backorder",
+            status: "pending_approval",
+            approval_status: "REQUESTED",
+            reference_job_order_id: original.id,
+            reference_order_number: original.order_number,
+            rework_reason: rework_reason.trim(),
+            is_free_rework: freeRework,
+            vehicle_bay: selectedBay,
+            total_amount: effectiveTotal,
+          },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      await createJobOrderNotification(
+        created.order_number,
+        created.id,
+        original.branch_id,
+        "draft",
+        "pending_approval",
+        req.user!.id,
+        "Rework"
+      );
+
+      res.status(201).json(createdOrder);
+    } catch (error) {
+      console.error("Create rework job order error:", error);
+      await logFailedAction(
+        req,
+        "REWORK_CREATED",
+        "JOB_ORDER",
+        null,
+        error instanceof Error ? error.message : "Failed to create rework job order"
+      );
+      res.status(500).json({ error: "Failed to create rework job order" });
+    }
+  }
+);
+
+/**
  * GET /api/job-orders/:id
  * Get a single job order by ID with its items
  * Roles: HM, POC, JS, R, T
@@ -1824,6 +1979,167 @@ router.patch(
 );
 
 /**
+ * PATCH /api/job-orders/:id/approve-rework
+ * HM approval endpoint for rework/backorder job orders.
+ * Roles: HM
+ */
+router.patch(
+  "/:id/approve-rework",
+  requireRoles("HM"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const orderId = req.params.id as string;
+      const { decision, rejection_reason, approval_method } = req.body as {
+        decision?: "approved" | "rejected";
+        rejection_reason?: string;
+        approval_method?: string;
+      };
+
+      if (!decision || !["approved", "rejected"].includes(decision)) {
+        res.status(400).json({ error: 'Decision must be either "approved" or "rejected"' });
+        return;
+      }
+
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select("id, branch_id, status, order_number, job_type, reference_job_order_id, approval_requested_at")
+        .eq("id", orderId)
+        .eq("is_deleted", false)
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === "PGRST116") {
+          res.status(404).json({ error: "Job order not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError.message });
+        return;
+      }
+
+      if (existing.job_type !== "backorder") {
+        res.status(400).json({ error: "approve-rework is only valid for backorder job orders." });
+        return;
+      }
+
+      if (existing.status !== "pending_approval") {
+        res.status(400).json({
+          error: `Cannot record rework approval for status "${existing.status}". Only pending_approval backorders can be approved or rejected.`,
+        });
+        return;
+      }
+
+      const now = new Date().toISOString();
+      if (existing.approval_requested_at && new Date(now) < new Date(existing.approval_requested_at)) {
+        res.status(400).json({ error: "Approval details incomplete. Timestamp coherence violation." });
+        return;
+      }
+
+      if (decision === "approved") {
+        const { count: lineCount } = await supabaseAdmin
+          .from("job_order_lines")
+          .select("id", { count: "exact", head: true })
+          .eq("job_order_id", orderId);
+
+        let deductResult: { success: boolean; error?: string } = { success: true };
+        if ((lineCount || 0) > 0) {
+          deductResult = await deductStockForJobOrderLines(orderId, existing.branch_id, req.user!.id);
+        } else {
+          const { data: joItems } = await supabaseAdmin
+            .from("job_order_items")
+            .select("package_item_id, package_item_name, package_item_type, quantity")
+            .eq("job_order_id", orderId);
+
+          if (joItems && joItems.length > 0) {
+            deductResult = await deductStockForJobOrder(orderId, existing.branch_id, joItems, req.user!.id);
+          }
+        }
+
+        if (!deductResult.success) {
+          res.status(400).json({
+            error: deductResult.error || "Insufficient stock to approve this rework job order",
+          });
+          return;
+        }
+      }
+
+      const updatePayload: Record<string, unknown> = {
+        status: decision,
+        approved_at: now,
+        approved_by: req.user!.id,
+        approval_status: decision === "approved" ? "APPROVED" : "REJECTED",
+        approval_method: approval_method || null,
+        rejection_reason: decision === "rejected" ? rejection_reason?.trim() || null : null,
+      };
+
+      const { error: updateError } = await supabaseAdmin
+        .from("job_orders")
+        .update(updatePayload)
+        .eq("id", orderId);
+
+      if (updateError) {
+        res.status(500).json({ error: updateError.message });
+        return;
+      }
+
+      const { data: updated, error: refetchError } = await supabaseAdmin
+        .from("job_orders")
+        .select(ORDER_SELECT_WITH_LINES)
+        .eq("id", orderId)
+        .eq("is_deleted", false)
+        .single();
+
+      if (refetchError) {
+        res.status(500).json({ error: refetchError.message });
+        return;
+      }
+
+      const action = decision === "approved" ? "REWORK_APPROVED" : "REWORK_REJECTED";
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: action,
+          p_entity_type: "JOB_ORDER",
+          p_entity_id: orderId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: {
+            order_number: existing.order_number,
+            job_type: "backorder",
+            status: decision,
+            approval_status: decision === "approved" ? "APPROVED" : "REJECTED",
+            reference_job_order_id: existing.reference_job_order_id,
+            rejection_reason: decision === "rejected" ? rejection_reason?.trim() || null : null,
+          },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      await createJobOrderNotification(
+        existing.order_number,
+        orderId,
+        existing.branch_id,
+        "pending_approval",
+        decision,
+        req.user!.id,
+        "Rework"
+      );
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Approve rework error:", error);
+      await logFailedAction(
+        req,
+        "APPROVAL_RECORDED",
+        "JOB_ORDER",
+        req.params.id as string,
+        error instanceof Error ? error.message : "Failed to approve/reject rework"
+      );
+      res.status(500).json({ error: "Failed to approve/reject rework" });
+    }
+  }
+);
+
+/**
  * PATCH /api/job-orders/:id/cancel
  * Cancel a job order (status → "cancelled")
  * Only "created", "pending", or "rejected" orders can be cancelled
@@ -2579,7 +2895,7 @@ router.patch(
       // Get existing order
       const { data: existing, error: fetchError } = await supabaseAdmin
         .from("job_orders")
-        .select("id, branch_id, order_number, status, approved_at")
+        .select("id, branch_id, order_number, status, approved_at, job_type, approval_status")
         .eq("id", orderId)
         .eq("is_deleted", false)
         .single();
@@ -2606,6 +2922,13 @@ router.patch(
       if (existing.status !== "approved") {
         res.status(400).json({
           error: `Cannot start work on a job order with status "${existing.status}". Only approved orders can be started.`,
+        });
+        return;
+      }
+
+      if (existing.job_type === "backorder" && existing.approval_status !== "APPROVED") {
+        res.status(400).json({
+          error: "Backorder rework must be approved before starting work.",
         });
         return;
       }
@@ -2980,7 +3303,11 @@ router.patch(
         return;
       }
 
-      if (!existing.invoice_number || !String(existing.invoice_number).trim() || !existing.payment_reference || !String(existing.payment_reference).trim()) {
+      const requiresPaymentDetails = !existing.is_free_rework;
+      if (
+        requiresPaymentDetails &&
+        (!existing.invoice_number || !String(existing.invoice_number).trim() || !existing.payment_reference || !String(existing.payment_reference).trim())
+      ) {
         res.status(400).json({
           error: "Payment details are required before confirming record payment.",
         });
@@ -3115,7 +3442,11 @@ router.patch(
         return;
       }
 
-      if (!existing.invoice_number || !String(existing.invoice_number).trim() || !existing.payment_reference || !String(existing.payment_reference).trim()) {
+      const requiresPaymentDetails = !existing.is_free_rework;
+      if (
+        requiresPaymentDetails &&
+        (!existing.invoice_number || !String(existing.invoice_number).trim() || !existing.payment_reference || !String(existing.payment_reference).trim())
+      ) {
         res.status(400).json({
           error: "Payment details are incomplete. Invoice number and payment reference are required before completion.",
         });

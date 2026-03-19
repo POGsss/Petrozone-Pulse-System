@@ -435,12 +435,16 @@ export type Database = {
           deleted_by: string | null
           id: string
           is_deleted: boolean
+          is_free_rework: boolean
+          job_type: "normal" | "backorder"
           notes: string | null
           odometer_reading: number | null
           order_number: string
           payment_recorded_at: string | null
           payment_recorded_by: string | null
+          reference_job_order_id: string | null
           rejection_reason: string | null
+          rework_reason: string | null
           start_time: string | null
           status: Database["public"]["Enums"]["job_order_status"]
           total_amount: number
@@ -469,12 +473,16 @@ export type Database = {
           deleted_by?: string | null
           id?: string
           is_deleted?: boolean
+          is_free_rework?: boolean
+          job_type?: "normal" | "backorder"
           notes?: string | null
           odometer_reading?: number | null
           order_number: string
           payment_recorded_at?: string | null
           payment_recorded_by?: string | null
+          reference_job_order_id?: string | null
           rejection_reason?: string | null
+          rework_reason?: string | null
           start_time?: string | null
           status?: Database["public"]["Enums"]["job_order_status"]
           total_amount?: number
@@ -503,12 +511,16 @@ export type Database = {
           deleted_by?: string | null
           id?: string
           is_deleted?: boolean
+          is_free_rework?: boolean
+          job_type?: "normal" | "backorder"
           notes?: string | null
           odometer_reading?: number | null
           order_number?: string
           payment_recorded_at?: string | null
           payment_recorded_by?: string | null
+          reference_job_order_id?: string | null
           rejection_reason?: string | null
+          rework_reason?: string | null
           start_time?: string | null
           status?: Database["public"]["Enums"]["job_order_status"]
           total_amount?: number
@@ -558,6 +570,13 @@ export type Database = {
             columns: ["deleted_by"]
             isOneToOne: false
             referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_orders_reference_job_order_id_fkey"
+            columns: ["reference_job_order_id"]
+            isOneToOne: false
+            referencedRelation: "job_orders"
             referencedColumns: ["id"]
           },
           {

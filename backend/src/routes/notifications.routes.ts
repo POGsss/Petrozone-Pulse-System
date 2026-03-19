@@ -765,7 +765,8 @@ export async function createJobOrderNotification(
   branchId: string,
   fromStatus: string,
   toStatus: string,
-  triggeredByUserId: string
+  triggeredByUserId: string,
+  contextLabel?: string
 ): Promise<void> {
   try {
     const statusLabels: Record<string, string> = {
@@ -779,8 +780,9 @@ export async function createJobOrderNotification(
       cancelled: "Cancelled",
     };
 
-    const title = `Job Order ${orderNumber} - Status Update`;
-    const message = `Job Order ${orderNumber} has been updated from "${statusLabels[fromStatus] || fromStatus}" to "${statusLabels[toStatus] || toStatus}".`;
+    const contextPrefix = contextLabel ? `${contextLabel} ` : "";
+    const title = `${contextPrefix}Job Order ${orderNumber} - Status Update`;
+    const message = `${contextPrefix}Job Order ${orderNumber} has been updated from "${statusLabels[fromStatus] || fromStatus}" to "${statusLabels[toStatus] || toStatus}".`;
 
     // Create system notification targeting all users in the branch
     const { data: notification, error } = await supabaseAdmin
