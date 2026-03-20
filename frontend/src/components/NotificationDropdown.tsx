@@ -126,7 +126,7 @@ export function NotificationDropdown({ onViewAll }: NotificationDropdownProps) {
       >
         <LuBell className="w-5 h-5" />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-negative text-white text-[10px] font-bold rounded-full px-1">
+          <span className="absolute -top-0.5 -right-0.5 min-w-4.5 h-4.5 flex items-center justify-center bg-negative text-white text-[10px] font-bold rounded-full px-1">
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
@@ -192,7 +192,7 @@ export function NotificationDropdown({ onViewAll }: NotificationDropdownProps) {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           {!receipt.is_read && (
-                            <span className="w-2 h-2 bg-primary rounded-full flex-shrink-0"></span>
+                            <span className="w-2 h-2 bg-primary rounded-full shrink-0"></span>
                           )}
                           <p className="text-sm font-medium text-neutral-950 truncate">
                             {notif.title}
@@ -218,7 +218,7 @@ export function NotificationDropdown({ onViewAll }: NotificationDropdownProps) {
                             e.stopPropagation();
                             handleMarkAsRead(receipt.id, receipt.notification_id);
                           }}
-                          className="p-1 text-neutral-400 hover:text-positive transition-colors flex-shrink-0"
+                          className="p-1 text-neutral-400 hover:text-positive transition-colors shrink-0"
                           title="Mark as read"
                         >
                           <LuCheck className="w-4 h-4" />
