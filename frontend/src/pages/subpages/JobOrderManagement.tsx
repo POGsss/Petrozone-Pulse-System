@@ -445,6 +445,7 @@ export function JobOrderManagement() {
   const reworksByReference = useMemo(() => {
     const map = new Map<string, JobOrder[]>();
     allOrders.forEach((order) => {
+      if (order.is_deleted) return;
       if (order.job_type !== "backorder" || !order.reference_job_order_id) return;
       const current = map.get(order.reference_job_order_id) || [];
       map.set(order.reference_job_order_id, [...current, order]);
@@ -1119,6 +1120,12 @@ export function JobOrderManagement() {
   }
 
   function openReworkModal(order: JobOrder) {
+    const existingReworks = reworksByReference.get(order.id) || [];
+    if (existingReworks.length > 0) {
+      showToast.error("This job order already has a rework job order.");
+      return;
+    }
+
     setReworkSourceOrder(order);
     setReworkReason("");
     setReworkVehicleBay(order.vehicle_bay || "");
@@ -1129,6 +1136,12 @@ export function JobOrderManagement() {
 
   async function handleCreateRework() {
     if (!reworkSourceOrder) return;
+    const existingReworks = reworksByReference.get(reworkSourceOrder.id) || [];
+    if (existingReworks.length > 0) {
+      setReworkError("This job order already has a rework job order.");
+      return;
+    }
+
     if (!reworkReason.trim()) {
       setReworkError("Rework reason is required");
       return;
@@ -2231,6 +2244,7 @@ export function JobOrderManagement() {
             ? orderNumberById.get(order.reference_job_order_id)
             : null;
           const relatedReworks = reworksByReference.get(order.id) || [];
+          const hasExistingRework = relatedReworks.length > 0;
 
           return (
           <GridCard
@@ -2393,7 +2407,7 @@ export function JobOrderManagement() {
                         <LuWrench className="w-4 h-4" /> Manage Repairs
                       </button>
                     )}
-                    {canCreate && order.status === "completed" && order.job_type !== "backorder" && (
+                    {canCreate && order.status === "completed" && order.job_type !== "backorder" && !hasExistingRework && (
                       <button
                         onClick={(e) => { e.stopPropagation(); closeDropdown(); openReworkModal(order); }}
                         className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
@@ -2466,7 +2480,7 @@ export function JobOrderManagement() {
               value={addNotes}
               onChange={(e) => setAddNotes(e.target.value)}
               placeholder="Notes (optional)"
-              rows={2}
+              rows={3}
               className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
             />
             <div className="grid grid-cols-2 gap-4">
@@ -2733,7 +2747,7 @@ export function JobOrderManagement() {
               value={newRepairDescription}
               onChange={(e) => setNewRepairDescription(e.target.value)}
               placeholder="Description"
-              rows={2}
+              rows={3}
               className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
             />
             <div className="flex gap-2 items-end">
@@ -3328,7 +3342,7 @@ export function JobOrderManagement() {
                 value={actionRepairDescription}
                 onChange={(e) => setActionRepairDescription(e.target.value)}
                 placeholder="Description *"
-                rows={2}
+                rows={3}
                 className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
               />
               <div className="flex gap-2 items-end">
@@ -3478,7 +3492,7 @@ export function JobOrderManagement() {
               value={editNotes}
               onChange={(e) => setEditNotes(e.target.value)}
               placeholder="Notes (optional)"
-              rows={4}
+              rows={3}
               className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
             />
           </ModalSection>

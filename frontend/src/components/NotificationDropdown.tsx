@@ -253,7 +253,7 @@ export function NotificationDropdown({ onViewAll }: NotificationDropdownProps) {
               <textarea
                 value={viewReceipt.notifications.message}
                 readOnly
-                rows={4}
+                rows={3}
                 className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 text-sm resize-none focus:outline-none"
               />
             </ModalSection>

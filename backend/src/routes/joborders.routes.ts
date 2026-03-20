@@ -518,6 +518,30 @@ router.post(
         return;
       }
 
+      const { data: existingRework, error: existingReworkError } = await supabaseAdmin
+        .from("job_orders")
+        .select("id, order_number, status")
+        .eq("reference_job_order_id", original.id)
+        .eq("job_type", "backorder")
+        .eq("is_deleted", false)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingReworkError) {
+        res.status(500).json({ error: existingReworkError.message || "Failed to validate existing rework." });
+        return;
+      }
+
+      if (existingRework) {
+        res.status(409).json({
+          error: `A rework job order already exists for this job order (${existingRework.order_number}).`,
+          existing_rework_id: existingRework.id,
+          existing_rework_order_number: existingRework.order_number,
+          existing_rework_status: existingRework.status,
+        });
+        return;
+      }
+
       const now = new Date().toISOString();
       const freeRework = is_free_rework ?? true;
       const effectiveTotal = freeRework ? 0 : Number((original as any).total_amount || 0);
@@ -548,6 +572,12 @@ router.post(
         .single();
 
       if (createError || !created) {
+        if (createError?.code === "23505") {
+          res.status(409).json({
+            error: "A rework job order already exists for this job order.",
+          });
+          return;
+        }
         res.status(500).json({ error: createError?.message || "Failed to create rework job order." });
         return;
       }

@@ -611,7 +611,7 @@ export function InventoryManagement() {
   }
 
   if (loading) {
-    return <SkeletonLoader showHeader showStats statsCount={3} rows={5} />;
+    return <SkeletonLoader showHeader showStats statsCount={3} rows={6} />;
   }
 
   if (error) {

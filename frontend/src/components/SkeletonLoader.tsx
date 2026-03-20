@@ -12,7 +12,7 @@ interface SkeletonLoaderProps {
 }
 
 export function SkeletonLoader({
-  rows = 5,
+  rows = 6,
   showHeader = true,
   showStats = false,
   statsCount = 3,

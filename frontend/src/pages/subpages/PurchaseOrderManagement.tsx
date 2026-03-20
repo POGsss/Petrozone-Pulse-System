@@ -771,7 +771,7 @@ export function PurchaseOrderManagement() {
 
   // ─── Loading / Error ─────────────────────────────────────────────────
   if (loading) {
-    return <SkeletonLoader showHeader showStats statsCount={3} rows={5} />;
+    return <SkeletonLoader showHeader showStats statsCount={3} rows={6} />;
   }
 
   if (error) {
@@ -1084,7 +1084,7 @@ export function PurchaseOrderManagement() {
               value={addForm.notes}
               onChange={(e) => setAddForm({ ...addForm, notes: e.target.value })}
               placeholder="Notes (optional)"
-              rows={2}
+              rows={3}
               className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
             />
           </ModalSection>
@@ -1291,7 +1291,7 @@ export function PurchaseOrderManagement() {
                 value={editForm.notes}
                 onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
                 placeholder="Notes (optional)"
-                rows={2}
+                rows={3}
                 className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
               />
             </ModalSection>
@@ -1576,13 +1576,13 @@ export function PurchaseOrderManagement() {
                         <iframe
                           src={receiptUrl}
                           title="Receipt Preview"
-                          className="w-full h-[520px] rounded-lg border border-neutral-200"
+                          className="w-full h-130 rounded-lg border border-neutral-200"
                         />
                       ) : (
                         <img
                           src={receiptUrl}
                           alt="Receipt Preview"
-                          className="w-full max-h-[520px] object-contain rounded-lg border border-neutral-200 bg-white"
+                          className="w-full max-h-130 object-contain rounded-lg border border-neutral-200 bg-white"
                         />
                       )}
                     </div>

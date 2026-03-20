@@ -185,7 +185,7 @@ export function AuditLogs() {
   }
 
   if (loading && logs.length === 0) {
-    return <SkeletonLoader showHeader showStats statsCount={3} rows={5} />;
+    return <SkeletonLoader showHeader showStats statsCount={3} rows={6} />;
   }
 
   if (error && logs.length === 0) {
