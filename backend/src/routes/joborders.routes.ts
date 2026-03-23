@@ -491,7 +491,7 @@ router.post(
 
       const { data: original, error: originalError } = await supabaseAdmin
         .from("job_orders")
-        .select("id, order_number, branch_id, status, customer_id, vehicle_id, vehicle_class, odometer_reading, vehicle_bay, total_amount")
+        .select("id, order_number, branch_id, status, customer_id, vehicle_id, vehicle_class, odometer_reading, vehicle_bay, total_amount, delivered_by")
         .eq("id", reference_job_order_id)
         .eq("is_deleted", false)
         .single();
@@ -546,6 +546,20 @@ router.post(
       const freeRework = is_free_rework ?? true;
       const effectiveTotal = freeRework ? 0 : Number((original as any).total_amount || 0);
       const selectedBay = vehicle_bay?.trim() || original.vehicle_bay || null;
+      let deliveredBy = String((original as any).delivered_by || "").trim();
+      if (!deliveredBy) {
+        const { data: originalCustomer } = await supabaseAdmin
+          .from("customers")
+          .select("full_name")
+          .eq("id", original.customer_id)
+          .maybeSingle();
+        deliveredBy = String((originalCustomer as any)?.full_name || "").trim();
+      }
+
+      if (!deliveredBy) {
+        res.status(400).json({ error: "Unable to determine delivered_by for rework job order." });
+        return;
+      }
 
       const { data: created, error: createError } = await supabaseAdmin
         .from("job_orders")
@@ -567,6 +581,7 @@ router.post(
           reference_job_order_id: original.id,
           rework_reason: rework_reason.trim(),
           is_free_rework: freeRework,
+          delivered_by: deliveredBy,
         })
         .select("id, order_number")
         .single();
@@ -700,7 +715,19 @@ router.post(
   requireRoles("POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { customer_id, vehicle_id, branch_id, notes, items, lines, vehicle_class, odometer_reading, vehicle_bay } = req.body;
+      const {
+        customer_id,
+        vehicle_id,
+        branch_id,
+        notes,
+        items,
+        lines,
+        vehicle_class,
+        odometer_reading,
+        vehicle_bay,
+        delivered_by,
+        same_as_customer,
+      } = req.body;
 
       // Validation
       if (!customer_id) {
@@ -753,11 +780,20 @@ router.post(
       // Verify customer exists
       const { data: customer, error: custError } = await supabaseAdmin
         .from("customers")
-        .select("id")
+        .select("id, full_name")
         .eq("id", customer_id)
         .single();
       if (custError || !customer) {
         res.status(400).json({ error: "Customer not found" });
+        return;
+      }
+
+      const customerName = String((customer as any).full_name || "").trim();
+      const manualDeliveredBy = String(delivered_by || "").trim();
+      const deliveredBy = same_as_customer === true ? customerName : manualDeliveredBy;
+
+      if (!deliveredBy) {
+        res.status(400).json({ error: "Delivered By is required" });
         return;
       }
 
@@ -796,6 +832,7 @@ router.post(
             vehicle_id,
             branch_id,
             vehicle_class,
+            delivered_by: deliveredBy,
             notes: notes?.trim() || null,
             total_amount: totalAmount,
             odometer_reading: parsedOdometerReading,
@@ -1063,6 +1100,7 @@ router.post(
           vehicle_id,
           branch_id,
           vehicle_class,
+          delivered_by: deliveredBy,
           notes: notes?.trim() || null,
           total_amount: totalAmount,
           odometer_reading: parsedOdometerReading,
@@ -3435,6 +3473,12 @@ router.patch(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const orderId = req.params.id as string;
+      const pickedUpBy = String(req.body?.picked_up_by || "").trim();
+
+      if (!pickedUpBy) {
+        res.status(400).json({ error: "Picked Up By is required before completion." });
+        return;
+      }
 
       // Get existing order
       const { data: existingRaw, error: fetchError } = await supabaseAdmin
@@ -3498,6 +3542,7 @@ router.patch(
         .update({
           status: "completed",
           completion_time: completionTime,
+          picked_up_by: pickedUpBy,
         })
         .eq("id", orderId);
 
@@ -3533,7 +3578,7 @@ router.patch(
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
-          p_new_values: { order_number: existing.order_number, completion_time: completionTime },
+          p_new_values: { order_number: existing.order_number, completion_time: completionTime, picked_up_by: pickedUpBy },
         });
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);

@@ -431,6 +431,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           customer_id: string
+          delivered_by: string
           deleted_at: string | null
           deleted_by: string | null
           id: string
@@ -442,6 +443,7 @@ export type Database = {
           order_number: string
           payment_recorded_at: string | null
           payment_recorded_by: string | null
+          picked_up_by: string | null
           reference_job_order_id: string | null
           rejection_reason: string | null
           rework_reason: string | null
@@ -469,6 +471,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           customer_id: string
+          delivered_by: string
           deleted_at?: string | null
           deleted_by?: string | null
           id?: string
@@ -480,6 +483,7 @@ export type Database = {
           order_number: string
           payment_recorded_at?: string | null
           payment_recorded_by?: string | null
+          picked_up_by?: string | null
           reference_job_order_id?: string | null
           rejection_reason?: string | null
           rework_reason?: string | null
@@ -507,6 +511,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           customer_id?: string
+          delivered_by?: string
           deleted_at?: string | null
           deleted_by?: string | null
           id?: string
@@ -518,6 +523,7 @@ export type Database = {
           order_number?: string
           payment_recorded_at?: string | null
           payment_recorded_by?: string | null
+          picked_up_by?: string | null
           reference_job_order_id?: string | null
           rejection_reason?: string | null
           rework_reason?: string | null

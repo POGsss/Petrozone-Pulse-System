@@ -348,6 +348,8 @@ export interface JobOrder {
   invoice_number: string | null;
   payment_reference: string | null;
   payment_mode: "cash" | "gcash" | "other" | null;
+  delivered_by: string;
+  picked_up_by: string | null;
   created_at: string;
   updated_at: string;
   customers?: {

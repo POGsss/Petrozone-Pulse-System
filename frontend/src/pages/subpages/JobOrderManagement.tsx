@@ -224,6 +224,8 @@ export function JobOrderManagement() {
   const [addCustomerId, setAddCustomerId] = useState("");
   const [addVehicleId, setAddVehicleId] = useState("");
   const [addVehicleClass, setAddVehicleClass] = useState<VehicleClass>("light");
+  const [addSameAsCustomer, setAddSameAsCustomer] = useState(true);
+  const [addDeliveredBy, setAddDeliveredBy] = useState("");
   const [addNotes, setAddNotes] = useState("");
   const [draftPackageLines, setDraftPackageLines] = useState<DraftPackageLine[]>([]);
   const [draftLaborLines, setDraftLaborLines] = useState<DraftLaborLine[]>([]);
@@ -335,6 +337,11 @@ export function JobOrderManagement() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentOrder, setPaymentOrder] = useState<JobOrder | null>(null);
   const [processingPayment, setProcessingPayment] = useState(false);
+  const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [completeOrder, setCompleteOrder] = useState<JobOrder | null>(null);
+  const [completePickedUpBy, setCompletePickedUpBy] = useState("");
+  const [processingComplete, setProcessingComplete] = useState(false);
+  const [completeError, setCompleteError] = useState<string | null>(null);
   const [showPaymentDetailsModal, setShowPaymentDetailsModal] = useState(false);
   const [paymentDetailsOrder, setPaymentDetailsOrder] = useState<JobOrder | null>(null);
   const [savingPaymentDetails, setSavingPaymentDetails] = useState(false);
@@ -514,6 +521,11 @@ export function JobOrderManagement() {
       .map((c) => ({ value: c.id, label: c.full_name }));
   }, [customers, addBranchId]);
 
+  const selectedAddCustomer = useMemo(
+    () => customers.find((c) => c.id === addCustomerId) || null,
+    [customers, addCustomerId]
+  );
+
   // Vehicle options filtered by customer
   const vehicleOptions = useMemo(() => {
     return vehicles
@@ -643,6 +655,8 @@ export function JobOrderManagement() {
     setAddCustomerId("");
     setAddVehicleId("");
     setAddVehicleClass("light");
+    setAddSameAsCustomer(true);
+    setAddDeliveredBy("");
     setAddNotes("");
     setAddOdometer("");
     setAddVehicleBay("");
@@ -672,6 +686,8 @@ export function JobOrderManagement() {
     setAddBranchId(newBranchId);
     setAddCustomerId("");
     setAddVehicleId("");
+    setAddSameAsCustomer(true);
+    setAddDeliveredBy("");
     setDraftPackageLines([]);
     setDraftLaborLines([]);
     setDraftInventoryLines([]);
@@ -685,7 +701,15 @@ export function JobOrderManagement() {
     setAddCustomerId(newCustomerId);
     setAddVehicleId("");
     setAddVehicleClass("light");
+    if (!addSameAsCustomer) return;
+    const selected = customers.find((c) => c.id === newCustomerId);
+    setAddDeliveredBy(selected?.full_name || "");
   }
+
+  useEffect(() => {
+    if (!addSameAsCustomer) return;
+    setAddDeliveredBy(selectedAddCustomer?.full_name || "");
+  }, [addSameAsCustomer, selectedAddCustomer]);
 
   // When vehicle changes, auto-set vehicle class from selected vehicle
   function handleVehicleChange(newVehicleId: string) {
@@ -1013,6 +1037,7 @@ export function JobOrderManagement() {
     if (!addBranchId) { setAddError("Branch is required"); return; }
     if (!addCustomerId) { setAddError("Customer is required"); return; }
     if (!addVehicleId) { setAddError("Vehicle is required"); return; }
+    if (!addDeliveredBy.trim()) { setAddError("Delivered By is required"); return; }
     if (!addOdometer.trim()) { setAddError("Odometer reading is required"); return; }
     if (isNaN(parseInt(addOdometer, 10)) || parseInt(addOdometer, 10) < 0) {
       setAddError("Odometer reading must be a non-negative number");
@@ -1031,6 +1056,8 @@ export function JobOrderManagement() {
         vehicle_id: addVehicleId,
         branch_id: addBranchId,
         vehicle_class: addVehicleClass,
+        delivered_by: addDeliveredBy.trim(),
+        same_as_customer: addSameAsCustomer,
         notes: addNotes.trim() || undefined,
         odometer_reading: parseInt(addOdometer, 10),
         vehicle_bay: addVehicleBay,
@@ -2029,6 +2056,13 @@ export function JobOrderManagement() {
     setShowPaymentModal(true);
   }
 
+  function openCompleteModal(order: JobOrder) {
+    setCompleteOrder(order);
+    setCompletePickedUpBy(order.picked_up_by || "");
+    setCompleteError(null);
+    setShowCompleteModal(true);
+  }
+
   // --- Open Payment Details Modal from card/dropdown ---
   function openPaymentDetailsModal(order: JobOrder) {
     setPaymentDetailsOrder(order);
@@ -2384,15 +2418,10 @@ export function JobOrderManagement() {
                     )}
                     {canComplete && order.status === "pending_payment" && (
                       <button
-                        onClick={async (e) => {
-                          e.stopPropagation(); closeDropdown();
-                          try {
-                            await jobOrdersApi.complete(order.id);
-                            showToast.success("Job order completed");
-                            fetchData();
-                          } catch (err) {
-                            showToast.error(err instanceof Error ? err.message : "Failed to complete");
-                          }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          closeDropdown();
+                          openCompleteModal(order);
                         }}
                         className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
                       >
@@ -2501,6 +2530,44 @@ export function JobOrderManagement() {
                 ]}
               />
             </div>
+          </ModalSection>
+
+          <ModalSection title="Delivered & Pickup">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setAddSameAsCustomer((prev) => {
+                    const next = !prev;
+                    if (next) {
+                      setAddDeliveredBy(selectedAddCustomer?.full_name || "");
+                    }
+                    return next;
+                  });
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${addSameAsCustomer ? "bg-primary" : "bg-neutral-200"}`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${addSameAsCustomer ? "translate-x-6" : "translate-x-1"}`}
+                />
+              </button>
+              <span className="text-sm text-neutral-900">Same as Customer</span>
+            </div>
+            <ModalInput
+              type="text"
+              value={addDeliveredBy}
+              onChange={setAddDeliveredBy}
+              placeholder="Delivered By *"
+              required
+              disabled={addSameAsCustomer}
+            />
+            <ModalInput
+              type="text"
+              value=""
+              onChange={() => {}}
+              placeholder="Picked Up By (set on completion)"
+              disabled
+            />
           </ModalSection>
 
           <ModalSection title="Packages">
@@ -2973,6 +3040,23 @@ export function JobOrderManagement() {
                   disabled
                 />
               </div>
+            </ModalSection>
+
+            <ModalSection title="Delivered & Pickup">
+              <ModalInput
+                type="text"
+                value={viewOrder.delivered_by || "—"}
+                onChange={() => {}}
+                placeholder="Delivered By"
+                disabled
+              />
+              <ModalInput
+                type="text"
+                value={viewOrder.picked_up_by || "—"}
+                onChange={() => {}}
+                placeholder="Picked Up By"
+                disabled
+              />
             </ModalSection>
 
             {/* Items section */}
@@ -4148,6 +4232,86 @@ export function JobOrderManagement() {
                 </button>
               </div>
             )}
+          </div>
+        )}
+      </Modal>
+
+      {/* --- Complete Job Order Modal --- */}
+      <Modal
+        isOpen={showCompleteModal && !!completeOrder}
+        onClose={() => {
+          setShowCompleteModal(false);
+          setCompleteOrder(null);
+          setCompletePickedUpBy("");
+          setCompleteError(null);
+        }}
+        title="Complete Job Order"
+        maxWidth="sm"
+      >
+        {completeOrder && (
+          <div>
+            <div className="bg-neutral-100 rounded-xl p-4 my-4">
+              <p className="text-neutral-900">
+                Complete <strong className="text-neutral-950">{completeOrder.order_number}</strong>.
+              </p>
+            </div>
+            <ModalInput
+              type="text"
+              value={completePickedUpBy}
+              onChange={(value) => {
+                setCompletePickedUpBy(value);
+                if (completeError) setCompleteError(null);
+              }}
+              placeholder="Picked Up By *"
+              required
+            />
+            <ModalError message={completeError} />
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCompleteModal(false);
+                  setCompleteOrder(null);
+                  setCompletePickedUpBy("");
+                  setCompleteError(null);
+                }}
+                className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={processingComplete}
+                onClick={async () => {
+                  if (!completePickedUpBy.trim()) {
+                    setCompleteError("Picked Up By is required before completion.");
+                    return;
+                  }
+
+                  try {
+                    setProcessingComplete(true);
+                    await jobOrdersApi.complete(completeOrder.id, {
+                      picked_up_by: completePickedUpBy.trim(),
+                    });
+                    setShowCompleteModal(false);
+                    setCompleteOrder(null);
+                    setCompletePickedUpBy("");
+                    setCompleteError(null);
+                    showToast.success("Job order completed");
+                    fetchData();
+                  } catch (err) {
+                    const message = err instanceof Error ? err.message : "Failed to complete";
+                    setCompleteError(message);
+                    showToast.error(message);
+                  } finally {
+                    setProcessingComplete(false);
+                  }
+                }}
+                className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {processingComplete ? "Processing..." : "Complete"}
+              </button>
+            </div>
           </div>
         )}
       </Modal>

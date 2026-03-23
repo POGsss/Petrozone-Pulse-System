@@ -718,6 +718,8 @@ export const jobOrdersApi = {
     vehicle_id: string;
     branch_id: string;
     vehicle_class: import("../types").VehicleClass;
+    delivered_by: string;
+    same_as_customer?: boolean;
     notes?: string;
     odometer_reading?: number;
     vehicle_bay?: string;
@@ -853,9 +855,10 @@ export const jobOrdersApi = {
     });
   },
 
-  complete: async (id: string) => {
+  complete: async (id: string, data: { picked_up_by: string }) => {
     return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/complete`, {
       method: "PATCH",
+      body: JSON.stringify(data),
     });
   },
 
