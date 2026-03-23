@@ -838,7 +838,7 @@ export function NotificationManagement() {
       </div>
 
       {/* Create Modal */}
-      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Create Notification" maxWidth="lg">
+      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Create Notification" maxWidth="xl">
         <form onSubmit={handleCreate}>
           <ModalSection title="Notification Information">
             <ModalInput
@@ -871,7 +871,7 @@ export function NotificationManagement() {
       </Modal>
 
       {/* Edit Modal */}
-      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Edit Notification" maxWidth="lg">
+      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Edit Notification" maxWidth="xl">
         <form onSubmit={handleUpdate}>
           <ModalSection title="Notification Information">
             <ModalInput
@@ -921,7 +921,7 @@ export function NotificationManagement() {
         isOpen={showViewModal && !!selectedNotification}
         onClose={() => setShowViewModal(false)}
         title="Notification Details"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {selectedNotification && (
           <div>
@@ -1080,7 +1080,7 @@ export function NotificationManagement() {
         isOpen={showScheduleModal && !!selectedNotification}
         onClose={() => setShowScheduleModal(false)}
         title="Edit Schedule"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {selectedNotification && (
           <form onSubmit={handleScheduleUpdate}>

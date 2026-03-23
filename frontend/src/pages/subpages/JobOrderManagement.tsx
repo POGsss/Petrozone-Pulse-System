@@ -2474,7 +2474,7 @@ export function JobOrderManagement() {
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         title="Create Job Order"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         <form onSubmit={handleCreateOrder}>
           <ModalSection title="Order Details">
@@ -2903,7 +2903,7 @@ export function JobOrderManagement() {
         isOpen={showViewModal && !!viewOrder}
         onClose={() => { setShowViewModal(false); setViewOrder(null); }}
         title="Job Order Details"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {viewOrder && (
           <div>
@@ -3363,7 +3363,7 @@ export function JobOrderManagement() {
         isOpen={showHistoryModal && !!viewOrder}
         onClose={() => { setShowHistoryModal(false); }}
         title="Job Order History"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {viewOrder && (
           <div>
@@ -3411,7 +3411,7 @@ export function JobOrderManagement() {
         isOpen={showRepairActionModal && !!repairActionOrder}
         onClose={() => { setShowRepairActionModal(false); setRepairActionOrder(null); }}
         title="Third Party Repair"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {repairActionOrder && (
           <div>
@@ -3559,7 +3559,7 @@ export function JobOrderManagement() {
         isOpen={showEditModal && !!editOrder}
         onClose={() => setShowEditModal(false)}
         title="Edit Job Order"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         <form onSubmit={handleEditOrder}>
           <ModalSection title="Order">
@@ -4392,7 +4392,7 @@ export function JobOrderManagement() {
           setPaymentDetailsOrder(null);
         }}
         title="Payment Method"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {paymentDetailsOrder && (
           <div>
@@ -4491,7 +4491,7 @@ export function JobOrderManagement() {
           setReworkSourceOrder(null);
         }}
         title="Rework Job"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {reworkSourceOrder && (
           <div>
@@ -4614,7 +4614,7 @@ export function JobOrderManagement() {
           setReasonText("");
         }}
         title={reasonModalAction === "cancel" ? "Cancel Job Order" : "Reject Job Order"}
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {(() => {
           const targetOrder = reasonModalAction === "cancel" ? orderToCancel : approvalOrder;

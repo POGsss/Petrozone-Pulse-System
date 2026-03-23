@@ -528,7 +528,7 @@ export function PackagesManagement() {
 
       <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} variant="card" />
 
-      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add Package Item" maxWidth="lg">
+      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add Package Item" maxWidth="xl">
         <form onSubmit={handleAddItem}>
           <ModalSection title="Item Information">
             <ModalInput type="text" value={addForm.name} onChange={(v) => setAddForm((prev) => ({ ...prev, name: v }))} placeholder="Name *" required />
@@ -604,7 +604,7 @@ export function PackagesManagement() {
         </form>
       </Modal>
 
-      <Modal isOpen={showViewModal && !!viewItem} onClose={() => setShowViewModal(false)} title="Package Item Details" maxWidth="lg">
+      <Modal isOpen={showViewModal && !!viewItem} onClose={() => setShowViewModal(false)} title="Package Item Details" maxWidth="xl">
         {viewItem && (
           <div>
             <ModalSection title="Item Information">
@@ -663,7 +663,7 @@ export function PackagesManagement() {
         )}
       </Modal>
 
-      <Modal isOpen={showEditModal && !!selectedItem} onClose={() => setShowEditModal(false)} title="Edit Package Item" maxWidth="lg">
+      <Modal isOpen={showEditModal && !!selectedItem} onClose={() => setShowEditModal(false)} title="Edit Package Item" maxWidth="xl">
         <form onSubmit={handleEditItem}>
           <ModalSection title="Item Information">
             <ModalInput type="text" value={editForm.name} onChange={(v) => setEditForm((prev) => ({ ...prev, name: v }))} placeholder="Name *" required />

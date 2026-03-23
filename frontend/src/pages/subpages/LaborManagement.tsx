@@ -444,7 +444,7 @@ export function LaborManagement() {
           setViewItem(null);
         }}
         title="Labor Item Details"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {viewItem && (
           <div>
@@ -468,7 +468,7 @@ export function LaborManagement() {
         )}
       </Modal>
 
-      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add Labor Item" maxWidth="lg">
+      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add Labor Item" maxWidth="xl">
         <form onSubmit={handleAdd} className="space-y-4">
           <ModalSection title="Labor Information">
             <ModalInput
@@ -516,7 +516,7 @@ export function LaborManagement() {
         </form>
       </Modal>
 
-      <Modal isOpen={showEditModal && !!selected} onClose={() => setShowEditModal(false)} title="Edit Labor Item" maxWidth="lg">
+      <Modal isOpen={showEditModal && !!selected} onClose={() => setShowEditModal(false)} title="Edit Labor Item" maxWidth="xl">
         <form onSubmit={handleEdit} className="space-y-4">
           <ModalSection title="Labor Information">
             <ModalInput

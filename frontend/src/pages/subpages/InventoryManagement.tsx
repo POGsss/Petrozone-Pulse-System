@@ -931,7 +931,7 @@ export function InventoryManagement() {
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         title="Add New Inventory"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         <form onSubmit={handleAddItem}>
           <ModalSection title="Item Information">
@@ -960,7 +960,7 @@ export function InventoryManagement() {
         isOpen={showViewModal && !!viewItem}
         onClose={() => setShowViewModal(false)}
         title="Inventory Item Details"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {viewItem && (
           <div>
@@ -1017,7 +1017,7 @@ export function InventoryManagement() {
         isOpen={showEditModal && !!selectedItem}
         onClose={() => setShowEditModal(false)}
         title="Edit Inventory Item"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         <form onSubmit={handleEditItem}>
           <ModalSection title="Item Information">
@@ -1092,7 +1092,7 @@ export function InventoryManagement() {
         isOpen={showAdjustModal && !!adjustItem}
         onClose={() => { setShowAdjustModal(false) }}
         title="Adjust Stock"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {adjustItem && (
           <form onSubmit={handleAdjust}>
@@ -1130,7 +1130,7 @@ export function InventoryManagement() {
         isOpen={showStockInModal && !!stockInItem}
         onClose={() => { setShowStockInModal(false) }}
         title="Add Stock"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {stockInItem && (
           <form onSubmit={handleStockIn}>
@@ -1208,7 +1208,7 @@ export function InventoryManagement() {
         isOpen={showMovementsModal && !!movementsItem}
         onClose={() => { setShowMovementsModal(false); }}
         title="Stock Movement History"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {movementsItem && (
           <div>

@@ -589,7 +589,7 @@ export function SupplierManagement() {
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         title="Add New Supplier"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         <form onSubmit={handleAddSupplier}>
           <ModalSection title="Supplier Information">
@@ -671,7 +671,7 @@ export function SupplierManagement() {
         isOpen={showEditModal && !!selectedSupplier}
         onClose={() => setShowEditModal(false)}
         title="Edit Supplier"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {selectedSupplier && (
           <form onSubmit={handleEditSupplier}>
@@ -816,7 +816,7 @@ export function SupplierManagement() {
           setSupplierProducts([]);
         }}
         title="Supplier Details"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {viewSupplier && (
           <div>
@@ -965,7 +965,7 @@ export function SupplierManagement() {
         isOpen={showManageProductsModal && !!manageProductsSupplier}
         onClose={() => { setShowManageProductsModal(false); setManageProductsSupplier(null); resetProductForm(); }}
         title="Supplier Products"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {/* Delete Supplier Product Confirmation */}
         <Modal

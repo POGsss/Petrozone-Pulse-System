@@ -342,7 +342,7 @@ export function AuditLogs() {
         isOpen={showViewModal && !!viewLog}
         onClose={() => setShowViewModal(false)}
         title="Audit Log Details"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {viewLog && (
           <div>

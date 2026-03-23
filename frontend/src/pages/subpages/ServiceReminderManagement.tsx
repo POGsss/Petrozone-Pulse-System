@@ -727,7 +727,7 @@ export function ServiceReminderManagement() {
       </div>
 
       {/* Create Modal */}
-      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Create Service Reminder" maxWidth="lg">
+      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Create Service Reminder" maxWidth="xl">
         <form onSubmit={handleCreate}>
           {formFields}
           <ModalError message={formError} />
@@ -740,7 +740,7 @@ export function ServiceReminderManagement() {
       </Modal>
 
       {/* Edit Modal */}
-      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Edit Service Reminder" maxWidth="lg">
+      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Edit Service Reminder" maxWidth="xl">
         <form onSubmit={handleUpdate}>
           {formFields}
           <ModalError message={formError} />
@@ -757,7 +757,7 @@ export function ServiceReminderManagement() {
         isOpen={showViewModal && !!selectedReminder}
         onClose={() => setShowViewModal(false)}
         title="Service Reminder Details"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {selectedReminder && (
           <div>

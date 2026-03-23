@@ -1050,7 +1050,7 @@ export function PurchaseOrderManagement() {
       </div>
 
       {/* ═══════════════════ ADD MODAL ═══════════════════ */}
-      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Create Purchase Order" maxWidth="lg">
+      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Create Purchase Order" maxWidth="xl">
         <form onSubmit={handleAdd}>
           <ModalSection title="Purchase Information">
             <ModalInput
@@ -1192,7 +1192,7 @@ export function PurchaseOrderManagement() {
       </Modal>
 
       {/* ═══════════════════ VIEW MODAL ═══════════════════ */}
-      <Modal isOpen={showViewModal && !!viewOrder} onClose={() => { setShowViewModal(false); setViewOrder(null); }} title="Purchase Order Details" maxWidth="lg">
+      <Modal isOpen={showViewModal && !!viewOrder} onClose={() => { setShowViewModal(false); setViewOrder(null); }} title="Purchase Order Details" maxWidth="xl">
         {viewOrder && (
           <div>
             <ModalSection title="Purchase Information">
@@ -1267,7 +1267,7 @@ export function PurchaseOrderManagement() {
       </Modal>
 
       {/* ═══════════════════ EDIT MODAL ═══════════════════ */}
-      <Modal isOpen={showEditModal && !!selectedOrder} onClose={() => setShowEditModal(false)} title="Edit Purchase Order" maxWidth="lg">
+      <Modal isOpen={showEditModal && !!selectedOrder} onClose={() => setShowEditModal(false)} title="Edit Purchase Order" maxWidth="xl">
         {selectedOrder && (
           <form onSubmit={handleEdit}>
             <ModalSection title="Purchase Order Details">
@@ -1544,7 +1544,7 @@ export function PurchaseOrderManagement() {
       </Modal>
 
       {/* ═══════════════════ RECEIPT MODAL ═══════════════════ */}
-      <Modal isOpen={showReceiptModal && !!receiptOrder} onClose={() => { setShowReceiptModal(false); setReceiptOrder(null); }} title="Receipt" maxWidth="lg">
+      <Modal isOpen={showReceiptModal && !!receiptOrder} onClose={() => { setShowReceiptModal(false); setReceiptOrder(null); }} title="Receipt" maxWidth="xl">
         {receiptOrder && (() => {
           const receiptUrl = receiptOrder.receipt_attachment || "";
           const isPdf = /\.pdf($|\?)/i.test(receiptUrl);

@@ -535,7 +535,7 @@ export function ReportsManagement() {
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         title="Create New Report"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         <form onSubmit={handleCreate}>
           <ModalSection title="Report Configuration">
@@ -610,7 +610,7 @@ export function ReportsManagement() {
         isOpen={showEditModal && !!selectedReport}
         onClose={() => setShowEditModal(false)}
         title="Edit Report"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {selectedReport && (
           <form onSubmit={handleEdit}>
@@ -687,7 +687,7 @@ export function ReportsManagement() {
         isOpen={showViewModal}
         onClose={() => setShowViewModal(false)}
         title={viewReport?.report_name || "Report"}
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {viewReport && (
           <div>

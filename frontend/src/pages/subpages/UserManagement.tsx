@@ -652,7 +652,7 @@ export function UserManagement() {
         isOpen={showViewModal && !!viewUser}
         onClose={() => setShowViewModal(false)}
         title="User Details"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {viewUser && (
           <div>
@@ -731,7 +731,7 @@ export function UserManagement() {
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         title="Add New User"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         <form onSubmit={handleAddUser}>
           <ModalSection title="User Information">
@@ -822,7 +822,7 @@ export function UserManagement() {
         isOpen={showEditModal}
         onClose={() => setShowEditModal(false)}
         title={isEditingEditable ? "Edit User" : "View User"}
-        maxWidth="lg"
+        maxWidth="xl"
       >
         <form onSubmit={handleEditUser}>
           <ModalSection title="User Information">

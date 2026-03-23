@@ -603,7 +603,7 @@ export function CustomerManagement() {
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         title="Add New Customer"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         <form onSubmit={handleAddCustomer}>
           <ModalSection title="Customer Information">
@@ -678,7 +678,7 @@ export function CustomerManagement() {
         isOpen={showViewModal && !!viewCustomer}
         onClose={() => setShowViewModal(false)}
         title="Customer Details"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {viewCustomer && (
           <div>
@@ -848,7 +848,7 @@ export function CustomerManagement() {
         isOpen={showEditModal && !!selectedCustomer}
         onClose={() => setShowEditModal(false)}
         title="Edit Customer"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         <form onSubmit={handleEditCustomer}>
           <ModalSection title="Customer Information">

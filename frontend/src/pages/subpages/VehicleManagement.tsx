@@ -548,7 +548,7 @@ export function VehicleManagement() {
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         title="Add New Vehicle"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         <form onSubmit={handleAddVehicle}>
           <ModalSection title="Vehicle Information">
@@ -674,7 +674,7 @@ export function VehicleManagement() {
         isOpen={showViewModal && !!viewVehicle}
         onClose={() => setShowViewModal(false)}
         title="Vehicle Details"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         {viewVehicle && (
           <div>
@@ -814,7 +814,7 @@ export function VehicleManagement() {
         isOpen={showEditModal && !!selectedVehicle}
         onClose={() => setShowEditModal(false)}
         title="Edit Vehicle"
-        maxWidth="lg"
+        maxWidth="xl"
       >
         <form onSubmit={handleEditVehicle}>
           <ModalSection title="Vehicle Information">
