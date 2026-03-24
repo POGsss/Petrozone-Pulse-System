@@ -196,3 +196,16 @@ html.dark .Toastify__toast {
 html.dark .Toastify__close-button {
   color: var(--color-neutral-700) !important;
 }
+
+/* Table density controls for shared DesktopTable-based pages */
+table.table-density-compact th,
+table.table-density-compact td {
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+}
+
+table.table-density-comfortable th,
+table.table-density-comfortable td {
+  padding-top: 0.75rem !important;
+  padding-bottom: 0.75rem !important;
+}

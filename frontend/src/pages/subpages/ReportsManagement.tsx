@@ -62,7 +62,7 @@ export function ReportsManagement() {
 
   // Search and filters
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeFilters, setActiveFilters] = useState<Record<string, string>>({ status: "active" });
+  const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
   const [currentPage, setCurrentPage] = useState(1);
 
   // Create modal
@@ -180,7 +180,7 @@ export function ReportsManagement() {
 
   useEffect(() => {
     fetchData();
-  }, [activeFilters.status]);
+  }, []);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -190,20 +190,13 @@ export function ReportsManagement() {
     try {
       setLoading(true);
       setError(null);
-      const statusFilter = activeFilters.status;
-      const normalizedStatusFilter: "active" | "deactivated" | undefined =
-        statusFilter === "active" || statusFilter === "deactivated" ? statusFilter : undefined;
-      const reportsPromise =
-        !normalizedStatusFilter
-          ? Promise.all([
-              reportsApi.getAll({ limit: 1000, status: "active" }),
-              reportsApi.getAll({ limit: 1000, status: "deactivated" }),
-            ]).then(([activeRes, deactivatedRes]) => [...activeRes.data, ...deactivatedRes.data])
-          : reportsApi
-              .getAll({ limit: 1000, status: normalizedStatusFilter })
-              .then((res) => res.data);
-
-      const [reportsData, branchesRes] = await Promise.all([reportsPromise, branchesApi.getAll()]);
+      const [reportsData, branchesRes] = await Promise.all([
+        Promise.all([
+          reportsApi.getAll({ limit: 1000, status: "active" }),
+          reportsApi.getAll({ limit: 1000, status: "deactivated" }),
+        ]).then(([activeRes, deactivatedRes]) => [...activeRes.data, ...deactivatedRes.data]),
+        branchesApi.getAll(),
+      ]);
       setAllReports(reportsData);
       setBranches(branchesRes.filter((b) => b.is_active));
     } catch (err) {

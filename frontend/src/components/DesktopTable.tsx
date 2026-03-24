@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTheme } from "../lib/ThemeContext";
 
 export interface DesktopTableColumn {
   label: string;
@@ -30,9 +31,15 @@ export function DesktopTable({
   isEmpty = false,
   tableClassName = "",
 }: DesktopTableProps) {
+  const { settings } = useTheme();
+  const densityClass =
+    settings.tableDensity === "compact"
+      ? "table-density-compact"
+      : "table-density-comfortable";
+
   return (
     <div className="hidden md:block">
-      <table className={`w-full ${tableClassName}`.trim()}>
+      <table className={`w-full ${densityClass} ${tableClassName}`.trim()}>
         <thead>
           <tr className="border-b border-neutral-200 bg-neutral-100">
             {columns.map((col, i) => (

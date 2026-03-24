@@ -1,5 +1,42 @@
 # Inventory Module — Testing Guide & Sample Data
 
+## How Inventory Works in the Current System
+
+Inventory items are branch-scoped and support active/inactive lifecycle, stock movements, and approval-time stock validation in job orders.
+
+### Key Business Rules
+
+1. Inventory records are branch-scoped for non-HM users.
+2. SKU must be unique per branch.
+3. Stock cannot go below zero.
+4. Stock-in and stock-adjust actions create movement history entries.
+5. Job order approval deducts stock for inventory lines.
+6. Job order approval is blocked when required inventory stock is insufficient.
+7. Cancelling draft/pending job orders does not change stock.
+
+### RBAC (Roles & Permissions)
+
+| Action | HM | POC | JS | R | T |
+| ------ | -- | --- | -- | - | - |
+| View inventory list/details | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Create and update inventory items | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Deactivate inventory items | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Stock in | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Stock adjustment | ✅ | ✅ | ❌ | ❌ | ❌ |
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+| ------ | -------- | ----------- |
+| GET | `/api/inventory` | List inventory items |
+| GET | `/api/inventory/:id` | Get inventory item details |
+| POST | `/api/inventory` | Create inventory item |
+| PUT | `/api/inventory/:id` | Update inventory item |
+| DELETE | `/api/inventory/:id` | Deactivate inventory item |
+| POST | `/api/inventory/:id/stock-in` | Add stock |
+| POST | `/api/inventory/:id/adjust` | Adjust stock |
+| GET | `/api/inventory/:id/movements` | View movement history |
+
 ---
 
 ## Sample Data to Populate
@@ -198,14 +235,13 @@ Use the **Add New Item** button on the Inventory page. Enter each item below int
 
 **Goal:** Verify automatic stock deduction when a JO is approved.
 
-> **How it works:** When a Package item is added to a JO, the system captures **inventory snapshots** from the Package's inventory template (`package_inventory_links`). Each snapshot records the `inventory_item_id`, `quantity_per_unit`, and `unit_cost`. On approval, the system aggregates quantities across all JO items and creates `stock_out` movements for each inventory item.
+> **How it works:** On approval, the system aggregates all inventory usage from job order inventory lines (including package vehicle-specific inventory additions) and creates `stock_out` movements per inventory item.
 
-1. Ensure a Package item (e.g., `Oil Change Service`) is linked to inventory items:
-   - Shell Helix Ultra 5W-40 (1L) — quantity\_per\_unit = 1
-   - Denso Oil Filter — quantity\_per\_unit = 1
+1. Ensure required inventory items exist with sufficient stock:
+   - Shell Helix Ultra 5W-40 (1L)
+   - Denso Oil Filter
 2. Go to **Job Orders** → Create a new Job Order
-3. Add `Oil Change Service` with JO item quantity = `2`
-   - This means the system will deduct: Shell Helix × (1 × 2) = 2, Denso Filter × (1 × 2) = 2
+3. Add inventory lines requiring Shell Helix ×2 and Denso Filter ×2
 4. Request and approve the Job Order (as R or T)
 5. Navigate back to **Inventory**
 6. Verify:
@@ -216,7 +252,7 @@ Use the **Add New Item** button on the Inventory page. Enter each item below int
 **Test insufficient stock block:**
 
 1. Adjust Shell Helix stock down to `1`
-2. Create a JO with `Oil Change Service` × quantity `5` (which needs 5 Shell Helix)
+2. Create a JO with an inventory line needing Shell Helix quantity `5`
 3. Try to approve it
 4. Verify:
    - ✅ Approval is **blocked** with error: `"Insufficient stock for Shell Helix Ultra 5W-40 (1L): need 5 but only 1 available"`

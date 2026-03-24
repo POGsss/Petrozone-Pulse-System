@@ -133,7 +133,7 @@ async function resolveIncomingLines(
 
       const { data: packageItem } = await supabaseAdmin
         .from("package_items")
-        .select("id, name, status")
+        .select("id, name, status, price")
         .eq("id", line.reference_id)
         .single();
 
@@ -141,28 +141,24 @@ async function resolveIncomingLines(
         throw new Error("Package item not found or inactive");
       }
 
-      const [pkgLaborLinksRes, pkgInventoryLinksRes] = await Promise.all([
-        supabaseAdmin
-          .from("package_labor_items")
-          .select("quantity, labor_items(id, name, light_price, heavy_price, extra_heavy_price, status)")
-          .eq("package_id", packageItem.id),
-        supabaseAdmin
-          .from("package_inventory_items")
-          .select("quantity, inventory_items(id, item_name, cost_price, status, branch_id)")
-          .eq("package_id", packageItem.id),
-      ]);
+      const packagePrice = Number((packageItem as any).price || 0);
+      if (packagePrice <= 0) {
+        throw new Error(`Package \"${packageItem.name}\" has invalid fixed price`);
+      }
+
+      const { data: pkgLaborLinks } = await supabaseAdmin
+        .from("package_labor_items")
+        .select("quantity, labor_items(id, name, light_price, heavy_price, extra_heavy_price, status)")
+        .eq("package_id", packageItem.id);
 
       const baseLaborComponents: Array<{ labor_item_id: string; name: string; quantity: number; unit_price: number }> = [];
       const baseInventoryComponents: Array<{ inventory_item_id: string; name: string; quantity: number; unit_price: number }> = [];
 
-      let unitPrice = 0;
-
-      for (const link of pkgLaborLinksRes.data || []) {
+      for (const link of pkgLaborLinks || []) {
         const labor = (link as any).labor_items;
         if (!labor || labor.status !== "active") continue;
         const compQty = Number((link as any).quantity || 1);
         const compUnit = getLaborPriceByClass(labor, vehicleClass);
-        unitPrice += compQty * compUnit;
         baseLaborComponents.push({
           labor_item_id: labor.id,
           name: labor.name,
@@ -171,44 +167,15 @@ async function resolveIncomingLines(
         });
       }
 
-      for (const link of pkgInventoryLinksRes.data || []) {
-        const inv = (link as any).inventory_items;
-        if (!inv || inv.status !== "active") continue;
-        if (inv.branch_id !== branchId) continue;
-        const compQty = Number((link as any).quantity || 1);
-        const compUnit = Number(inv.cost_price || 0);
-        unitPrice += compQty * compUnit;
-        baseInventoryComponents.push({
-          inventory_item_id: inv.id,
-          name: inv.item_name,
-          quantity: compQty,
-          unit_price: compUnit,
-        });
+      if (baseLaborComponents.length === 0) {
+        throw new Error(`Package \"${packageItem.name}\" has no labor components`);
       }
 
-      const extraLabor: Array<{ labor_item_id: string; name: string; quantity: number; unit_price: number }> = [];
+      if ((line.vehicle_specific_components?.labor || []).length > 0) {
+        throw new Error("Vehicle-specific labor is not allowed for package lines");
+      }
+
       const extraInventory: Array<{ inventory_item_id: string; name: string; quantity: number; unit_price: number }> = [];
-
-      for (const extra of line.vehicle_specific_components?.labor || []) {
-        const extraQty = Number(extra.quantity ?? 1);
-        if (!extra.labor_item_id || Number.isNaN(extraQty) || extraQty <= 0) continue;
-
-        const { data: labor } = await supabaseAdmin
-          .from("labor_items")
-          .select("id, name, status, light_price, heavy_price, extra_heavy_price")
-          .eq("id", extra.labor_item_id)
-          .single();
-
-        if (!labor || labor.status !== "active") continue;
-        const compUnit = getLaborPriceByClass(labor, vehicleClass);
-        unitPrice += extraQty * compUnit;
-        extraLabor.push({
-          labor_item_id: labor.id,
-          name: labor.name,
-          quantity: extraQty,
-          unit_price: compUnit,
-        });
-      }
 
       for (const extra of line.vehicle_specific_components?.inventory || []) {
         const extraQty = Number(extra.quantity ?? 1);
@@ -222,7 +189,6 @@ async function resolveIncomingLines(
 
         if (!inv || inv.status !== "active" || inv.branch_id !== branchId) continue;
         const compUnit = Number(inv.cost_price || 0);
-        unitPrice += extraQty * compUnit;
         extraInventory.push({
           inventory_item_id: inv.id,
           name: inv.item_name,
@@ -231,21 +197,47 @@ async function resolveIncomingLines(
         });
       }
 
+      const inventoryTotal = extraInventory.reduce((sum, c) => sum + c.unit_price * c.quantity, 0);
+      const originalLaborTotal = baseLaborComponents.reduce((sum, c) => sum + c.unit_price * c.quantity, 0);
+      const overflow = Math.max(0, originalLaborTotal + inventoryTotal - packagePrice);
+      const deductionPerLabor = overflow / baseLaborComponents.length;
+      const adjustedBaseLaborComponents = baseLaborComponents.map((component, index) => {
+        const originalTotal = component.unit_price * component.quantity;
+        const adjustedTotal = originalTotal - deductionPerLabor;
+        const adjustedUnitPrice = component.quantity > 0 ? adjustedTotal / component.quantity : 0;
+        return {
+          ...component,
+          unit_price: adjustedUnitPrice,
+          original_total: originalTotal,
+          adjusted_total: adjustedTotal,
+          redistribution_index: index,
+        };
+      });
+
+      if (adjustedBaseLaborComponents.some((component) => Number((component as any).adjusted_total || 0) < 0)) {
+        throw new Error("Cannot add inventory: labor would become negative");
+      }
+
       resolved.push({
         line_type: "package",
         reference_id: packageItem.id,
         name: packageItem.name,
         quantity: qty,
-        unit_price: unitPrice,
-        total: unitPrice * qty,
+        unit_price: packagePrice,
+        total: packagePrice * qty,
         metadata: {
           vehicle_class: vehicleClass,
+          package_price: packagePrice,
+          inventory_total: inventoryTotal,
+          labor_total_before_redistribution: originalLaborTotal,
+          overflow_amount: overflow,
+          deduction_per_labor: deductionPerLabor,
           base_components: {
-            labor: baseLaborComponents,
+            labor: adjustedBaseLaborComponents,
             inventory: baseInventoryComponents,
           },
           vehicle_specific_components: {
-            labor: extraLabor,
+            labor: [],
             inventory: extraInventory,
           },
         },

@@ -6,7 +6,7 @@ import {
   LuPackage,
   LuX,
 } from "react-icons/lu";
-import { packagesApi, laborItemsApi, inventoryApi } from "../../lib/api";
+import { packagesApi, laborItemsApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
 import { useAuth } from "../../auth";
 import {
@@ -27,10 +27,8 @@ import {
 import type { FilterGroup } from "../../components";
 import type {
   PackageItem,
-  PackageInventoryItem,
   PackageLaborItem,
   LaborItem,
-  InventoryItem,
 } from "../../types";
 
 const ITEMS_PER_PAGE = 12;
@@ -53,11 +51,6 @@ interface DraftPackageLabor {
   quantity: number;
 }
 
-interface DraftPackageInventory {
-  inventory_item_id: string;
-  quantity: number;
-}
-
 export function PackagesManagement() {
   const { user } = useAuth();
   const userRoles = user?.roles || [];
@@ -68,7 +61,6 @@ export function PackagesManagement() {
 
   const [allItems, setAllItems] = useState<PackageItem[]>([]);
   const [laborItems, setLaborItems] = useState<LaborItem[]>([]);
-  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,20 +72,17 @@ export function PackagesManagement() {
   const [addingItem, setAddingItem] = useState(false);
   const [addForm, setAddForm] = useState({
     name: "",
+    price: "",
     description: "",
   });
   const [addLaborLinks, setAddLaborLinks] = useState<DraftPackageLabor[]>([]);
-  const [addInventoryLinks, setAddInventoryLinks] = useState<DraftPackageInventory[]>([]);
   const [addSelectedLaborId, setAddSelectedLaborId] = useState("");
-  const [addSelectedInventoryId, setAddSelectedInventoryId] = useState("");
   const [addLaborQty, setAddLaborQty] = useState("1");
-  const [addInventoryQty, setAddInventoryQty] = useState("1");
   const [addError, setAddError] = useState<string | null>(null);
 
   const [showViewModal, setShowViewModal] = useState(false);
   const [viewItem, setViewItem] = useState<PackageItem | null>(null);
   const [viewLaborLinks, setViewLaborLinks] = useState<PackageLaborItem[]>([]);
-  const [viewInventoryLinks, setViewInventoryLinks] = useState<PackageInventoryItem[]>([]);
   const [viewLinksLoading, setViewLinksLoading] = useState(false);
 
   const [showEditModal, setShowEditModal] = useState(false);
@@ -101,17 +90,14 @@ export function PackagesManagement() {
   const [selectedItem, setSelectedItem] = useState<PackageItem | null>(null);
   const [editForm, setEditForm] = useState({
     name: "",
+    price: "",
     description: "",
     status: "active",
   });
   const [editLaborLinks, setEditLaborLinks] = useState<DraftPackageLabor[]>([]);
-  const [editInventoryLinks, setEditInventoryLinks] = useState<DraftPackageInventory[]>([]);
   const [editLaborDbLinks, setEditLaborDbLinks] = useState<PackageLaborItem[]>([]);
-  const [editInventoryDbLinks, setEditInventoryDbLinks] = useState<PackageInventoryItem[]>([]);
   const [editSelectedLaborId, setEditSelectedLaborId] = useState("");
-  const [editSelectedInventoryId, setEditSelectedInventoryId] = useState("");
   const [editLaborQty, setEditLaborQty] = useState("1");
-  const [editInventoryQty, setEditInventoryQty] = useState("1");
   const [editError, setEditError] = useState<string | null>(null);
   const [editLinksLoading, setEditLinksLoading] = useState(false);
 
@@ -134,11 +120,6 @@ export function PackagesManagement() {
   const laborOptions = useMemo(
     () => laborItems.filter((l) => l.status === "active").map((l) => ({ value: l.id, label: l.name })),
     [laborItems]
-  );
-
-  const inventoryOptions = useMemo(
-    () => inventoryItems.filter((i) => i.status === "active").map((i) => ({ value: i.id, label: i.item_name })),
-    [inventoryItems]
   );
 
   const { paginatedItems, totalPages } = useMemo(() => {
@@ -174,14 +155,12 @@ export function PackagesManagement() {
     try {
       setLoading(true);
       setError(null);
-      const [packageRes, laborRes, inventoryRes] = await Promise.all([
+      const [packageRes, laborRes] = await Promise.all([
         packagesApi.getAll({ limit: 1000 }),
         laborItemsApi.getAll({ limit: 1000, status: "active" }),
-        inventoryApi.getAll({ limit: 1000, status: "active" }),
       ]);
       setAllItems(packageRes.data);
       setLaborItems(laborRes.data);
-      setInventoryItems(inventoryRes.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch data");
     } finally {
@@ -193,18 +172,11 @@ export function PackagesManagement() {
     return laborItems.find((l) => l.id === id)?.name || "Unknown Labor";
   }
 
-  function getInventoryName(id: string): string {
-    return inventoryItems.find((i) => i.id === id)?.item_name || "Unknown Inventory";
-  }
-
   function openAddModal() {
-    setAddForm({ name: "", description: "" });
+    setAddForm({ name: "", price: "", description: "" });
     setAddLaborLinks([]);
-    setAddInventoryLinks([]);
     setAddSelectedLaborId("");
-    setAddSelectedInventoryId("");
     setAddLaborQty("1");
-    setAddInventoryQty("1");
     setAddError(null);
     setShowAddModal(true);
   }
@@ -229,26 +201,6 @@ export function PackagesManagement() {
     setAddLaborQty("1");
   }
 
-  function addDraftInventoryLink(isEdit: boolean) {
-    const selectedId = isEdit ? editSelectedInventoryId : addSelectedInventoryId;
-    const qty = parseInt(isEdit ? editInventoryQty : addInventoryQty, 10) || 1;
-
-    if (!selectedId || qty <= 0) return;
-
-    if (isEdit) {
-      if (editInventoryLinks.some((l) => l.inventory_item_id === selectedId)) return;
-      setEditInventoryLinks((prev) => [...prev, { inventory_item_id: selectedId, quantity: qty }]);
-      setEditSelectedInventoryId("");
-      setEditInventoryQty("1");
-      return;
-    }
-
-    if (addInventoryLinks.some((l) => l.inventory_item_id === selectedId)) return;
-    setAddInventoryLinks((prev) => [...prev, { inventory_item_id: selectedId, quantity: qty }]);
-    setAddSelectedInventoryId("");
-    setAddInventoryQty("1");
-  }
-
   async function handleAddItem(e: React.FormEvent) {
     e.preventDefault();
     setAddError(null);
@@ -258,10 +210,17 @@ export function PackagesManagement() {
       return;
     }
 
+    const parsedPrice = Number(addForm.price);
+    if (Number.isNaN(parsedPrice) || parsedPrice <= 0) {
+      setAddError("Price is required and must be greater than 0");
+      return;
+    }
+
     try {
       setAddingItem(true);
       const created = await packagesApi.create({
         name: addForm.name.trim(),
+        price: parsedPrice,
         description: addForm.description.trim() || undefined,
       });
 
@@ -275,18 +234,6 @@ export function PackagesManagement() {
           )
         );
       }
-
-      if (addInventoryLinks.length > 0) {
-        await Promise.all(
-          addInventoryLinks.map((l) =>
-            packagesApi.addInventoryLink(created.id, {
-              inventory_item_id: l.inventory_item_id,
-              quantity: l.quantity,
-            })
-          )
-        );
-      }
-
       setShowAddModal(false);
       showToast.success("Package item created successfully");
       fetchData();
@@ -301,19 +248,13 @@ export function PackagesManagement() {
   async function openViewModal(item: PackageItem) {
     setViewItem(item);
     setViewLaborLinks([]);
-    setViewInventoryLinks([]);
     setViewLinksLoading(true);
     setShowViewModal(true);
     try {
-      const [laborLinks, inventoryLinks] = await Promise.all([
-        packagesApi.getLaborLinks(item.id),
-        packagesApi.getInventoryLinks(item.id),
-      ]);
+      const laborLinks = await packagesApi.getLaborLinks(item.id);
       setViewLaborLinks(laborLinks);
-      setViewInventoryLinks(inventoryLinks);
     } catch {
       setViewLaborLinks([]);
-      setViewInventoryLinks([]);
     } finally {
       setViewLinksLoading(false);
     }
@@ -323,39 +264,27 @@ export function PackagesManagement() {
     setSelectedItem(item);
     setEditForm({
       name: item.name,
+      price: String(item.price ?? ""),
       description: item.description || "",
       status: item.status,
     });
     setEditError(null);
     setEditSelectedLaborId("");
-    setEditSelectedInventoryId("");
     setEditLaborQty("1");
-    setEditInventoryQty("1");
     setEditLaborDbLinks([]);
-    setEditInventoryDbLinks([]);
     setEditLaborLinks([]);
-    setEditInventoryLinks([]);
     setEditLinksLoading(true);
 
     try {
-      const [laborLinks, inventoryLinks] = await Promise.all([
-        packagesApi.getLaborLinks(item.id),
-        packagesApi.getInventoryLinks(item.id),
-      ]);
+      const laborLinks = await packagesApi.getLaborLinks(item.id);
 
       setEditLaborDbLinks(laborLinks);
-      setEditInventoryDbLinks(inventoryLinks);
       setEditLaborLinks(
         laborLinks.map((l) => ({ labor_item_id: l.labor_id, quantity: l.quantity || 1 }))
       );
-      setEditInventoryLinks(
-        inventoryLinks.map((l) => ({ inventory_item_id: l.inventory_item_id, quantity: l.quantity || 1 }))
-      );
     } catch {
       setEditLaborDbLinks([]);
-      setEditInventoryDbLinks([]);
       setEditLaborLinks([]);
-      setEditInventoryLinks([]);
     } finally {
       setEditLinksLoading(false);
     }
@@ -373,19 +302,23 @@ export function PackagesManagement() {
       return;
     }
 
+    const parsedPrice = Number(editForm.price);
+    if (Number.isNaN(parsedPrice) || parsedPrice <= 0) {
+      setEditError("Price must be greater than 0");
+      return;
+    }
+
     try {
       setEditingItem(true);
       await packagesApi.update(selectedItem.id, {
         name: editForm.name.trim(),
+        price: parsedPrice,
         description: editForm.description.trim() || null,
         status: editForm.status,
       });
 
       if (editLaborDbLinks.length > 0) {
         await Promise.all(editLaborDbLinks.map((l) => packagesApi.removeLaborLink(selectedItem.id, l.id)));
-      }
-      if (editInventoryDbLinks.length > 0) {
-        await Promise.all(editInventoryDbLinks.map((l) => packagesApi.removeInventoryLink(selectedItem.id, l.id)));
       }
 
       if (editLaborLinks.length > 0) {
@@ -398,18 +331,6 @@ export function PackagesManagement() {
           )
         );
       }
-
-      if (editInventoryLinks.length > 0) {
-        await Promise.all(
-          editInventoryLinks.map((l) =>
-            packagesApi.addInventoryLink(selectedItem.id, {
-              inventory_item_id: l.inventory_item_id,
-              quantity: l.quantity,
-            })
-          )
-        );
-      }
-
       setShowEditModal(false);
       setSelectedItem(null);
       showToast.success("Package item updated successfully");
@@ -508,7 +429,12 @@ export function PackagesManagement() {
                 ? "bg-positive-100 text-positive"
                 : "bg-negative-100 text-negative",
             }}
-            details={item.description ? <p className="text-neutral-900 line-clamp-2">{item.description}</p> : <p className="text-xs">No description</p>}
+            details={
+              <div className="space-y-1">
+                <p className="text-neutral-900">{item.price.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}</p>
+                {item.description ? <p className="text-neutral-900 line-clamp-2">{item.description}</p> : <p className="text-xs">No description</p>}
+              </div>
+            }
             actions={[
               ...(canUpdate ? [{
                 label: "Edit",
@@ -532,6 +458,7 @@ export function PackagesManagement() {
         <form onSubmit={handleAddItem}>
           <ModalSection title="Item Information">
             <ModalInput type="text" value={addForm.name} onChange={(v) => setAddForm((prev) => ({ ...prev, name: v }))} placeholder="Name *" required />
+            <ModalInput type="number" value={addForm.price} onChange={(v) => setAddForm((prev) => ({ ...prev, price: v }))} placeholder="Fixed Price *" required />
             <textarea
               value={addForm.description}
               onChange={(e) => setAddForm((prev) => ({ ...prev, description: e.target.value }))}
@@ -570,35 +497,6 @@ export function PackagesManagement() {
             )}
           </ModalSection>
 
-          <ModalSection title="Inventory Items">
-            <div className="flex gap-2 items-end">
-              <div className="flex-1">
-                <ModalSelect value={addSelectedInventoryId} onChange={setAddSelectedInventoryId} placeholder="Select Inventory" options={inventoryOptions} />
-              </div>
-              <div className="w-24">
-                <ModalInput type="number" value={addInventoryQty} onChange={setAddInventoryQty} placeholder="Qty" />
-              </div>
-              <button type="button" onClick={() => addDraftInventoryLink(false)} className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 transition-colors shrink-0">
-                <LuPlus className="w-4 h-4" />
-              </button>
-            </div>
-            {addInventoryLinks.length > 0 && (
-              <div className="mt-3 space-y-2">
-                {addInventoryLinks.map((l) => (
-                  <div key={l.inventory_item_id} className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3">
-                    <div>
-                      <p className="font-medium text-neutral-950 text-sm">{getInventoryName(l.inventory_item_id)}</p>
-                      <p className="text-xs text-neutral-900">Quantity: {l.quantity}</p>
-                    </div>
-                    <button type="button" onClick={() => setAddInventoryLinks((prev) => prev.filter((i) => i.inventory_item_id !== l.inventory_item_id))} className="text-negative hover:text-negative-900 p-1 ml-3">
-                      <LuX className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </ModalSection>
-
           <ModalError message={addError} />
           <ModalButtons onCancel={() => setShowAddModal(false)} submitText={addingItem ? "Creating..." : "Create Package"} loading={addingItem} />
         </form>
@@ -609,6 +507,7 @@ export function PackagesManagement() {
           <div>
             <ModalSection title="Item Information">
               <ModalInput type="text" value={viewItem.name} onChange={() => {}} placeholder="Name" disabled />
+              <ModalInput type="text" value={viewItem.price.toLocaleString("en-PH", { style: "currency", currency: "PHP" })} onChange={() => {}} placeholder="Price" disabled />
               <ModalSelect value={viewItem.status} onChange={() => {}} options={STATUS_OPTIONS} disabled />
               <textarea value={viewItem.description || "-"} readOnly disabled rows={3} className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 focus:outline-none transition-all resize-none cursor-readonly" />
             </ModalSection>
@@ -633,26 +532,6 @@ export function PackagesManagement() {
               ) : <p className="text-sm text-neutral-900 text-center py-3">No labor items.</p>}
             </ModalSection>
 
-            <ModalSection title="Inventory Items">
-              {viewLinksLoading ? (
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
-                    <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
-                    <div className="h-3 bg-neutral-200 rounded w-1/2" />
-                  </div>
-                </div>
-              ) : viewInventoryLinks.length > 0 ? (
-                <div className="space-y-2">
-                  {viewInventoryLinks.map((l) => (
-                    <div key={l.id} className="bg-neutral-100 rounded-xl px-4 py-3 text-sm text-neutral-950">
-                      <p className="font-medium text-neutral-950 text-sm">{l.inventory_items?.item_name || "Unknown Inventory"}</p>
-                      <p className="text-xs text-neutral-900">Quantity: {l.quantity}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : <p className="text-sm text-neutral-900 text-center py-3">No inventory items.</p>}
-            </ModalSection>
-
             <ModalSection title="Timestamps">
               <div className="grid grid-cols-2 gap-4">
                 <ModalInput type="text" value={formatDate(viewItem.created_at)} onChange={() => {}} placeholder="Created" disabled />
@@ -667,6 +546,7 @@ export function PackagesManagement() {
         <form onSubmit={handleEditItem}>
           <ModalSection title="Item Information">
             <ModalInput type="text" value={editForm.name} onChange={(v) => setEditForm((prev) => ({ ...prev, name: v }))} placeholder="Name *" required />
+            <ModalInput type="number" value={editForm.price} onChange={(v) => setEditForm((prev) => ({ ...prev, price: v }))} placeholder="Fixed Price *" required />
             <ModalSelect value={editForm.status} onChange={(v) => setEditForm((prev) => ({ ...prev, status: v }))} options={STATUS_OPTIONS} />
             <textarea
               value={editForm.description}
@@ -706,43 +586,6 @@ export function PackagesManagement() {
                       <p className="text-xs text-neutral-900">Quantity: {l.quantity}</p>
                     </div>
                     <button type="button" onClick={() => setEditLaborLinks((prev) => prev.filter((i) => i.labor_item_id !== l.labor_item_id))} className="text-negative hover:text-negative-900 p-1 ml-3">
-                      <LuX className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </ModalSection>
-
-          <ModalSection title="Inventory Items">
-            {editLinksLoading && (
-              <div className="mb-3 grid grid-cols-1 gap-4">
-                <div className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
-                  <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
-                  <div className="h-3 bg-neutral-200 rounded w-1/2" />
-                </div>
-              </div>
-            )}
-            <div className="flex gap-2 items-end">
-              <div className="flex-1">
-                <ModalSelect value={editSelectedInventoryId} onChange={setEditSelectedInventoryId} placeholder="Select Inventory" options={inventoryOptions} />
-              </div>
-              <div className="w-24">
-                <ModalInput type="number" value={editInventoryQty} onChange={setEditInventoryQty} placeholder="Qty" />
-              </div>
-              <button type="button" onClick={() => addDraftInventoryLink(true)} className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 transition-colors shrink-0">
-                <LuPlus className="w-4 h-4" />
-              </button>
-            </div>
-            {editInventoryLinks.length > 0 && (
-              <div className="mt-3 space-y-2">
-                {editInventoryLinks.map((l) => (
-                  <div key={l.inventory_item_id} className="flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3">
-                    <div>
-                      <p className="font-medium text-neutral-950 text-sm">{getInventoryName(l.inventory_item_id)}</p>
-                      <p className="text-xs text-neutral-900">Quantity: {l.quantity}</p>
-                    </div>
-                    <button type="button" onClick={() => setEditInventoryLinks((prev) => prev.filter((i) => i.inventory_item_id !== l.inventory_item_id))} className="text-negative hover:text-negative-900 p-1 ml-3">
                       <LuX className="w-4 h-4" />
                     </button>
                   </div>

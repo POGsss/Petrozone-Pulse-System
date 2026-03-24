@@ -158,8 +158,9 @@ export interface PackageItem {
   id: string;
   name: string;
   description: string | null;
+  price: number;
   status: PackageItemStatus;
-  inventory_types: string[];
+  inventory_types?: string[];
   created_by: string | null;
   created_at: string;
   updated_at: string;

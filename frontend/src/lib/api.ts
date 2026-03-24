@@ -505,9 +505,9 @@ export const packagesApi = {
 
   create: async (data: {
     name: string;
+    price: number;
     description?: string;
     status?: string;
-    inventory_types?: string[];
   }) => {
     return fetchWithAuth<import("../types").PackageItem>("/api/packages", {
       method: "POST",
@@ -519,9 +519,9 @@ export const packagesApi = {
     id: string,
     data: {
       name?: string;
+      price?: number;
       description?: string | null;
       status?: string;
-      inventory_types?: string[];
     }
   ) => {
     return fetchWithAuth<import("../types").PackageItem>(`/api/packages/${id}`, {
@@ -959,6 +959,7 @@ export const settingsApi = {
       primary_color: string;
       sidebar_collapsed: boolean;
       font_size: string;
+      table_density: string;
       updated_at: string;
       updated_by: string | null;
     }>("/api/settings");
@@ -969,6 +970,7 @@ export const settingsApi = {
     primary_color?: string;
     sidebar_collapsed?: boolean;
     font_size?: string;
+    table_density?: string;
   }) => {
     return fetchWithAuth<{
       id: string;
@@ -976,6 +978,7 @@ export const settingsApi = {
       primary_color: string;
       sidebar_collapsed: boolean;
       font_size: string;
+      table_density: string;
       updated_at: string;
       updated_by: string | null;
     }>("/api/settings", {

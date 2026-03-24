@@ -139,6 +139,7 @@ Use the **"Add New Vehicle"** button. Create each vehicle below:
    - ✅ **"Vehicle Information"** — Plate Number (monospace), Vehicle Type, Vehicle Class, Model, OR/CR, Status (all disabled)
    - ✅ **"Assignment"** — Customer, Branch (all disabled)
    - ✅ **"Additional Details"** — Color, Year, Engine Number, Chassis Number, Notes (all disabled)
+   - ✅ **"Linked Job Orders"** — linked job order cards showing order number, status, and created date
    - ✅ **"Timestamps"** — Created and Updated dates
 
 ---

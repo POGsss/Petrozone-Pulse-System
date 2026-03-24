@@ -147,12 +147,12 @@ interface DraftItem {
 interface DraftPackageLine {
   package_item_id: string;
   package_item_name: string;
+  package_price: number;
   quantity: number;
   unit_price: number;
   total: number;
-  base_labor_components: Array<{ labor_item_id: string; labor_item_name: string; quantity: number; unit_price: number }>;
-  base_inventory_components: Array<{ inventory_item_id: string; inventory_item_name: string; quantity: number; unit_price: number }>;
-  vehicle_specific_labor_components: Array<{ labor_item_id: string; labor_item_name: string; quantity: number; unit_price: number }>;
+  base_labor_components: Array<{ labor_item_id: string; labor_item_name: string; quantity: number; unit_price: number; original_unit_price?: number }>;
+  labor_deduction_per_item: number;
   vehicle_specific_inventory_components: Array<{ inventory_item_id: string; inventory_item_name: string; quantity: number; unit_price: number }>;
 }
 
@@ -250,7 +250,6 @@ export function JobOrderManagement() {
   const [selectedPackageItemId, setSelectedPackageItemId] = useState("");
   const [selectedLaborItemId, setSelectedLaborItemId] = useState("");
   const [selectedInventoryItemId, setSelectedInventoryItemId] = useState("");
-  const [vehicleSpecificTypeByPackage, setVehicleSpecificTypeByPackage] = useState<Record<string, "labor" | "inventory" | "">>({});
   const [vehicleSpecificItemByPackage, setVehicleSpecificItemByPackage] = useState<Record<string, string>>({});
   const [selectedPackageQty, setSelectedPackageQty] = useState("1");
   const [selectedLaborQty, setSelectedLaborQty] = useState("1");
@@ -287,7 +286,6 @@ export function JobOrderManagement() {
   const [editLineSelectedPackageQty, setEditLineSelectedPackageQty] = useState("1");
   const [editLineSelectedLaborQty, setEditLineSelectedLaborQty] = useState("1");
   const [editLineSelectedInventoryQty, setEditLineSelectedInventoryQty] = useState("1");
-  const [editVehicleSpecificTypeByPackage, setEditVehicleSpecificTypeByPackage] = useState<Record<string, "labor" | "inventory" | "">>({});
   const [editVehicleSpecificItemByPackage, setEditVehicleSpecificItemByPackage] = useState<Record<string, string>>({});
 
   // Delete modal
@@ -674,7 +672,6 @@ export function JobOrderManagement() {
     setSelectedPackageQty("1");
     setSelectedLaborQty("1");
     setSelectedInventoryQty("1");
-    setVehicleSpecificTypeByPackage({});
     setVehicleSpecificItemByPackage({});
     setAddError(null);
     setShowAddModal(true);
@@ -691,7 +688,6 @@ export function JobOrderManagement() {
     setDraftPackageLines([]);
     setDraftLaborLines([]);
     setDraftInventoryLines([]);
-    setVehicleSpecificTypeByPackage({});
     setVehicleSpecificItemByPackage({});
     loadLookups(newBranchId);
   }
@@ -731,16 +727,39 @@ export function JobOrderManagement() {
   }
 
   function recomputeDraftPackageLine(line: DraftPackageLine): DraftPackageLine {
-    const unitPrice =
-      line.base_labor_components.reduce((sum, c) => sum + c.unit_price * c.quantity, 0) +
-      line.base_inventory_components.reduce((sum, c) => sum + c.unit_price * c.quantity, 0) +
-      line.vehicle_specific_labor_components.reduce((sum, c) => sum + c.unit_price * c.quantity, 0) +
-      line.vehicle_specific_inventory_components.reduce((sum, c) => sum + c.unit_price * c.quantity, 0);
+    const baseLaborFromOriginal = line.base_labor_components.map((component) => {
+      const originalUnitPrice = component.original_unit_price ?? component.unit_price;
+      return {
+        ...component,
+        original_unit_price: originalUnitPrice,
+        unit_price: originalUnitPrice,
+      };
+    });
+
+    const inventoryTotal = line.vehicle_specific_inventory_components.reduce((sum, c) => sum + c.unit_price * c.quantity, 0);
+    const laborCount = baseLaborFromOriginal.length;
+    const originalLaborTotal = baseLaborFromOriginal.reduce((sum, c) => sum + c.unit_price * c.quantity, 0);
+    const overflow = Math.max(0, originalLaborTotal + inventoryTotal - line.package_price);
+    const deductionPerLabor = laborCount > 0 ? overflow / laborCount : 0;
+    const adjustedLabor = baseLaborFromOriginal.map((component) => {
+      const originalTotal = component.unit_price * component.quantity;
+      const adjustedTotal = originalTotal - deductionPerLabor;
+      if (adjustedTotal < 0) {
+        throw new Error("Cannot add inventory: labor would become negative.");
+      }
+      const adjustedUnitPrice = component.quantity > 0 ? adjustedTotal / component.quantity : 0;
+      return {
+        ...component,
+        unit_price: adjustedUnitPrice,
+      };
+    });
 
     return {
       ...line,
-      unit_price: unitPrice,
-      total: unitPrice * line.quantity,
+      base_labor_components: adjustedLabor,
+      labor_deduction_per_item: deductionPerLabor,
+      unit_price: line.package_price,
+      total: line.package_price * line.quantity,
     };
   }
 
@@ -763,10 +782,17 @@ export function JobOrderManagement() {
         return;
       }
 
-      const [pkgLaborLinks, pkgInventoryLinks] = await Promise.all([
-        packagesApi.getLaborLinks(packageItem.id),
-        packagesApi.getInventoryLinks(packageItem.id),
-      ]);
+      const pkgLaborLinks = await packagesApi.getLaborLinks(packageItem.id);
+
+      if (!packageItem.price || packageItem.price <= 0) {
+        setAddError("Selected package has invalid fixed price");
+        return;
+      }
+
+      if (pkgLaborLinks.length === 0) {
+        setAddError("Selected package has no labor components");
+        return;
+      }
 
       const baseLaborComponents = pkgLaborLinks.map((link) => {
         const name = link.labor_items?.name || "Unknown Labor";
@@ -789,25 +815,19 @@ export function JobOrderManagement() {
           labor_item_name: name,
           quantity: link.quantity || 1,
           unit_price: unitPrice,
+          original_unit_price: unitPrice,
         };
       });
-
-      const baseInventoryComponents = pkgInventoryLinks.map((link) => ({
-        inventory_item_id: link.inventory_item_id,
-        inventory_item_name: link.inventory_items?.item_name || "Unknown Inventory",
-        quantity: link.quantity || 1,
-        unit_price: link.inventory_items?.cost_price || 0,
-      }));
 
       const line: DraftPackageLine = recomputeDraftPackageLine({
         package_item_id: packageItem.id,
         package_item_name: packageItem.name,
+        package_price: packageItem.price,
         quantity: qty,
         unit_price: 0,
         total: 0,
         base_labor_components: baseLaborComponents,
-        base_inventory_components: baseInventoryComponents,
-        vehicle_specific_labor_components: [],
+        labor_deduction_per_item: 0,
         vehicle_specific_inventory_components: [],
       });
 
@@ -823,11 +843,6 @@ export function JobOrderManagement() {
 
   function handleRemoveDraftPackageLine(packageItemId: string) {
     setDraftPackageLines((prev) => prev.filter((d) => d.package_item_id !== packageItemId));
-    setVehicleSpecificTypeByPackage((prev) => {
-      const next = { ...prev };
-      delete next[packageItemId];
-      return next;
-    });
     setVehicleSpecificItemByPackage((prev) => {
       const next = { ...prev };
       delete next[packageItemId];
@@ -840,68 +855,49 @@ export function JobOrderManagement() {
     setDraftPackageLines((prev) =>
       prev.map((line) =>
         line.package_item_id === packageItemId
-          ? recomputeDraftPackageLine({ ...line, quantity: qty })
+          ? (() => {
+              try {
+                return recomputeDraftPackageLine({ ...line, quantity: qty });
+              } catch {
+                return line;
+              }
+            })()
           : line
       )
-    );
-  }
-
-  function handleAddVehicleSpecificLabor(packageItemId: string, laborItemId: string, qty = 1) {
-    const laborItem = laborItems.find((l) => l.id === laborItemId);
-    if (!laborItem) return;
-    setDraftPackageLines((prev) =>
-      prev.map((line) => {
-        if (line.package_item_id !== packageItemId) return line;
-        const nextLine = {
-          ...line,
-          vehicle_specific_labor_components: [
-            ...line.vehicle_specific_labor_components,
-            {
-              labor_item_id: laborItem.id,
-              labor_item_name: laborItem.name,
-              quantity: qty,
-              unit_price: getLaborPriceByVehicleClass(laborItem, addVehicleClass),
-            },
-          ],
-        };
-        return recomputeDraftPackageLine(nextLine);
-      })
     );
   }
 
   function handleAddVehicleSpecificInventory(packageItemId: string, inventoryItemId: string, qty = 1) {
     const inventoryItem = inventoryItems.find((i) => i.id === inventoryItemId);
     if (!inventoryItem) return;
-    setDraftPackageLines((prev) =>
-      prev.map((line) => {
-        if (line.package_item_id !== packageItemId) return line;
-        const nextLine = {
-          ...line,
-          vehicle_specific_inventory_components: [
-            ...line.vehicle_specific_inventory_components,
-            {
-              inventory_item_id: inventoryItem.id,
-              inventory_item_name: inventoryItem.item_name,
-              quantity: qty,
-              unit_price: inventoryItem.cost_price || 0,
-            },
-          ],
-        };
-        return recomputeDraftPackageLine(nextLine);
-      })
-    );
-  }
+    const currentLine = draftPackageLines.find((line) => line.package_item_id === packageItemId);
+    if (!currentLine) return;
 
-  function handleRemoveVehicleSpecificLabor(packageItemId: string, index: number) {
+    const nextLine = {
+      ...currentLine,
+      vehicle_specific_inventory_components: [
+        ...currentLine.vehicle_specific_inventory_components,
+        {
+          inventory_item_id: inventoryItem.id,
+          inventory_item_name: inventoryItem.item_name,
+          quantity: qty,
+          unit_price: inventoryItem.cost_price || 0,
+        },
+      ],
+    };
+
+    let recomputed: DraftPackageLine;
+    try {
+      recomputed = recomputeDraftPackageLine(nextLine);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to recalculate package";
+      setAddError(message);
+      showToast.error(message);
+      return;
+    }
+
     setDraftPackageLines((prev) =>
-      prev.map((line) => {
-        if (line.package_item_id !== packageItemId) return line;
-        const nextLine = {
-          ...line,
-          vehicle_specific_labor_components: line.vehicle_specific_labor_components.filter((_, idx) => idx !== index),
-        };
-        return recomputeDraftPackageLine(nextLine);
-      })
+      prev.map((line) => (line.package_item_id === packageItemId ? recomputed : line))
     );
   }
 
@@ -913,20 +909,13 @@ export function JobOrderManagement() {
           ...line,
           vehicle_specific_inventory_components: line.vehicle_specific_inventory_components.filter((_, idx) => idx !== index),
         };
-        return recomputeDraftPackageLine(nextLine);
+        try {
+          return recomputeDraftPackageLine(nextLine);
+        } catch {
+          return line;
+        }
       })
     );
-  }
-
-  function handleVehicleSpecificTypeChange(packageItemId: string, type: "labor" | "inventory" | "") {
-    setVehicleSpecificTypeByPackage((prev) => ({
-      ...prev,
-      [packageItemId]: type,
-    }));
-    setVehicleSpecificItemByPackage((prev) => ({
-      ...prev,
-      [packageItemId]: "",
-    }));
   }
 
   function handleVehicleSpecificItemChange(packageItemId: string, itemId: string) {
@@ -937,16 +926,11 @@ export function JobOrderManagement() {
   }
 
   function handleAddVehicleSpecificComponent(packageItemId: string) {
-    const selectedType = vehicleSpecificTypeByPackage[packageItemId] || "";
     const selectedItemId = vehicleSpecificItemByPackage[packageItemId] || "";
 
-    if (!selectedType || !selectedItemId) return;
+    if (!selectedItemId) return;
 
-    if (selectedType === "labor") {
-      handleAddVehicleSpecificLabor(packageItemId, selectedItemId, 1);
-    } else {
-      handleAddVehicleSpecificInventory(packageItemId, selectedItemId, 1);
-    }
+    handleAddVehicleSpecificInventory(packageItemId, selectedItemId, 1);
 
     setVehicleSpecificItemByPackage((prev) => ({
       ...prev,
@@ -1067,10 +1051,6 @@ export function JobOrderManagement() {
             reference_id: line.package_item_id,
             quantity: line.quantity,
             vehicle_specific_components: {
-              labor: line.vehicle_specific_labor_components.map((c) => ({
-                labor_item_id: c.labor_item_id,
-                quantity: c.quantity,
-              })),
               inventory: line.vehicle_specific_inventory_components.map((c) => ({
                 inventory_item_id: c.inventory_item_id,
                 quantity: c.quantity,
@@ -1218,7 +1198,6 @@ export function JobOrderManagement() {
     setEditLineSelectedPackageQty("1");
     setEditLineSelectedLaborQty("1");
     setEditLineSelectedInventoryQty("1");
-    setEditVehicleSpecificTypeByPackage({});
     setEditVehicleSpecificItemByPackage({});
     setShowEditModal(true);
 
@@ -1252,13 +1231,12 @@ export function JobOrderManagement() {
         for (const line of fullOrder.job_order_lines) {
           if (line.line_type === "package") {
             const baseLabor = line.metadata?.base_components?.labor || [];
-            const baseInventory = line.metadata?.base_components?.inventory || [];
-            const vehicleSpecificLabor = line.metadata?.vehicle_specific_components?.labor || [];
             const vehicleSpecificInventory = line.metadata?.vehicle_specific_components?.inventory || [];
 
             packageLines.push({
               package_item_id: line.reference_id || "",
               package_item_name: line.name,
+              package_price: Number((line.metadata?.package_price as number) || line.unit_price || 0),
               quantity: line.quantity,
               unit_price: line.unit_price,
               total: line.total,
@@ -1267,19 +1245,12 @@ export function JobOrderManagement() {
                 labor_item_name: c.name,
                 quantity: c.quantity,
                 unit_price: c.unit_price,
+                original_unit_price:
+                  c.quantity > 0
+                    ? Number(((c as unknown as { original_total?: number }).original_total ?? c.unit_price * c.quantity)) / c.quantity
+                    : c.unit_price,
               })),
-              base_inventory_components: baseInventory.map((c) => ({
-                inventory_item_id: c.inventory_item_id || "",
-                inventory_item_name: c.name,
-                quantity: c.quantity,
-                unit_price: c.unit_price,
-              })),
-              vehicle_specific_labor_components: vehicleSpecificLabor.map((c) => ({
-                labor_item_id: c.labor_item_id || "",
-                labor_item_name: c.name,
-                quantity: c.quantity,
-                unit_price: c.unit_price,
-              })),
+              labor_deduction_per_item: Number((line.metadata?.deduction_per_labor as number) || 0),
               vehicle_specific_inventory_components: vehicleSpecificInventory.map((c) => ({
                 inventory_item_id: c.inventory_item_id || "",
                 inventory_item_name: c.name,
@@ -1592,10 +1563,17 @@ export function JobOrderManagement() {
         return;
       }
 
-      const [pkgLaborLinks, pkgInventoryLinks] = await Promise.all([
-        packagesApi.getLaborLinks(packageItem.id),
-        packagesApi.getInventoryLinks(packageItem.id),
-      ]);
+      const pkgLaborLinks = await packagesApi.getLaborLinks(packageItem.id);
+
+      if (!packageItem.price || packageItem.price <= 0) {
+        setEditError("Selected package has invalid fixed price");
+        return;
+      }
+
+      if (pkgLaborLinks.length === 0) {
+        setEditError("Selected package has no labor components");
+        return;
+      }
 
       const vehicleClass = (editOrder.vehicle_class || "light") as VehicleClass;
       const baseLaborComponents = pkgLaborLinks.map((link) => {
@@ -1619,25 +1597,19 @@ export function JobOrderManagement() {
           labor_item_name: name,
           quantity: link.quantity || 1,
           unit_price: unitPrice,
+          original_unit_price: unitPrice,
         };
       });
-
-      const baseInventoryComponents = pkgInventoryLinks.map((link) => ({
-        inventory_item_id: link.inventory_item_id,
-        inventory_item_name: link.inventory_items?.item_name || "Unknown Inventory",
-        quantity: link.quantity || 1,
-        unit_price: link.inventory_items?.cost_price || 0,
-      }));
 
       const line = recomputeDraftPackageLine({
         package_item_id: packageItem.id,
         package_item_name: packageItem.name,
+        package_price: packageItem.price,
         quantity: qty,
         unit_price: 0,
         total: 0,
         base_labor_components: baseLaborComponents,
-        base_inventory_components: baseInventoryComponents,
-        vehicle_specific_labor_components: [],
+        labor_deduction_per_item: 0,
         vehicle_specific_inventory_components: [],
       });
 
@@ -1653,11 +1625,6 @@ export function JobOrderManagement() {
 
   function handleRemoveEditLinePackage(packageItemId: string) {
     setEditLinePackageLines((prev) => prev.filter((line) => line.package_item_id !== packageItemId));
-    setEditVehicleSpecificTypeByPackage((prev) => {
-      const next = { ...prev };
-      delete next[packageItemId];
-      return next;
-    });
     setEditVehicleSpecificItemByPackage((prev) => {
       const next = { ...prev };
       delete next[packageItemId];
@@ -1670,69 +1637,49 @@ export function JobOrderManagement() {
     setEditLinePackageLines((prev) =>
       prev.map((line) =>
         line.package_item_id === packageItemId
-          ? recomputeDraftPackageLine({ ...line, quantity: qty })
+          ? (() => {
+              try {
+                return recomputeDraftPackageLine({ ...line, quantity: qty });
+              } catch {
+                return line;
+              }
+            })()
           : line
       )
-    );
-  }
-
-  function handleAddEditVehicleSpecificLabor(packageItemId: string, laborItemId: string, qty = 1) {
-    const laborItem = editLaborItems.find((l) => l.id === laborItemId);
-    if (!laborItem || !editOrder) return;
-    const vehicleClass = (editOrder.vehicle_class || "light") as VehicleClass;
-    setEditLinePackageLines((prev) =>
-      prev.map((line) => {
-        if (line.package_item_id !== packageItemId) return line;
-        const nextLine = {
-          ...line,
-          vehicle_specific_labor_components: [
-            ...line.vehicle_specific_labor_components,
-            {
-              labor_item_id: laborItem.id,
-              labor_item_name: laborItem.name,
-              quantity: qty,
-              unit_price: getLaborPriceByVehicleClass(laborItem, vehicleClass),
-            },
-          ],
-        };
-        return recomputeDraftPackageLine(nextLine);
-      })
     );
   }
 
   function handleAddEditVehicleSpecificInventory(packageItemId: string, inventoryItemId: string, qty = 1) {
     const inventoryItem = editInventoryItems.find((i) => i.id === inventoryItemId);
     if (!inventoryItem) return;
-    setEditLinePackageLines((prev) =>
-      prev.map((line) => {
-        if (line.package_item_id !== packageItemId) return line;
-        const nextLine = {
-          ...line,
-          vehicle_specific_inventory_components: [
-            ...line.vehicle_specific_inventory_components,
-            {
-              inventory_item_id: inventoryItem.id,
-              inventory_item_name: inventoryItem.item_name,
-              quantity: qty,
-              unit_price: inventoryItem.cost_price || 0,
-            },
-          ],
-        };
-        return recomputeDraftPackageLine(nextLine);
-      })
-    );
-  }
+    const currentLine = editLinePackageLines.find((line) => line.package_item_id === packageItemId);
+    if (!currentLine) return;
 
-  function handleRemoveEditVehicleSpecificLabor(packageItemId: string, index: number) {
+    const nextLine = {
+      ...currentLine,
+      vehicle_specific_inventory_components: [
+        ...currentLine.vehicle_specific_inventory_components,
+        {
+          inventory_item_id: inventoryItem.id,
+          inventory_item_name: inventoryItem.item_name,
+          quantity: qty,
+          unit_price: inventoryItem.cost_price || 0,
+        },
+      ],
+    };
+
+    let recomputed: DraftPackageLine;
+    try {
+      recomputed = recomputeDraftPackageLine(nextLine);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to recalculate package";
+      setEditError(message);
+      showToast.error(message);
+      return;
+    }
+
     setEditLinePackageLines((prev) =>
-      prev.map((line) => {
-        if (line.package_item_id !== packageItemId) return line;
-        const nextLine = {
-          ...line,
-          vehicle_specific_labor_components: line.vehicle_specific_labor_components.filter((_, idx) => idx !== index),
-        };
-        return recomputeDraftPackageLine(nextLine);
-      })
+      prev.map((line) => (line.package_item_id === packageItemId ? recomputed : line))
     );
   }
 
@@ -1744,20 +1691,13 @@ export function JobOrderManagement() {
           ...line,
           vehicle_specific_inventory_components: line.vehicle_specific_inventory_components.filter((_, idx) => idx !== index),
         };
-        return recomputeDraftPackageLine(nextLine);
+        try {
+          return recomputeDraftPackageLine(nextLine);
+        } catch {
+          return line;
+        }
       })
     );
-  }
-
-  function handleEditVehicleSpecificTypeChange(packageItemId: string, type: "labor" | "inventory" | "") {
-    setEditVehicleSpecificTypeByPackage((prev) => ({
-      ...prev,
-      [packageItemId]: type,
-    }));
-    setEditVehicleSpecificItemByPackage((prev) => ({
-      ...prev,
-      [packageItemId]: "",
-    }));
   }
 
   function handleEditVehicleSpecificItemChange(packageItemId: string, itemId: string) {
@@ -1768,16 +1708,11 @@ export function JobOrderManagement() {
   }
 
   function handleAddEditVehicleSpecificComponent(packageItemId: string) {
-    const selectedType = editVehicleSpecificTypeByPackage[packageItemId] || "";
     const selectedItemId = editVehicleSpecificItemByPackage[packageItemId] || "";
 
-    if (!selectedType || !selectedItemId) return;
+    if (!selectedItemId) return;
 
-    if (selectedType === "labor") {
-      handleAddEditVehicleSpecificLabor(packageItemId, selectedItemId, 1);
-    } else {
-      handleAddEditVehicleSpecificInventory(packageItemId, selectedItemId, 1);
-    }
+    handleAddEditVehicleSpecificInventory(packageItemId, selectedItemId, 1);
 
     setEditVehicleSpecificItemByPackage((prev) => ({
       ...prev,
@@ -1864,10 +1799,6 @@ export function JobOrderManagement() {
             reference_id: line.package_item_id,
             quantity: line.quantity,
             vehicle_specific_components: {
-              labor: line.vehicle_specific_labor_components.map((c) => ({
-                labor_item_id: c.labor_item_id,
-                quantity: c.quantity,
-              })),
               inventory: line.vehicle_specific_inventory_components.map((c) => ({
                 inventory_item_id: c.inventory_item_id,
                 quantity: c.quantity,
@@ -2601,7 +2532,7 @@ export function JobOrderManagement() {
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-neutral-950 text-sm truncate">{line.package_item_name}</p>
-                        <p className="text-xs text-neutral-900">Package total: {formatPrice(line.total)}</p>
+                        <p className="text-xs text-neutral-900">Package Price: {formatPrice(line.package_price)}</p>
                       </div>
                       <input
                         type="number"
@@ -2626,37 +2557,10 @@ export function JobOrderManagement() {
                           </div>
                         )) : <p className="text-xs text-neutral-900">None</p>}
                       </div>
-                      <div>
-                        <p className="text-[11px] font-semibold text-neutral-900 uppercase">Inventory</p>
-                        {line.base_inventory_components.length > 0 ? line.base_inventory_components.map((c, idx) => (
-                          <div key={`base-inv-${idx}`} className="flex justify-between text-xs text-neutral-900">
-                            <span>{c.inventory_item_name}</span>
-                            <span>{formatPrice(c.unit_price * c.quantity)}</span>
-                          </div>
-                        )) : <p className="text-xs text-neutral-900">None</p>}
-                      </div>
                     </div>
 
                     <div className="mt-2 border-t border-neutral-200 pt-2 space-y-2">
                       <p className="text-xs font-semibold text-primary uppercase">Vehicle-Specific Components - {addVehicleClass.replace("_", " ")}</p>
-                      <div>
-                        <p className="text-[11px] font-semibold text-neutral-900 uppercase">Labor</p>
-                        {line.vehicle_specific_labor_components.length > 0 ? line.vehicle_specific_labor_components.map((c, idx) => (
-                          <div key={`extra-labor-${idx}`} className="flex items-center justify-between gap-2 text-xs text-neutral-900">
-                            <span className="flex-1 truncate">{c.labor_item_name}</span>
-                            <span>{formatPrice(c.unit_price * c.quantity)}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveVehicleSpecificLabor(line.package_item_id, idx)}
-                              className="text-negative hover:text-negative-900 p-0.5"
-                              title="Remove item"
-                            >
-                              <LuX className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        )) : <p className="text-xs text-neutral-900">None</p>}
-                      </div>
-
                       <div>
                         <p className="text-[11px] font-semibold text-neutral-900 uppercase">Inventory</p>
                         {line.vehicle_specific_inventory_components.length > 0 ? line.vehicle_specific_inventory_components.map((c, idx) => (
@@ -2676,49 +2580,19 @@ export function JobOrderManagement() {
                       </div>
 
                       <div className="flex gap-2 items-end pt-1">
-                        <div className="w-40">
-                          <ModalSelect
-                            value={vehicleSpecificTypeByPackage[line.package_item_id] || ""}
-                            onChange={(value) =>
-                              handleVehicleSpecificTypeChange(
-                                line.package_item_id,
-                                value === "labor" || value === "inventory" ? value : ""
-                              )
-                            }
-                            placeholder="Type..."
-                            options={[
-                              { value: "labor", label: "Labor" },
-                              { value: "inventory", label: "Inventory" },
-                            ]}
-                            className="bg-white"
-                          />
-                        </div>
                         <div className="flex-1">
                           <ModalSelect
                             value={vehicleSpecificItemByPackage[line.package_item_id] || ""}
                             onChange={(value) => handleVehicleSpecificItemChange(line.package_item_id, value)}
-                            placeholder={
-                              (vehicleSpecificTypeByPackage[line.package_item_id] || "") === "labor"
-                                ? "Select labor..."
-                                : (vehicleSpecificTypeByPackage[line.package_item_id] || "") === "inventory"
-                                  ? "Select inventory..."
-                                  : "Select item..."
-                            }
-                            options={
-                              (vehicleSpecificTypeByPackage[line.package_item_id] || "") === "labor"
-                                ? laborItemOptions
-                                : (vehicleSpecificTypeByPackage[line.package_item_id] || "") === "inventory"
-                                  ? inventoryItemOptions
-                                  : []
-                            }
-                            disabled={!(vehicleSpecificTypeByPackage[line.package_item_id] || "")}
+                            placeholder="Select inventory..."
+                            options={inventoryItemOptions}
                             className="bg-white"
                           />
                         </div>
                         <button
                           type="button"
                           onClick={() => handleAddVehicleSpecificComponent(line.package_item_id)}
-                          disabled={!(vehicleSpecificTypeByPackage[line.package_item_id] || "") || !(vehicleSpecificItemByPackage[line.package_item_id] || "")}
+                          disabled={!(vehicleSpecificItemByPackage[line.package_item_id] || "")}
                           className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
                         >
                           <LuPlus className="w-4 h-4" />
@@ -3080,7 +2954,7 @@ export function JobOrderManagement() {
                             <div className="flex items-center justify-between gap-3">
                               <div className="flex-1 min-w-0">
                                 <p className="font-medium text-neutral-950 text-sm truncate">{line.name}</p>
-                                <p className="text-xs text-neutral-900">Package total: {formatPrice(line.total)}</p>
+                                <p className="text-xs text-neutral-900">Package Price: {formatPrice(Number((line.metadata?.package_price as number) || line.unit_price || 0))}</p>
                               </div>
                               <span className="text-xs text-neutral-900 whitespace-nowrap">Qty: {line.quantity}</span>
                             </div>
@@ -3100,37 +2974,10 @@ export function JobOrderManagement() {
                                   <p className="text-xs text-neutral-900">None</p>
                                 )}
                               </div>
-                              <div>
-                                <p className="text-[11px] font-semibold text-neutral-900 uppercase">Inventory</p>
-                                {(line.metadata?.base_components?.inventory || []).length > 0 ? (
-                                  (line.metadata?.base_components?.inventory || []).map((c, idx) => (
-                                    <div key={`view-base-inv-${line.id}-${idx}`} className="flex justify-between text-xs text-neutral-900">
-                                      <span>{c.name}</span>
-                                      <span>{formatPrice(c.unit_price * c.quantity)}</span>
-                                    </div>
-                                  ))
-                                ) : (
-                                  <p className="text-xs text-neutral-900">None</p>
-                                )}
-                              </div>
                             </div>
 
                             <div className="mt-2 border-t border-neutral-200 pt-2 space-y-2">
                               <p className="text-xs font-semibold text-primary uppercase">Vehicle-Specific Components</p>
-                              <div>
-                                <p className="text-[11px] font-semibold text-neutral-900 uppercase">Labor</p>
-                                {(line.metadata?.vehicle_specific_components?.labor || []).length > 0 ? (
-                                  (line.metadata?.vehicle_specific_components?.labor || []).map((c, idx) => (
-                                    <div key={`view-extra-labor-${line.id}-${idx}`} className="flex justify-between text-xs text-neutral-900">
-                                      <span>{c.name}</span>
-                                      <span>{formatPrice(c.unit_price * c.quantity)}</span>
-                                    </div>
-                                  ))
-                                ) : (
-                                  <p className="text-xs text-neutral-900">None</p>
-                                )}
-                              </div>
-
                               <div>
                                 <p className="text-[11px] font-semibold text-neutral-900 uppercase">Inventory</p>
                                 {(line.metadata?.vehicle_specific_components?.inventory || []).length > 0 ? (
@@ -3614,7 +3461,7 @@ export function JobOrderManagement() {
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex-1 min-w-0">
                             <p className="font-medium text-neutral-950 text-sm truncate">{line.package_item_name}</p>
-                            <p className="text-xs text-neutral-900">Package total: {formatPrice(line.total)}</p>
+                            <p className="text-xs text-neutral-900">Package Price: {formatPrice(line.package_price)}</p>
                           </div>
                           <input
                             type="number"
@@ -3639,37 +3486,10 @@ export function JobOrderManagement() {
                               </div>
                             )) : <p className="text-xs text-neutral-900">None</p>}
                           </div>
-                          <div>
-                            <p className="text-[11px] font-semibold text-neutral-900 uppercase">Inventory</p>
-                            {line.base_inventory_components.length > 0 ? line.base_inventory_components.map((c, idx) => (
-                              <div key={`edit-base-inv-${idx}`} className="flex justify-between text-xs text-neutral-900">
-                                <span>{c.inventory_item_name}</span>
-                                <span>{formatPrice(c.unit_price * c.quantity)}</span>
-                              </div>
-                            )) : <p className="text-xs text-neutral-900">None</p>}
-                          </div>
                         </div>
 
                         <div className="mt-2 border-t border-neutral-200 pt-2 space-y-2">
                           <p className="text-xs font-semibold text-primary uppercase">Vehicle-Specific Components - {(editOrder?.vehicle_class || "light").replace("_", " ")}</p>
-                          <div>
-                            <p className="text-[11px] font-semibold text-neutral-900 uppercase">Labor</p>
-                            {line.vehicle_specific_labor_components.length > 0 ? line.vehicle_specific_labor_components.map((c, idx) => (
-                              <div key={`edit-extra-labor-${idx}`} className="flex items-center justify-between gap-2 text-xs text-neutral-900">
-                                <span className="flex-1 truncate">{c.labor_item_name}</span>
-                                <span>{formatPrice(c.unit_price * c.quantity)}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveEditVehicleSpecificLabor(line.package_item_id, idx)}
-                                  className="text-negative hover:text-negative-900 p-0.5"
-                                  title="Remove item"
-                                >
-                                  <LuX className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            )) : <p className="text-xs text-neutral-900">None</p>}
-                          </div>
-
                           <div>
                             <p className="text-[11px] font-semibold text-neutral-900 uppercase">Inventory</p>
                             {line.vehicle_specific_inventory_components.length > 0 ? line.vehicle_specific_inventory_components.map((c, idx) => (
@@ -3689,49 +3509,19 @@ export function JobOrderManagement() {
                           </div>
 
                           <div className="flex gap-2 items-end pt-1">
-                            <div className="w-40">
-                              <ModalSelect
-                                value={editVehicleSpecificTypeByPackage[line.package_item_id] || ""}
-                                onChange={(value) =>
-                                  handleEditVehicleSpecificTypeChange(
-                                    line.package_item_id,
-                                    value === "labor" || value === "inventory" ? value : ""
-                                  )
-                                }
-                                placeholder="Type..."
-                                options={[
-                                  { value: "labor", label: "Labor" },
-                                  { value: "inventory", label: "Inventory" },
-                                ]}
-                                className="bg-white"
-                              />
-                            </div>
                             <div className="flex-1">
                               <ModalSelect
                                 value={editVehicleSpecificItemByPackage[line.package_item_id] || ""}
                                 onChange={(value) => handleEditVehicleSpecificItemChange(line.package_item_id, value)}
-                                placeholder={
-                                  (editVehicleSpecificTypeByPackage[line.package_item_id] || "") === "labor"
-                                    ? "Select labor..."
-                                    : (editVehicleSpecificTypeByPackage[line.package_item_id] || "") === "inventory"
-                                      ? "Select inventory..."
-                                      : "Select item..."
-                                }
-                                options={
-                                  (editVehicleSpecificTypeByPackage[line.package_item_id] || "") === "labor"
-                                    ? editLaborItemOptions
-                                    : (editVehicleSpecificTypeByPackage[line.package_item_id] || "") === "inventory"
-                                      ? editInventoryItemOptions
-                                      : []
-                                }
-                                disabled={!(editVehicleSpecificTypeByPackage[line.package_item_id] || "")}
+                                placeholder="Select inventory..."
+                                options={editInventoryItemOptions}
                                 className="bg-white"
                               />
                             </div>
                             <button
                               type="button"
                               onClick={() => handleAddEditVehicleSpecificComponent(line.package_item_id)}
-                              disabled={!(editVehicleSpecificTypeByPackage[line.package_item_id] || "") || !(editVehicleSpecificItemByPackage[line.package_item_id] || "")}
+                              disabled={!(editVehicleSpecificItemByPackage[line.package_item_id] || "")}
                               className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
                             >
                               <LuPlus className="w-4 h-4" />

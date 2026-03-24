@@ -2,19 +2,20 @@
 
 ## How Packages Work in the Current System
 
-Packages are global service templates composed of labor and inventory components. These package templates are used in Job Order package lines and expanded into full component breakdowns.
+Packages are global service templates with a fixed price and labor-only composition. These package templates are used in Job Order package lines.
 
 ### Key Business Rules
 
 1. Packages are global (not branch-specific).
 2. Package name is required.
-3. Package composition supports both labor and inventory links with quantity > 0.
-4. Duplicate labor/inventory links are blocked per package.
-5. Active packages are selectable for new job orders.
-6. Delete behavior is dynamic:
+3. Package price is required and must be greater than 0.
+4. Package composition supports labor links only with quantity > 0.
+5. Duplicate labor links are blocked per package.
+6. Active packages are selectable for new job orders.
+7. Delete behavior is dynamic:
    - hard delete if unreferenced
    - deactivate (`status=inactive`) if referenced
-7. Delete modal checks mode first and updates copy/actions dynamically.
+8. Delete modal checks mode first and updates copy/actions dynamically.
 
 ### RBAC (Role-Based Access Control)
 
@@ -25,7 +26,7 @@ Packages are global service templates composed of labor and inventory components
 | Edit package | ✅ | ✅ | ✅ | ❌ |
 | Delete/Deactivate package | ✅ | ✅ | ✅ | ❌ |
 
-## Core API Endpoints
+### API Endpoints
 
 | Method | Endpoint | Description |
 | ------ | -------- | ----------- |
@@ -39,10 +40,6 @@ Packages are global service templates composed of labor and inventory components
 | POST | `/api/packages/:itemId/labor-items` | Add labor link |
 | PUT | `/api/packages/:itemId/labor-items/:linkId` | Update labor link quantity |
 | DELETE | `/api/packages/:itemId/labor-items/:linkId` | Remove labor link |
-| GET | `/api/packages/:itemId/inventory-items` | List inventory links |
-| POST | `/api/packages/:itemId/inventory-items` | Add inventory link |
-| PUT | `/api/packages/:itemId/inventory-items/:linkId` | Update inventory link quantity |
-| DELETE | `/api/packages/:itemId/inventory-items/:linkId` | Remove inventory link |
 
 ---
 
@@ -55,19 +52,12 @@ Packages are global service templates composed of labor and inventory components
 | Brake Cleaning | 350 | 500 | 700 | active |
 | Wheel Alignment | 600 | 850 | 1200 | active |
 
-### Inventory Items
-| Item | Cost Price | Branch | Status |
-| ---- | ---------- | ------ | ------ |
-| Engine Oil 15W40 | 420 | Main Branch | active |
-| Oil Filter OF-22 | 180 | Main Branch | active |
-| Brake Fluid 1L | 220 | North Branch | active |
-
 ### Package Samples
-| Name | Description | Labor Links | Inventory Links | Status |
-| ---- | ----------- | ----------- | --------------- | ------ |
-| Basic PMS | Standard maintenance | Oil Change Labor x1 | Engine Oil x6, Oil Filter x1 | active |
-| Brake Service | Brake line package | Brake Cleaning x1 | Brake Fluid x2 | active |
-| Legacy Promo | Inactive archived package | Wheel Alignment x1 | - | inactive |
+| Name | Description | Price | Labor Links | Status |
+| ---- | ----------- | ----- | ----------- | ------ |
+| Basic PMS | Standard maintenance | 1500 | Oil Change Labor x1 | active |
+| Brake Service | Brake line package | 800 | Brake Cleaning x1 | active |
+| Legacy Promo | Inactive archived package | 1200 | Wheel Alignment x1 | inactive |
 
 ---
 
@@ -76,12 +66,12 @@ Packages are global service templates composed of labor and inventory components
 ### Pre-requisites
 
 - Logged in as HM/POC/JS for create/update/delete tests
-- Labor and inventory modules have active records
+- Labor module has active records
 - At least one package referenced by a job order, one unreferenced package
 
 ---
 
-### Test 1 - Empty State and Search/Filter Visibility
+### Test 1 — Empty State and Search/Filter Visibility
 
 Goal: Verify empty grid behavior.
 
@@ -94,39 +84,42 @@ Verify:
 
 ---
 
-### Test 2 - Create Package (Metadata + Components)
+### Test 2 — Create Package (Metadata + Labor Components)
 
 Goal: Verify end-to-end package creation.
 
 1. Click Add Package.
-2. Enter name and description.
+2. Enter name, fixed price, and description.
 3. Add labor component(s) with quantity.
-4. Add inventory component(s) with quantity.
-5. Save.
+4. Save.
 
 Verify:
 - ✅ Package is created successfully
 - ✅ Card appears in grid
-- ✅ Component counts match added links
+- ✅ Price is shown correctly
+- ✅ Labor component counts match added links
+- ✅ No inventory section is shown in package management
 
 ---
 
-### Test 3 - Validation Rules
+### Test 3 — Validation Rules
 
 Goal: Verify required and numeric validation.
 
 1. Try creating with empty name.
+2. Try creating with empty/zero/negative price.
 2. Try adding component with quantity <= 0.
-3. Try duplicate labor and duplicate inventory links.
+3. Try duplicate labor links.
 
 Verify:
 - ✅ Name required validation is enforced
+- ✅ Price validation is enforced
 - ✅ Quantity validation is enforced
-- ✅ Duplicate links are prevented
+- ✅ Duplicate labor links are prevented
 
 ---
 
-### Test 4 - View Package Breakdown
+### Test 4 — View Package Breakdown
 
 Goal: Verify package detail modal shows composition.
 
@@ -134,28 +127,29 @@ Goal: Verify package detail modal shows composition.
 
 Verify:
 - ✅ Labor components list is accurate
-- ✅ Inventory components list is accurate
 - ✅ Quantities and item labels are correct
 
 ---
 
-### Test 5 - Edit Package Metadata and Composition
+### Test 5 — Edit Package Metadata and Composition
 
 Goal: Verify package update flow.
 
 1. Edit package name/description/status.
+2. Edit package fixed price.
 2. Add/remove component links.
 3. Update link quantities.
 4. Save.
 
 Verify:
 - ✅ Updated metadata persists
+- ✅ Updated price persists
 - ✅ Composition changes persist
 - ✅ Card/list reflects updates
 
 ---
 
-### Test 6 - Filter and Search
+### Test 6 — Filter and Search
 
 Goal: Verify list filtering and search behavior.
 
@@ -169,7 +163,7 @@ Verify:
 
 ---
 
-### Test 7 - Delete Mode Check (Unreferenced)
+### Test 7 — Delete Mode Check (Unreferenced)
 
 Goal: Verify hard delete path.
 
@@ -182,7 +176,7 @@ Verify:
 
 ---
 
-### Test 8 - Delete Mode Check (Referenced)
+### Test 8 — Delete Mode Check (Referenced)
 
 Goal: Verify deactivate fallback path.
 
@@ -196,7 +190,7 @@ Verify:
 
 ---
 
-### Test 9 - Job Order Integration
+### Test 9 — Job Order Integration
 
 Goal: Verify package availability and use in JO flow.
 
@@ -213,8 +207,8 @@ Verify:
 
 | Requirement | Status |
 | ----------- | ------ |
-| Package create/edit with labor + inventory composition | ⬜ |
-| Name/quantity/duplicate validation rules | ⬜ |
+| Package create/edit with fixed price + labor composition | ⬜ |
+| Name/price/quantity/duplicate validation rules | ⬜ |
 | View breakdown accuracy | ⬜ |
 | Search and status filter behavior | ⬜ |
 | Dynamic delete/deactivate modal behavior | ⬜ |

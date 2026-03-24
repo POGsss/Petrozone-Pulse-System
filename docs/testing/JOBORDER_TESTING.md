@@ -15,7 +15,7 @@ Third-party repairs are managed separately but are still included in the display
 2. Create requires customer, vehicle, branch, odometer reading, and vehicle bay.
 3. At least one line is required to create or save a valid draft.
 4. Labor pricing is vehicle-class-aware (`light`, `heavy`, `extra_heavy`).
-5. Package lines can include base components and vehicle-specific components.
+5. Package line total is fixed to package price; vehicle-specific package additions are inventory-only and only affect internal package breakdown.
 6. Draft line editing is supported in dedicated Packages, Labor, and Inventory sections.
 7. Deleting a job order is soft-delete (deactivated state), not physical removal.
 8. Grand Total includes line totals plus third-party repairs.
@@ -36,7 +36,7 @@ Third-party repairs are managed separately but are still included in the display
 | Complete Job Order | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Cancel Job Order | ❌ | ✅ | ✅ | ✅ | ❌ |
 
-## Core API Endpoints
+### API Endpoints
 
 | Method | Endpoint | Description |
 | ------ | -------- | ----------- |
@@ -88,10 +88,18 @@ Before testing, make sure all linked modules contain data.
 | Brake Fluid 1L | 220 | 75 | North Branch | active |
 
 ### Packages
-| Package | Base Labor | Base Inventory | Status |
-| ------- | ---------- | -------------- | ------ |
-| Basic PMS | Oil Change Labor x1 | Engine Oil 15W40 x6, Oil Filter OF-22 x1 | active |
-| Brake Service | Brake Cleaning x1 | Brake Fluid 1L x2 | active |
+| Package | Price | Base Labor | Status |
+| ------- | ----- | ---------- | ------ |
+| Basic PMS | 1500 | Oil Change Labor x1 | active |
+| Brake Service | 800 | Brake Cleaning x1 | active |
+
+### Package Line Composition Notes
+
+- Base package components are labor items only.
+- Vehicle-specific package additions are inventory items only.
+- Package line total stays fixed to package price.
+- Labor deduction starts only when (base labor total + vehicle-specific inventory total) exceeds package price.
+- Adding inventory is blocked if any adjusted labor component would become negative.
 
 ---
 
@@ -105,7 +113,7 @@ Before testing, make sure all linked modules contain data.
 
 ---
 
-### Test 1 - Empty State and Search/Filter Visibility
+### Test 1 — Empty State and Search/Filter Visibility
 
 Goal: Verify empty-state behavior and conditional search/filter visibility.
 
@@ -119,7 +127,7 @@ Verify:
 
 ---
 
-### Test 2 - Create Draft with Package Line Only
+### Test 2 — Create Draft with Package Line Only
 
 Goal: Verify package-only draft creation.
 
@@ -131,12 +139,12 @@ Goal: Verify package-only draft creation.
 Verify:
 - ✅ Draft is created successfully
 - ✅ New card appears in grid
-- ✅ Package line total is computed
+- ✅ Package line total equals package fixed price
 - ✅ Grand Total reflects package line amount
 
 ---
 
-### Test 3 - Create Draft with Labor + Inventory Mix
+### Test 3 — Create Draft with Labor + Inventory Mix
 
 Goal: Verify mixed line creation and totals.
 
@@ -151,7 +159,7 @@ Verify:
 
 ---
 
-### Test 4 - Package Breakdown in View Modal
+### Test 4 — Package Breakdown in View Modal
 
 Goal: Ensure package composition details are visible in View.
 
@@ -160,13 +168,15 @@ Goal: Ensure package composition details are visible in View.
 
 Verify:
 - ✅ Packages section is visible when package lines exist
-- ✅ Base components are listed
-- ✅ Vehicle-specific components are listed when present
+- ✅ Package Price and Package total are shown
+- ✅ Base labor components are listed
+- ✅ Vehicle-specific inventory components are listed when present
+- ✅ Vehicle-specific type selector is not present (inventory-only add flow)
 - ✅ Empty sections are hidden
 
 ---
 
-### Test 5 - Edit Draft with Section-Based Lines
+### Test 5 — Edit Draft with Section-Based Lines
 
 Goal: Verify Edit modal supports independent sections.
 
@@ -181,7 +191,7 @@ Verify:
 
 ---
 
-### Test 6 - Third-Party Repairs and Grand Total
+### Test 6 — Third-Party Repairs and Grand Total
 
 Goal: Verify repairs are included in totals.
 
@@ -196,7 +206,7 @@ Verify:
 
 ---
 
-### Test 7 - Request Approval Validation
+### Test 7 — Request Approval Validation
 
 Goal: Verify draft -> pending approval flow.
 
@@ -208,7 +218,7 @@ Verify:
 
 ---
 
-### Test 8 - Record Approval with Stock Check
+### Test 8 — Record Approval with Stock Check
 
 Goal: Verify stock-sensitive approval.
 
@@ -221,7 +231,7 @@ Verify:
 
 ---
 
-### Test 9 - Work Execution Status Flow
+### Test 9 — Work Execution Status Flow
 
 Goal: Verify full lifecycle transitions.
 
@@ -236,7 +246,7 @@ Verify:
 
 ---
 
-### Test 10 - Reject and Cancel Flows
+### Test 10 — Reject and Cancel Flows
 
 Goal: Verify alternate transition paths.
 
@@ -249,7 +259,7 @@ Verify:
 
 ---
 
-### Test 11 - Delete (Soft Deactivate) Behavior
+### Test 11 — Delete (Soft Deactivate) Behavior
 
 Goal: Verify delete does not hard-remove records.
 
@@ -263,7 +273,7 @@ Verify:
 
 ---
 
-### Test 12 - Search and Filter Behavior with Records
+### Test 12 — Search and Filter Behavior with Records
 
 Goal: Verify list filtering once records exist.
 
@@ -279,7 +289,7 @@ Verify:
 
 ---
 
-### Test 13 - Create Rework from Completed Job
+### Test 13 — Create Rework from Completed Job
 
 Goal: Verify rework creates a new backorder JO linked to a completed original.
 
@@ -295,7 +305,7 @@ Verify:
 
 ---
 
-### Test 14 - Reject Invalid Rework Source
+### Test 14 — Reject Invalid Rework Source
 
 Goal: Ensure rework cannot be created from non-completed jobs.
 
@@ -306,7 +316,7 @@ Verify:
 
 ---
 
-### Test 15 - Rework Approval and Start Guard
+### Test 15 — Rework Approval and Start Guard
 
 Goal: Ensure backorder must be approved before work start.
 
@@ -321,7 +331,7 @@ Verify:
 
 ---
 
-### Test 16 - Rework Completion Payment Rules
+### Test 16 — Rework Completion Payment Rules
 
 Goal: Validate free vs paid rework payment requirements.
 
@@ -336,7 +346,7 @@ Verify:
 
 ---
 
-### Test 17 - Rework UI Indicators
+### Test 17 — Rework UI Indicators
 
 Goal: Ensure list and details show rework traceability.
 
@@ -353,7 +363,7 @@ Verify:
 
 ---
 
-### Test 18 - Rework Audit and Branch Access
+### Test 18 — Rework Audit and Branch Access
 
 Goal: Verify rework actions are logged and branch restrictions remain enforced.
 

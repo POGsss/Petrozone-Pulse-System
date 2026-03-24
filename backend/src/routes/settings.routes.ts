@@ -45,7 +45,7 @@ router.put(
   requireRoles("HM"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { dark_mode, primary_color, sidebar_collapsed, font_size } = req.body;
+      const { dark_mode, primary_color, sidebar_collapsed, font_size, table_density } = req.body;
 
       const updates: Record<string, unknown> = {};
       if (typeof dark_mode === "boolean") updates.dark_mode = dark_mode;
@@ -53,6 +53,9 @@ router.put(
       if (typeof sidebar_collapsed === "boolean") updates.sidebar_collapsed = sidebar_collapsed;
       if (typeof font_size === "string" && ["small", "medium", "large"].includes(font_size)) {
         updates.font_size = font_size;
+      }
+      if (typeof table_density === "string" && ["comfortable", "compact"].includes(table_density)) {
+        updates.table_density = table_density;
       }
 
       if (Object.keys(updates).length === 0) {

@@ -11,13 +11,13 @@ This file documents how to test the active pricing workflow in the current imple
 Pricing is derived from:
 1. Labor item rates (`light_price`, `heavy_price`, `extra_heavy_price`)
 2. Inventory cost prices (`cost_price`)
-3. Package composition totals (base + vehicle-specific components)
+3. Package fixed price (`package_items.price`) with overflow-based labor redistribution in package breakdown
 
 ### Key Business Rules
 
 1. Labor items require non-negative prices for all three vehicle classes.
 2. Job Order labor line price is selected using the order vehicle class.
-3. Package line price reflects package component totals plus optional vehicle-specific components.
+3. Package line price always uses package fixed price.
 4. Inactive labor items should not be available in active line selectors.
 5. Labor delete action is dynamic:
    - hard delete when unreferenced
@@ -32,7 +32,7 @@ Pricing is derived from:
 | Edit labor item rates | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Delete/Deactivate labor items | ✅ | ✅ | ✅ | ✅ | ❌ |
 
-## Core API Endpoints
+### API Endpoints
 
 | Method | Endpoint | Description |
 | ------ | -------- | ----------- |
@@ -78,7 +78,7 @@ Pricing is derived from:
 
 ---
 
-### Test 1 - Labor Pricing List and Stats
+### Test 1 — Labor Pricing List and Stats
 
 Goal: Verify Labor Management list represents pricing records.
 
@@ -91,7 +91,7 @@ Verify:
 
 ---
 
-### Test 2 - Create Labor Item with Valid Prices
+### Test 2 — Create Labor Item with Valid Prices
 
 Goal: Verify valid create flow.
 
@@ -105,7 +105,7 @@ Verify:
 
 ---
 
-### Test 3 - Price Validation (Non-Negative)
+### Test 3 — Price Validation (Non-Negative)
 
 Goal: Verify pricing validation enforcement.
 
@@ -118,7 +118,7 @@ Verify:
 
 ---
 
-### Test 4 - Edit Labor Pricing
+### Test 4 — Edit Labor Pricing
 
 Goal: Verify update flow for rates and status.
 
@@ -133,7 +133,7 @@ Verify:
 
 ---
 
-### Test 5 - Search and Status Filter
+### Test 5 — Search and Status Filter
 
 Goal: Verify table filtering behaviors.
 
@@ -147,7 +147,7 @@ Verify:
 
 ---
 
-### Test 6 - Delete Mode (Unreferenced Labor)
+### Test 6 — Delete Mode (Unreferenced Labor)
 
 Goal: Verify hard delete path.
 
@@ -160,7 +160,7 @@ Verify:
 
 ---
 
-### Test 7 - Delete Mode (Referenced Labor)
+### Test 7 — Delete Mode (Referenced Labor)
 
 Goal: Verify deactivate fallback path.
 
@@ -174,7 +174,7 @@ Verify:
 
 ---
 
-### Test 8 - Job Order Labor Pricing Resolution
+### Test 8 — Job Order Labor Pricing Resolution
 
 Goal: Verify JO uses vehicle-class-specific labor rates.
 
@@ -187,16 +187,18 @@ Verify:
 
 ---
 
-### Test 9 - Package + Pricing Interaction
+### Test 9 — Package + Pricing Interaction
 
-Goal: Verify package composition uses labor rates/cost logic.
+Goal: Verify package pricing interaction follows fixed-price rules.
 
-1. Add labor item to package composition.
-2. Use package in JO and inspect breakdown.
+1. Create or edit a package with a fixed price and labor links.
+2. Use that package in JO and inspect package breakdown.
+3. Add vehicle-specific inventory to the package line in JO.
 
 Verify:
-- ✅ Package breakdown displays expected labor component
-- ✅ Grand Total includes package-derived pricing correctly
+- ✅ Package line total remains equal to package fixed price
+- ✅ Package breakdown shows labor and inventory components
+- ✅ Overflow-based labor deduction appears only when labor + inventory exceeds package price
 
 ---
 
@@ -209,4 +211,4 @@ Verify:
 | Search and status filters working | ⬜ |
 | Dynamic delete/deactivate labor flow | ⬜ |
 | JO labor line class-rate resolution | ⬜ |
-| Package composition pricing integration | ⬜ |
+| Package fixed-price interaction validation | ⬜ |

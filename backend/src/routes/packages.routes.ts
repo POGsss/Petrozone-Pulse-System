@@ -154,9 +154,15 @@ router.post(
   requireRoles("HM", "POC", "JS"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { name, description, status, inventory_types } = req.body;
+      const { name, description, status, price } = req.body;
       if (!name?.trim()) {
         res.status(400).json({ error: "Name is required" });
+        return;
+      }
+
+      const parsedPrice = Number(price);
+      if (Number.isNaN(parsedPrice) || parsedPrice <= 0) {
+        res.status(400).json({ error: "Price is required and must be greater than 0" });
         return;
       }
 
@@ -173,8 +179,8 @@ router.post(
         .insert({
           name: name.trim(),
           description: description?.trim() || null,
+          price: parsedPrice,
           status: status || "active",
-          inventory_types: Array.isArray(inventory_types) ? inventory_types : [],
           created_by: req.user!.id,
         })
         .select("*")
@@ -208,7 +214,7 @@ router.put(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const itemId = req.params.itemId as string;
-      const { name, description, status, inventory_types } = req.body;
+      const { name, description, status, price } = req.body;
 
       // Get existing item
       const { data: existing, error: fetchError } = await supabaseAdmin
@@ -251,8 +257,13 @@ router.put(
         updateData.status = status;
       }
 
-      if (inventory_types !== undefined) {
-        updateData.inventory_types = Array.isArray(inventory_types) ? inventory_types : [];
+      if (price !== undefined) {
+        const parsedPrice = Number(price);
+        if (Number.isNaN(parsedPrice) || parsedPrice <= 0) {
+          res.status(400).json({ error: "Price must be greater than 0" });
+          return;
+        }
+        updateData.price = parsedPrice;
       }
 
       if (Object.keys(updateData).length === 0) {

@@ -868,6 +868,7 @@ export type Database = {
           id: string
           inventory_types: string[] | null
           name: string
+          price: number
           status: string
           updated_at: string
         }
@@ -878,6 +879,7 @@ export type Database = {
           id?: string
           inventory_types?: string[] | null
           name: string
+          price: number
           status?: string
           updated_at?: string
         }
@@ -888,6 +890,7 @@ export type Database = {
           id?: string
           inventory_types?: string[] | null
           name?: string
+          price?: number
           status?: string
           updated_at?: string
         }
@@ -1488,6 +1491,7 @@ export type Database = {
           id: string
           primary_color: string
           sidebar_collapsed: boolean
+          table_density: string
           updated_at: string
           updated_by: string | null
         }
@@ -1497,6 +1501,7 @@ export type Database = {
           id?: string
           primary_color?: string
           sidebar_collapsed?: boolean
+          table_density?: string
           updated_at?: string
           updated_by?: string | null
         }
@@ -1506,6 +1511,7 @@ export type Database = {
           id?: string
           primary_color?: string
           sidebar_collapsed?: boolean
+          table_density?: string
           updated_at?: string
           updated_by?: string | null
         }

@@ -18,12 +18,14 @@ const POSITIVE_HEX = "#519C66";
 const NEGATIVE_HEX = "#CC5F5F";
 
 export type FontSize = "small" | "medium" | "large";
+export type TableDensity = "comfortable" | "compact";
 
 export interface ThemeSettings {
   darkMode: boolean;
   primaryColor: string;
   sidebarCollapsed: boolean;
   fontSize: FontSize;
+  tableDensity: TableDensity;
 }
 
 export const DEFAULT_SETTINGS: ThemeSettings = {
@@ -31,6 +33,7 @@ export const DEFAULT_SETTINGS: ThemeSettings = {
   primaryColor: "#5570F1",
   sidebarCollapsed: false,
   fontSize: "medium",
+  tableDensity: "comfortable",
 };
 
 const STORAGE_KEY = "petrozone-theme-settings";
@@ -141,6 +144,10 @@ function applyDarkMode(enabled: boolean) {
   }
 }
 
+function applyTableDensity(density: TableDensity) {
+  document.documentElement.setAttribute("data-table-density", density);
+}
+
 function applyAllColors(primaryHex: string, isDark: boolean) {
   applyColorScale("primary", primaryHex, isDark);
   applyColorScale("positive", POSITIVE_HEX, isDark);
@@ -155,7 +162,14 @@ function fromDb(row: {
   primary_color: string;
   sidebar_collapsed: boolean;
   font_size: string;
-}): ThemeSettings {
+  table_density?: string;
+}, previousDensity?: TableDensity): ThemeSettings {
+  const dbDensity = row.table_density;
+  const normalizedDensity: TableDensity =
+    dbDensity === "compact" || dbDensity === "comfortable"
+      ? dbDensity
+      : previousDensity || DEFAULT_SETTINGS.tableDensity;
+
   return {
     darkMode: row.dark_mode,
     primaryColor: row.primary_color,
@@ -163,6 +177,7 @@ function fromDb(row: {
     fontSize: (["small", "medium", "large"].includes(row.font_size)
       ? row.font_size
       : "medium") as FontSize,
+    tableDensity: normalizedDensity,
   };
 }
 
@@ -173,6 +188,7 @@ function toDb(s: ThemeSettings) {
     primary_color: s.primaryColor,
     sidebar_collapsed: s.sidebarCollapsed,
     font_size: s.fontSize,
+    table_density: s.tableDensity,
   };
 }
 
@@ -191,7 +207,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     settingsApi
       .get()
       .then((row) => {
-        const dbSettings = fromDb(row);
+        const dbSettings = fromDb(row, settings.tableDensity);
         setSettings(dbSettings);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(dbSettings));
       })
@@ -205,6 +221,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     applyDarkMode(settings.darkMode);
     applyAllColors(settings.primaryColor, settings.darkMode);
     applyFontSize(settings.fontSize);
+    applyTableDensity(settings.tableDensity);
   }, [settings]);
 
   async function updateSettings(updates: Partial<ThemeSettings>) {

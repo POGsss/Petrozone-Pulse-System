@@ -32,7 +32,7 @@ Users receive notifications through receipts. Read state is tracked per user.
 | Delete/Deactivate notification | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Mark read / Mark all read | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-## Core API Endpoints
+### API Endpoints
 
 | Method | Endpoint | Description |
 | ------ | -------- | ----------- |
@@ -84,7 +84,7 @@ Users receive notifications through receipts. Read state is tracked per user.
 
 ---
 
-### Test 1 - Notifications List and Stats
+### Test 1 — Notifications List and Stats
 
 Goal: Verify list, stats cards, and table rendering.
 
@@ -97,7 +97,7 @@ Verify:
 
 ---
 
-### Test 2 - Create Draft Notification
+### Test 2 — Create Draft Notification
 
 Goal: Verify manual draft creation.
 
@@ -114,7 +114,7 @@ Verify:
 
 ---
 
-### Test 3 - Create Scheduled Notification
+### Test 3 — Create Scheduled Notification
 
 Goal: Verify scheduled creation.
 
@@ -127,7 +127,7 @@ Verify:
 
 ---
 
-### Test 4 - Send Now Flow
+### Test 4 — Send Now Flow
 
 Goal: Verify send action transitions status and delivers.
 
@@ -140,7 +140,7 @@ Verify:
 
 ---
 
-### Test 5 - Target Type Validation
+### Test 5 — Target Type Validation
 
 Goal: Verify role/user/branch target logic.
 
@@ -153,7 +153,7 @@ Verify:
 
 ---
 
-### Test 6 - Edit Notification
+### Test 6 — Edit Notification
 
 Goal: Verify editable fields and schedule adjustments.
 
@@ -166,7 +166,7 @@ Verify:
 
 ---
 
-### Test 7 - Delete/Deactivate Modal Behavior
+### Test 7 — Delete/Deactivate Modal Behavior
 
 Goal: Verify dynamic delete/deactivate wording and action.
 
@@ -180,7 +180,7 @@ Verify:
 
 ---
 
-### Test 8 - Search and Filter Behavior
+### Test 8 — Search and Filter Behavior
 
 Goal: Verify search and multi-filter handling.
 
@@ -196,7 +196,7 @@ Verify:
 
 ---
 
-### Test 9 - View Modal Integrity
+### Test 9 — View Modal Integrity
 
 Goal: Verify detail view accuracy.
 
@@ -208,7 +208,7 @@ Verify:
 
 ---
 
-### Test 10 - Bell Dropdown and Unread Count
+### Test 10 — Bell Dropdown and Unread Count
 
 Goal: Verify topbar notification dropdown behavior.
 
@@ -224,7 +224,7 @@ Verify:
 
 ---
 
-### Test 11 - Role Restrictions
+### Test 11 — Role Restrictions
 
 Goal: Verify management controls are role-protected.
 
