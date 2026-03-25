@@ -4185,6 +4185,9 @@ export function JobOrderManagement() {
         maxWidth="xl"
       >
         {paymentDetailsOrder && (
+          (() => {
+            const isPaymentDetailsEditable = paymentDetailsOrder.status === "ready_for_release";
+            return (
           <div>
             <ModalSection title="Basic Information">
               <ModalInput
@@ -4209,7 +4212,7 @@ export function JobOrderManagement() {
                 value={paymentInvoiceNumber}
                 onChange={setPaymentInvoiceNumber}
                 placeholder="Invoice #"
-                disabled={paymentDetailsOrder.status !== "ready_for_release"}
+                disabled={!isPaymentDetailsEditable}
                 required
               />
               <ModalInput
@@ -4217,13 +4220,13 @@ export function JobOrderManagement() {
                 value={paymentReference}
                 onChange={setPaymentReference}
                 placeholder="Payment Reference"
-                disabled={paymentDetailsOrder.status !== "ready_for_release"}
+                disabled={!isPaymentDetailsEditable}
                 required
               />
               <ModalSelect
                 value={paymentMode}
                 onChange={(value) => setPaymentMode((value as "cash" | "gcash" | "other") || "cash")}
-                disabled={paymentDetailsOrder.status !== "ready_for_release"}
+                disabled={!isPaymentDetailsEditable}
                 options={[
                   { value: "cash", label: "Cash" },
                   { value: "gcash", label: "GCash" },
@@ -4232,6 +4235,7 @@ export function JobOrderManagement() {
               />
             </ModalSection>
 
+            {isPaymentDetailsEditable && (
             <div className="flex gap-3 mt-6">
               <button
                 type="button"
@@ -4245,7 +4249,7 @@ export function JobOrderManagement() {
               </button>
               <button
                 type="button"
-                disabled={paymentDetailsOrder.status !== "ready_for_release" || savingPaymentDetails || !paymentInvoiceNumber.trim() || !paymentReference.trim()}
+                disabled={savingPaymentDetails || !paymentInvoiceNumber.trim() || !paymentReference.trim()}
                 onClick={async () => {
                   try {
                     setSavingPaymentDetails(true);
@@ -4269,7 +4273,10 @@ export function JobOrderManagement() {
                 {savingPaymentDetails ? "Saving..." : "Save"}
               </button>
             </div>
+            )}
           </div>
+          );
+          })()
         )}
       </Modal>
 
