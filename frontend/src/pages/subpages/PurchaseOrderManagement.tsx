@@ -12,6 +12,7 @@ import {
   LuClipboardList,
   LuFileText,
   LuX,
+  LuCheck,
 } from "react-icons/lu";
 import { purchaseOrdersApi, branchesApi, suppliersApi, supplierProductsApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
@@ -167,6 +168,8 @@ export function PurchaseOrderManagement() {
   const [editSelectedQty, setEditSelectedQty] = useState("1");
   const [editSelectedUnitCost, setEditSelectedUnitCost] = useState("");
   const [editDraftItems, setEditDraftItems] = useState<DraftPOItem[]>([]);
+  const [editingDraftItemId, setEditingDraftItemId] = useState<string | null>(null);
+  const [showEditUnsavedConfirm, setShowEditUnsavedConfirm] = useState(false);
 
   // Delete modal
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -364,6 +367,77 @@ export function PurchaseOrderManagement() {
     return `${beforeDot}${afterDot}`;
   }
 
+  function beginEditDraftItem(item: DraftPOItem) {
+    setEditingDraftItemId(item.inventory_item_id);
+    setEditSelectedInventoryId(item.inventory_item_id);
+    setEditSelectedQty(item.quantity_ordered.toString());
+    setEditSelectedUnitCost(item.unit_cost.toString());
+    setEditError(null);
+  }
+
+  function cancelEditDraftItem() {
+    setEditingDraftItemId(null);
+    setEditSelectedInventoryId("");
+    setEditSelectedQty("1");
+    setEditSelectedUnitCost("");
+  }
+
+  function saveEditDraftItem(): boolean {
+    if (!editingDraftItemId) return true;
+
+    const parsedQty = parseInt(editSelectedQty, 10);
+    if (Number.isNaN(parsedQty) || parsedQty < 1) {
+      setEditError("Quantity must be at least 1");
+      return false;
+    }
+
+    const parsedCost = parseFloat(editSelectedUnitCost);
+    if (!Number.isNaN(parsedCost) && parsedCost < 0) {
+      setEditError("Unit cost must be a non-negative number");
+      return false;
+    }
+
+    const qty = Math.max(1, parsedQty);
+    const cost = Number.isNaN(parsedCost) ? 0 : Math.max(0, parsedCost);
+
+    setEditDraftItems((prev) =>
+      prev.map((item) =>
+        item.inventory_item_id === editingDraftItemId
+          ? {
+              ...item,
+              quantity_ordered: qty,
+              unit_cost: cost,
+              line_total: qty * cost,
+            }
+          : item
+      )
+    );
+
+    cancelEditDraftItem();
+    setEditError(null);
+    return true;
+  }
+
+  function requestCloseEditModal() {
+    if (editingDraftItemId) {
+      setShowEditModal(false);
+      setShowEditUnsavedConfirm(true);
+      return;
+    }
+    setShowEditModal(false);
+  }
+
+  function handleDiscardAndCloseEditModal() {
+    cancelEditDraftItem();
+    setShowEditUnsavedConfirm(false);
+    setShowEditModal(false);
+  }
+
+  function handleCancelCloseEditModal() {
+    setShowEditUnsavedConfirm(false);
+    setShowEditModal(true);
+  }
+
   // ─── Add (plus-button pattern) ───────────────────────────────────────
   function openAddModal() {
     setAddForm({
@@ -532,11 +606,17 @@ export function PurchaseOrderManagement() {
     setEditSelectedInventoryId("");
     setEditSelectedQty("1");
     setEditSelectedUnitCost("");
+    cancelEditDraftItem();
     setEditError(null);
     setShowEditModal(true);
   }
 
   function handleAddEditDraftItem() {
+    if (editingDraftItemId) {
+      saveEditDraftItem();
+      return;
+    }
+
     if (!editSelectedInventoryId) return;
     const parsedQty = parseInt(editSelectedQty, 10);
     const qty = Number.isNaN(parsedQty) ? 1 : Math.max(1, parsedQty);
@@ -574,6 +654,9 @@ export function PurchaseOrderManagement() {
 
   function removeEditDraftItem(itemId: string) {
     setEditDraftItems(editDraftItems.filter((d) => d.inventory_item_id !== itemId));
+    if (editingDraftItemId === itemId) {
+      cancelEditDraftItem();
+    }
   }
 
   const editDraftTotal = useMemo(
@@ -1292,7 +1375,7 @@ export function PurchaseOrderManagement() {
       </Modal>
 
       {/* ═══════════════════ EDIT MODAL ═══════════════════ */}
-      <Modal isOpen={showEditModal && !!selectedOrder} onClose={() => setShowEditModal(false)} title="Edit Purchase Order" maxWidth="xl">
+      <Modal isOpen={showEditModal && !!selectedOrder} onClose={requestCloseEditModal} title="Edit Purchase Order" maxWidth="xl">
         {selectedOrder && (
           <form onSubmit={handleEdit}>
             <ModalSection title="Purchase Order Details">
@@ -1306,6 +1389,7 @@ export function PurchaseOrderManagement() {
                     setEditDraftItems([]);
                     setEditSelectedInventoryId("");
                     setEditSelectedUnitCost("");
+                    cancelEditDraftItem();
                   }}
                   options={getSupplierOptions(selectedOrder.branch_id)}
                   placeholder="Select Supplier"
@@ -1337,7 +1421,7 @@ export function PurchaseOrderManagement() {
                     onChange={handleEditInventorySelect}
                     placeholder="Select Item"
                     options={getSupplierItemOptions(editForm.supplier_id, selectedOrder.branch_id)}
-                    disabled={!editForm.supplier_id}
+                    disabled={!editForm.supplier_id || !!editingDraftItemId}
                   />
                 </div>
                 <div className="w-20">
@@ -1362,14 +1446,25 @@ export function PurchaseOrderManagement() {
                     placeholder="Cost"
                   />
                 </div>
-                <button
-                  type="button"
-                  onClick={handleAddEditDraftItem}
-                  disabled={!editSelectedInventoryId}
-                  className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
-                >
-                  <LuPlus className="w-4 h-4" />
-                </button>
+                {editingDraftItemId ? (
+                  <button
+                    type="button"
+                    onClick={cancelEditDraftItem}
+                    className="px-4.5 py-4.5 bg-neutral-200 text-neutral-900 rounded-xl hover:bg-neutral-300 transition-colors shrink-0"
+                    title="Cancel edit"
+                  >
+                    <LuX className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleAddEditDraftItem}
+                    disabled={!editSelectedInventoryId}
+                    className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+                  >
+                    <LuPlus className="w-4 h-4" />
+                  </button>
+                )}
               </div>
 
               {/* Existing items */}
@@ -1391,6 +1486,25 @@ export function PurchaseOrderManagement() {
                     <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap">
                       {formatPrice(item.line_total)}
                     </span>
+                    {editingDraftItemId === item.inventory_item_id ? (
+                      <button
+                        type="button"
+                        onClick={saveEditDraftItem}
+                        className="text-positive hover:text-positive-950 p-1"
+                        title="Save item"
+                      >
+                        <LuCheck className="w-4 h-4" />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => beginEditDraftItem(item)}
+                        className="text-primary hover:text-primary-950 p-1"
+                        title="Edit item"
+                      >
+                        <LuPencil className="w-4 h-4" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => removeEditDraftItem(item.inventory_item_id)}
@@ -1422,12 +1536,46 @@ export function PurchaseOrderManagement() {
 
             <ModalError message={editError} />
             <ModalButtons
-              onCancel={() => setShowEditModal(false)}
+              onCancel={requestCloseEditModal}
               submitText={editLoading ? "Saving..." : "Save Changes"}
               loading={editLoading}
             />
           </form>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={showEditUnsavedConfirm}
+        onClose={() => setShowEditUnsavedConfirm(false)}
+        title="Unsaved Changes"
+        maxWidth="sm"
+      >
+        <div>
+          <div className="bg-neutral-100 rounded-xl p-4 my-4">
+            <p className="text-neutral-900">
+              You have unsaved item changes. <strong className="text-neutral-950">Save them before closing?</strong>
+            </p>
+          </div>
+          <p className="text-sm text-neutral-900 mb-2">
+            Click Cancel to continue editing, or Close to exit without saving this item edit.
+          </p>
+          <div className="flex gap-3 mt-6">
+            <button
+              type="button"
+              onClick={handleCancelCloseEditModal}
+              className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleDiscardAndCloseEditModal}
+              className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
       </Modal>
 
       {/* ═══════════════════ DELETE / DEACTIVATE CONFIRM MODAL ═══════════════════ */}

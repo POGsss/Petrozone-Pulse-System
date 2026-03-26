@@ -73,6 +73,7 @@ export function SupplierManagement() {
   // Manage Products modal
   const [showManageProductsModal, setShowManageProductsModal] = useState(false);
   const [manageProductsSupplier, setManageProductsSupplier] = useState<Supplier | null>(null);
+  const [showManageProductsUnsavedConfirm, setShowManageProductsUnsavedConfirm] = useState(false);
 
   // Inline add/edit product form in manage modal
   const [productFormName, setProductFormName] = useState("");
@@ -389,6 +390,22 @@ export function SupplierManagement() {
     setProductFormError(null);
   }
 
+  function closeManageProductsModal() {
+    setShowManageProductsModal(false);
+    setManageProductsSupplier(null);
+    resetProductForm();
+    setShowManageProductsUnsavedConfirm(false);
+  }
+
+  function requestCloseManageProductsModal() {
+    if (editingProductId) {
+      setShowManageProductsModal(false);
+      setShowManageProductsUnsavedConfirm(true);
+      return;
+    }
+    closeManageProductsModal();
+  }
+
   function startEditProduct(product: SupplierProduct) {
     setEditingProductId(product.id);
     setProductFormName(product.product_name);
@@ -402,21 +419,21 @@ export function SupplierManagement() {
     resetProductForm();
   }
 
-  async function handleSaveProduct() {
-    if (!manageProductsSupplier) return;
+  async function handleSaveProduct(): Promise<boolean> {
+    if (!manageProductsSupplier) return false;
     setProductFormError(null);
 
     if (!productFormName.trim()) {
       setProductFormError("Product name is required");
-      return;
+      return false;
     }
     if (!productFormCost || parseFloat(productFormCost) < 0) {
       setProductFormError("Unit cost is required and must be non-negative");
-      return;
+      return false;
     }
     if (productFormLeadTime && parseInt(productFormLeadTime) < 0) {
       setProductFormError("Lead time days must be non-negative");
-      return;
+      return false;
     }
 
     try {
@@ -446,12 +463,23 @@ export function SupplierManagement() {
 
       resetProductForm();
       fetchSupplierProducts(manageProductsSupplier.id);
+      return true;
     } catch (err) {
       setProductFormError(err instanceof Error ? err.message : "Failed to save supplier product");
       showToast.error(err instanceof Error ? err.message : "Failed to save supplier product");
+      return false;
     } finally {
       setSavingProduct(false);
     }
+  }
+
+  function handleDiscardAndCloseManageProductsModal() {
+    closeManageProductsModal();
+  }
+
+  function handleCancelCloseManageProductsModal() {
+    setShowManageProductsUnsavedConfirm(false);
+    setShowManageProductsModal(true);
   }
 
   function openDeleteProductConfirm(product: SupplierProduct) {
@@ -963,7 +991,7 @@ export function SupplierManagement() {
       {/* --- Manage Products Modal (JO Repairs style) --- */}
       <Modal
         isOpen={showManageProductsModal && !!manageProductsSupplier}
-        onClose={() => { setShowManageProductsModal(false); setManageProductsSupplier(null); resetProductForm(); }}
+        onClose={requestCloseManageProductsModal}
         title="Supplier Products"
         maxWidth="xl"
       >
@@ -1052,25 +1080,14 @@ export function SupplierManagement() {
                   />
                 </div>
                 {editingProductId ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleSaveProduct}
-                      disabled={savingProduct}
-                      className="px-4.5 py-4.5 bg-positive text-white rounded-xl hover:bg-positive-950 disabled:opacity-50 transition-colors shrink-0"
-                      title="Save changes"
-                    >
-                      <LuCheck className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={cancelEditProduct}
-                      className="px-4.5 py-4.5 bg-neutral-200 text-neutral-900 rounded-xl hover:bg-neutral-300 transition-colors shrink-0"
-                      title="Cancel edit"
-                    >
-                      <LuX className="w-4 h-4" />
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    onClick={cancelEditProduct}
+                    className="px-4.5 py-4.5 bg-neutral-200 text-neutral-900 rounded-xl hover:bg-neutral-300 transition-colors shrink-0"
+                    title="Cancel edit"
+                  >
+                    <LuX className="w-4 h-4" />
+                  </button>
                 ) : (
                   <button
                     type="button"
@@ -1135,14 +1152,26 @@ export function SupplierManagement() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 ml-3">
-                        <button
-                          type="button"
-                          onClick={() => startEditProduct(product)}
-                          className="text-primary hover:text-primary-900 p-1"
-                          title="Edit product"
-                        >
-                          <LuPencil className="w-4 h-4" />
-                        </button>
+                        {editingProductId === product.id ? (
+                          <button
+                            type="button"
+                            onClick={handleSaveProduct}
+                            disabled={savingProduct}
+                            className="text-positive hover:text-positive-950 p-1 disabled:opacity-50"
+                            title="Save product"
+                          >
+                            <LuCheck className="w-4 h-4" />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => startEditProduct(product)}
+                            className="text-primary hover:text-primary-900 p-1"
+                            title="Edit product"
+                          >
+                            <LuPencil className="w-4 h-4" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => openDeleteProductConfirm(product)}
@@ -1163,13 +1192,47 @@ export function SupplierManagement() {
             </ModalSection>
 
             <ModalButtons
-              onCancel={() => { setShowManageProductsModal(false); setManageProductsSupplier(null); resetProductForm(); }}
+              onCancel={requestCloseManageProductsModal}
               submitText="Done"
-              onSubmit={() => { setShowManageProductsModal(false); setManageProductsSupplier(null); resetProductForm(); }}
+              onSubmit={requestCloseManageProductsModal}
               type="button"
             />
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={showManageProductsUnsavedConfirm}
+        onClose={() => setShowManageProductsUnsavedConfirm(false)}
+        title="Unsaved Changes"
+        maxWidth="sm"
+      >
+        <div>
+          <div className="bg-neutral-100 rounded-xl p-4 my-4">
+            <p className="text-neutral-900">
+              You have unsaved product changes. <strong className="text-neutral-950">Save them before closing?</strong>
+            </p>
+          </div>
+          <p className="text-sm text-neutral-900 mb-2">
+            Click Cancel to continue editing, or Close to exit without saving.
+          </p>
+          <div className="flex gap-3 mt-6">
+            <button
+              type="button"
+              onClick={handleCancelCloseManageProductsModal}
+              className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleDiscardAndCloseManageProductsModal}
+              className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );
