@@ -195,10 +195,9 @@ export function SupplierManagement() {
         s.address.toLowerCase().includes(q);
 
       const statusFilter = activeFilters.status;
+      const effectiveStatusFilter = statusFilter || "all";
       const matchStatus =
-        !statusFilter ||
-        statusFilter === "all" ||
-        statusFilter === s.status;
+        effectiveStatusFilter === "all" ? s.status !== "inactive" : effectiveStatusFilter === s.status;
 
       return matchSearch && matchStatus;
     });

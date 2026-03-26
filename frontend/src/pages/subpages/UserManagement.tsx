@@ -135,7 +135,7 @@ export function UserManagement() {
         user.phone?.toLowerCase().includes(q);
 
       const matchStatus =
-        filterStatus === "all" ||
+        (filterStatus === "all" && user.is_active) ||
         (filterStatus === "active" && user.is_active) ||
         (filterStatus === "inactive" && !user.is_active) ||
         (filterStatus === "locked" && isUserLocked(user));

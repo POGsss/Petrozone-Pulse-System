@@ -127,7 +127,7 @@ export function CustomerManagement() {
         c.contact_number?.toLowerCase().includes(q) ||
         c.address?.toLowerCase().includes(q);
 
-      const matchStatus = filterStatus === "all" || c.status === filterStatus;
+      const matchStatus = filterStatus === "all" ? c.status !== "inactive" : c.status === filterStatus;
       const matchType = filterType === "all" || c.customer_type === filterType;
       const matchBranch = filterBranch === "all" || c.branch_id === filterBranch;
 

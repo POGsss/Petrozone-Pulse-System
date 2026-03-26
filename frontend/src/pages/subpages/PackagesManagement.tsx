@@ -131,7 +131,8 @@ export function PackagesManagement() {
         item.description?.toLowerCase().includes(q);
 
       const statusFilter = activeFilters.status;
-      const matchStatus = !statusFilter || statusFilter === "all" || item.status === statusFilter;
+      const effectiveStatusFilter = statusFilter || "all";
+      const matchStatus = effectiveStatusFilter === "all" ? item.status !== "inactive" : item.status === effectiveStatusFilter;
 
       return matchSearch && matchStatus;
     });

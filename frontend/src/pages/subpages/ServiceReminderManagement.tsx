@@ -533,7 +533,7 @@ export function ServiceReminderManagement() {
             {paginatedReminders.map((r) => {
               const sc = statusConfig[r.status] || statusConfig.draft;
               const canEditThis = canEdit && ["draft", "scheduled", "failed"].includes(r.status);
-              const canDeleteThis = canDelete && ["draft", "scheduled", "failed"].includes(r.status);
+              const canDeleteThis = canDelete;
               const canSendThis = canSend && ["draft", "scheduled", "failed"].includes(r.status);
               const canCancelThis = canEdit && ["draft", "scheduled"].includes(r.status);
               const showDots = canSendThis || canCancelThis;
@@ -632,7 +632,7 @@ export function ServiceReminderManagement() {
               {paginatedReminders.map((r) => {
                 const sc = statusConfig[r.status] || statusConfig.draft;
                 const canEditThis = canEdit && ["draft", "scheduled", "failed"].includes(r.status);
-                const canDeleteThis = canDelete && ["draft", "scheduled", "failed"].includes(r.status);
+                const canDeleteThis = canDelete;
                 const canSendThis = canSend && ["draft", "scheduled", "failed"].includes(r.status);
                 const canCancelThis = canEdit && ["draft", "scheduled"].includes(r.status);
                 const showDots = canSendThis || canCancelThis;

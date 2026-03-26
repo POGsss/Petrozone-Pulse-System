@@ -425,8 +425,9 @@ export function JobOrderManagement() {
         !branchFilter || branchFilter === "all" || order.branch_id === branchFilter;
 
       const statusFilter = activeFilters.status;
+      const effectiveStatusFilter = statusFilter || "all";
       const matchStatus =
-        !statusFilter || statusFilter === "all" || order.status === statusFilter;
+        effectiveStatusFilter === "all" ? order.status !== "deactivated" : order.status === effectiveStatusFilter;
 
       return matchSearch && matchBranch && matchStatus;
     });

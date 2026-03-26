@@ -179,7 +179,8 @@ export function VehicleManagement() {
 
       // Filters
       const statusFilter = activeFilters.status;
-      const matchStatus = !statusFilter || statusFilter === "all" || v.status === statusFilter;
+      const effectiveStatusFilter = statusFilter || "all";
+      const matchStatus = effectiveStatusFilter === "all" ? v.status !== "inactive" : v.status === effectiveStatusFilter;
 
       const typeFilter = activeFilters.vehicle_type;
       const matchType = !typeFilter || typeFilter === "all" || v.vehicle_type === typeFilter;

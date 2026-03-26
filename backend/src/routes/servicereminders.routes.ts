@@ -422,7 +422,7 @@ router.put(
 
 /**
  * DELETE /api/service-reminders/:id
- * Delete a service reminder (only draft/scheduled can be deleted)
+ * Delete a service reminder
  * Roles: POC, JS, R
  */
 router.delete(
@@ -454,12 +454,6 @@ router.delete(
         !req.user!.branchIds.includes(existing.branch_id)
       ) {
         res.status(403).json({ error: "No access to this reminder's branch" });
-        return;
-      }
-
-      // Only draft/scheduled/failed can be deleted
-      if (!["draft", "scheduled", "failed"].includes(existing.status)) {
-        res.status(400).json({ error: `Cannot delete a reminder with status "${existing.status}"` });
         return;
       }
 

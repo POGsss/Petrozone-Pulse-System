@@ -56,8 +56,6 @@ export function NotificationManagement() {
   const [showViewModal, setShowViewModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [notificationHasReferences, setNotificationHasReferences] = useState(false);
-  const [checkingReferences] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -146,7 +144,7 @@ export function NotificationManagement() {
         !q ||
         n.title.toLowerCase().includes(q) ||
         n.message.toLowerCase().includes(q);
-      const matchStatus = filterStatus === "all" || n.status === filterStatus;
+      const matchStatus = filterStatus === "all" ? n.status !== "inactive" : n.status === filterStatus;
       const matchTarget = filterTargetType === "all" || n.target_type === filterTargetType;
       const matchBranch = filterBranch === "all" || n.branch_id === filterBranch;
       return matchSearch && matchStatus && matchTarget && matchBranch;
@@ -272,10 +270,8 @@ export function NotificationManagement() {
     setShowViewModal(true);
   }
 
-  async function openDeleteModal(n: Notification) {
+  function openDeleteModal(n: Notification) {
     setSelectedNotification(n);
-    // draft/scheduled → no references (hard delete), active/inactive → has references (deactivate)
-    setNotificationHasReferences(["active", "inactive"].includes(n.status));
     setShowDeleteModal(true);
   }
 
@@ -381,14 +377,12 @@ export function NotificationManagement() {
 
     try {
       setDeleting(true);
-      const result = await notificationsApi.delete(selectedNotification.id);
+      await notificationsApi.delete(selectedNotification.id);
       setShowDeleteModal(false);
-      const isDeactivated = result.message?.toLowerCase().includes("deactivated");
-      showToast.success(isDeactivated ? "Notification deactivated successfully" : "Notification deleted successfully");
+      showToast.success("Notification deleted successfully");
       fetchData();
     } catch (err) {
-      const failMsg = notificationHasReferences ? "Failed to deactivate notification" : "Failed to delete notification";
-      showToast.error(err instanceof Error ? err.message : failMsg);
+      showToast.error(err instanceof Error ? err.message : "Failed to delete notification");
     } finally {
       setDeleting(false);
     }
@@ -768,7 +762,7 @@ export function NotificationManagement() {
                     <button
                       onClick={(e) => { e.stopPropagation(); openDeleteModal(n); }}
                       className="p-2 text-negative-950 hover:text-negative-900 hover:bg-negative-50 rounded-lg transition-colors"
-                      title={["draft", "scheduled"].includes(n.status) ? "Delete notification" : "Deactivate notification"}
+                      title="Delete notification"
                     >
                       <LuTrash2 className="w-4 h-4" />
                     </button>
@@ -1025,28 +1019,22 @@ export function NotificationManagement() {
         )}
       </Modal>
 
-      {/* Delete / Deactivate Confirmation Modal */}
+      {/* Delete Confirmation Modal */}
       <Modal
         isOpen={showDeleteModal && !!selectedNotification}
         onClose={() => setShowDeleteModal(false)}
-        title={notificationHasReferences ? "Deactivate Notification" : "Delete Notification"}
+        title="Delete Notification"
         maxWidth="sm"
       >
         {selectedNotification && (
           <div>
             <div className="bg-neutral-100 rounded-xl p-4 my-4">
               <p className="text-neutral-900">
-                {notificationHasReferences
-                  ? <>Are you sure you want to deactivate <strong className="text-neutral-950">{selectedNotification.title}</strong>?</>
-                  : <>Are you sure you want to delete <strong className="text-neutral-950">{selectedNotification.title}</strong>?</>
-                }
+                <>Are you sure you want to delete <strong className="text-neutral-950">{selectedNotification.title}</strong>?</>
               </p>
             </div>
             <p className="text-sm text-neutral-900 mb-2">
-              {notificationHasReferences
-                ? "This notification has been sent to users and will be set to inactive instead of deleted."
-                : "This action cannot be undone. The notification will be permanently removed."
-              }
+              This action cannot be undone. The notification will be permanently removed.
             </p>
 
             <div className="flex gap-3 mt-6">
@@ -1060,15 +1048,10 @@ export function NotificationManagement() {
               <button
                 type="button"
                 onClick={handleDelete}
-                disabled={deleting || checkingReferences}
+                disabled={deleting}
                 className="flex-1 px-4 py-3.5 bg-negative text-white rounded-xl font-semibold hover:bg-negative-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {checkingReferences
-                  ? "Checking..."
-                  : deleting
-                    ? (notificationHasReferences ? "Deactivating..." : "Deleting...")
-                    : (notificationHasReferences ? "Deactivate" : "Delete")
-                }
+                {deleting ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>

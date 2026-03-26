@@ -103,11 +103,11 @@ export function BranchManagement() {
         b.email?.toLowerCase().includes(q);
 
       const statusFilter = activeFilters.status;
+      const effectiveStatusFilter = statusFilter || "all";
       const matchStatus =
-        !statusFilter ||
-        statusFilter === "all" ||
-        (statusFilter === "active" && b.is_active) ||
-        (statusFilter === "inactive" && !b.is_active);
+        (effectiveStatusFilter === "all" ? b.is_active : false) ||
+        (effectiveStatusFilter === "active" && b.is_active) ||
+        (effectiveStatusFilter === "inactive" && !b.is_active);
 
       return matchSearch && matchStatus;
     });

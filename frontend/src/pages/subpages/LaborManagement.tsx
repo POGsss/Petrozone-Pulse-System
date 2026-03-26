@@ -99,7 +99,7 @@ export function LaborManagement() {
     const q = searchQuery.toLowerCase();
     const filtered = allItems.filter((item) => {
       const matchSearch = !q || item.name.toLowerCase().includes(q);
-      const matchStatus = filterStatus === "all" || item.status === filterStatus;
+      const matchStatus = filterStatus === "all" ? item.status !== "inactive" : item.status === filterStatus;
       return matchSearch && matchStatus;
     });
 

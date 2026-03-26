@@ -273,7 +273,7 @@ export function InventoryManagement() {
         item.category.toLowerCase().includes(q);
 
       const matchStatus =
-        filterStatus === "all" || item.status === filterStatus;
+        filterStatus === "all" ? item.status !== "inactive" : item.status === filterStatus;
 
       const matchCategory =
         filterCategory === "all" || item.category === filterCategory;

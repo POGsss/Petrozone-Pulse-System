@@ -518,7 +518,7 @@ router.put(
 
 /**
  * DELETE /api/notifications/:id
- * Draft/scheduled → hard delete. Active/inactive → deactivate (set inactive).
+ * Hard delete a notification.
  * Roles: HM, POC, JS
  */
 router.delete(
@@ -553,63 +553,44 @@ router.delete(
         return;
       }
 
-      if (["draft", "scheduled"].includes(existing.status)) {
-        // Cancel any scheduled timer
-        const existingTimer = scheduledTimers.get(notificationId);
-        if (existingTimer) {
-          clearTimeout(existingTimer);
-          scheduledTimers.delete(notificationId);
-        }
-
-        // Hard delete – notification hasn't been sent yet
-        // Delete any receipts first (shouldn't exist but just in case)
-        await supabaseAdmin
-          .from("notification_receipts")
-          .delete()
-          .eq("notification_id", notificationId);
-
-        const { error: deleteError } = await supabaseAdmin
-          .from("notifications")
-          .delete()
-          .eq("id", notificationId);
-
-        if (deleteError) {
-          await logFailedAction(req, "HARD_DELETE", "NOTIFICATION", notificationId, deleteError.message);
-          res.status(500).json({ error: deleteError.message });
-          return;
-        }
-
-        try {
-          await supabaseAdmin.rpc("log_admin_action", {
-            p_action: "HARD_DELETE",
-            p_entity_type: "NOTIFICATION",
-            p_entity_id: notificationId,
-            p_performed_by_user_id: req.user!.id,
-            p_performed_by_branch_id: req.user!.branchIds[0] || null,
-            p_new_values: { title: existing.title },
-          });
-        } catch (auditErr) {
-          console.error("Audit log error:", auditErr);
-        }
-
-        res.json({ message: "Notification deleted permanently" });
-      } else {
-        // Soft delete – notification has been sent (active/inactive)
-        const { error: updateError } = await supabaseAdmin
-          .from("notifications")
-          .update({ status: "inactive" })
-          .eq("id", notificationId);
-
-        if (updateError) {
-          await logFailedAction(req, "SOFT_DELETE", "NOTIFICATION", notificationId, updateError.message);
-          res.status(500).json({ error: updateError.message });
-          return;
-        }
-
-        await fixAuditLogUser("NOTIFICATION", notificationId, "UPDATE", req.user!.id, req.user!.branchIds[0]);
-
-        res.json({ message: "Notification deactivated (has been sent to users)" });
+      // Cancel any scheduled timer
+      const existingTimer = scheduledTimers.get(notificationId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        scheduledTimers.delete(notificationId);
       }
+
+      // Hard delete notification receipts and notification record
+      await supabaseAdmin
+        .from("notification_receipts")
+        .delete()
+        .eq("notification_id", notificationId);
+
+      const { error: deleteError } = await supabaseAdmin
+        .from("notifications")
+        .delete()
+        .eq("id", notificationId);
+
+      if (deleteError) {
+        await logFailedAction(req, "HARD_DELETE", "NOTIFICATION", notificationId, deleteError.message);
+        res.status(500).json({ error: deleteError.message });
+        return;
+      }
+
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "HARD_DELETE",
+          p_entity_type: "NOTIFICATION",
+          p_entity_id: notificationId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: { title: existing.title },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      res.json({ message: "Notification deleted permanently" });
     } catch (error) {
       console.error("Delete notification error:", error);
       res.status(500).json({ error: "Failed to delete notification" });

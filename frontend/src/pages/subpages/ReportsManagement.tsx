@@ -162,10 +162,10 @@ export function ReportsManagement() {
         !typeFilter || typeFilter === "all" || report.report_type === typeFilter;
 
       const statusFilter = activeFilters.status;
+      const effectiveStatusFilter = statusFilter || "all";
       const matchStatus =
-        !statusFilter ||
-        statusFilter === "all" ||
-        (statusFilter === "deactivated" ? report.is_deleted : !report.is_deleted);
+        (effectiveStatusFilter === "all" && !report.is_deleted) ||
+        (effectiveStatusFilter === "deactivated" ? report.is_deleted : !report.is_deleted);
 
       return matchSearch && matchType && matchStatus;
     });
