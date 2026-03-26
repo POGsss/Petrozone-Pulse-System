@@ -349,6 +349,21 @@ export function PurchaseOrderManagement() {
     }));
   }
 
+  function normalizeQuantityInput(value: string): string {
+    const digits = value.replace(/\D/g, "");
+    if (!digits) return "";
+    return Math.max(1, parseInt(digits, 10)).toString();
+  }
+
+  function normalizeUnitCostInput(value: string): string {
+    const sanitized = value.replace(/[^\d.]/g, "");
+    const firstDot = sanitized.indexOf(".");
+    if (firstDot === -1) return sanitized;
+    const beforeDot = sanitized.slice(0, firstDot + 1);
+    const afterDot = sanitized.slice(firstDot + 1).replace(/\./g, "");
+    return `${beforeDot}${afterDot}`;
+  }
+
   // ─── Add (plus-button pattern) ───────────────────────────────────────
   function openAddModal() {
     setAddForm({
@@ -369,8 +384,10 @@ export function PurchaseOrderManagement() {
 
   function handleAddDraftItem() {
     if (!selectedInventoryId) return;
-    const qty = parseInt(selectedQty) || 1;
-    const cost = parseFloat(selectedUnitCost) || 0;
+    const parsedQty = parseInt(selectedQty, 10);
+    const qty = Number.isNaN(parsedQty) ? 1 : Math.max(1, parsedQty);
+    const parsedCost = parseFloat(selectedUnitCost);
+    const cost = Number.isNaN(parsedCost) ? 0 : Math.max(0, parsedCost);
 
     // Find the supplier product that links to this inventory item
     const sp = getProductsForSupplier(addForm.supplier_id, addForm.branch_id)
@@ -521,8 +538,10 @@ export function PurchaseOrderManagement() {
 
   function handleAddEditDraftItem() {
     if (!editSelectedInventoryId) return;
-    const qty = parseInt(editSelectedQty) || 1;
-    const cost = parseFloat(editSelectedUnitCost) || 0;
+    const parsedQty = parseInt(editSelectedQty, 10);
+    const qty = Number.isNaN(parsedQty) ? 1 : Math.max(1, parsedQty);
+    const parsedCost = parseFloat(editSelectedUnitCost);
+    const cost = Number.isNaN(parsedCost) ? 0 : Math.max(0, parsedCost);
 
     const sp = getProductsForSupplier(editForm.supplier_id, selectedOrder?.branch_id)
       .find((p) => p.inventory_item_id === editSelectedInventoryId);
@@ -1109,17 +1128,23 @@ export function PurchaseOrderManagement() {
               </div>
               <div className="w-20">
                 <ModalInput
-                  type="number"
+                  type="text"
                   value={selectedQty}
-                  onChange={setSelectedQty}
+                  onChange={(v) => setSelectedQty(normalizeQuantityInput(v))}
+                  inputMode="numeric"
+                  pattern="[1-9][0-9]*"
+                  maxLength={6}
                   placeholder="Qty"
                 />
               </div>
               <div className="w-25">
                 <ModalInput
-                  type="number"
+                  type="text"
                   value={selectedUnitCost}
-                  onChange={setSelectedUnitCost}
+                  onChange={(v) => setSelectedUnitCost(normalizeUnitCostInput(v))}
+                  inputMode="decimal"
+                  pattern="^\d*(\.\d{0,2})?$"
+                  maxLength={12}
                   placeholder="Cost"
                 />
               </div>
@@ -1317,17 +1342,23 @@ export function PurchaseOrderManagement() {
                 </div>
                 <div className="w-20">
                   <ModalInput
-                    type="number"
+                    type="text"
                     value={editSelectedQty}
-                    onChange={setEditSelectedQty}
+                    onChange={(v) => setEditSelectedQty(normalizeQuantityInput(v))}
+                    inputMode="numeric"
+                    pattern="[1-9][0-9]*"
+                    maxLength={6}
                     placeholder="Qty"
                   />
                 </div>
                 <div className="w-25">
                   <ModalInput
-                    type="number"
+                    type="text"
                     value={editSelectedUnitCost}
-                    onChange={setEditSelectedUnitCost}
+                    onChange={(v) => setEditSelectedUnitCost(normalizeUnitCostInput(v))}
+                    inputMode="decimal"
+                    pattern="^\d*(\.\d{0,2})?$"
+                    maxLength={12}
                     placeholder="Cost"
                   />
                 </div>

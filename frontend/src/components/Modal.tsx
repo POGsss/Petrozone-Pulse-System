@@ -64,6 +64,9 @@ interface ModalInputProps {
   onChange: (value: string) => void;
   placeholder?: string;
   required?: boolean;
+  min?: number;
+  max?: number;
+  step?: number;
   minLength?: number;
   maxLength?: number;
   disabled?: boolean;
@@ -79,6 +82,9 @@ export function ModalInput({
   onChange,
   placeholder,
   required,
+  min,
+  max,
+  step,
   minLength,
   maxLength,
   disabled,
@@ -105,6 +111,9 @@ export function ModalInput({
       onChange={handleChange}
       placeholder={placeholder}
       required={required}
+      min={min}
+      max={max}
+      step={step}
       minLength={minLength}
       maxLength={maxLength}
       disabled={disabled}

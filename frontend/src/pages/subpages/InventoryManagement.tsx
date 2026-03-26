@@ -485,8 +485,8 @@ export function InventoryManagement() {
     setCheckingReferences(true);
     setShowDeleteConfirm(true);
     try {
-      const movRes = await inventoryApi.getMovements(item.id, { limit: 1 });
-      setItemHasReferences((movRes.data?.length ?? 0) > 0);
+      const refRes = await inventoryApi.checkReferences(item.id);
+      setItemHasReferences(refRes.hasReferences);
     } catch {
       setItemHasReferences(true);
     } finally {
@@ -1066,7 +1066,7 @@ export function InventoryManagement() {
             </div>
             <p className="text-sm text-neutral-900 mb-2">
               {itemHasReferences
-                ? "This inventory item has existing stock movements and will be set to inactive instead of deleted."
+                ? "This inventory item is linked to job order or purchase order records and will be set to inactive instead of deleted."
                 : "This action cannot be undone. All inventory item data will be permanently removed."
               }
             </p>

@@ -251,6 +251,74 @@ router.get(
   }
 );
 
+// GET /api/inventory/:id/references
+// Check whether item has references that require deactivation instead of hard delete
+// Roles: HM, POC, JS
+router.get(
+  "/:id/references",
+  requireRoles("HM", "POC", "JS"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const itemId = req.params.id as string;
+
+      const { data: item, error: itemError } = await supabaseAdmin
+        .from("inventory_items")
+        .select("id, branch_id")
+        .eq("id", itemId)
+        .single();
+
+      if (itemError) {
+        if (itemError.code === "PGRST116") {
+          res.status(404).json({ error: "Inventory item not found" });
+          return;
+        }
+        res.status(500).json({ error: itemError.message });
+        return;
+      }
+
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(item.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this branch" });
+        return;
+      }
+
+      const { count: joiiCount } = await supabaseAdmin
+        .from("job_order_item_inventories")
+        .select("id", { count: "exact", head: true })
+        .eq("inventory_item_id", itemId);
+
+      const { count: poiCount } = await supabaseAdmin
+        .from("purchase_order_items")
+        .select("id", { count: "exact", head: true })
+        .eq("inventory_item_id", itemId);
+
+      const { count: smCount } = await supabaseAdmin
+        .from("stock_movements")
+        .select("id", { count: "exact", head: true })
+        .eq("inventory_item_id", itemId);
+
+      const nonMovementReferences = (joiiCount ?? 0) + (poiCount ?? 0);
+
+      res.json({
+        hasReferences: nonMovementReferences > 0,
+        mode: nonMovementReferences > 0 ? "deactivate" : "delete",
+        nonMovementReferences,
+        stockMovementReferences: smCount ?? 0,
+        references: {
+          job_order_item_inventories: joiiCount ?? 0,
+          purchase_order_items: poiCount ?? 0,
+          stock_movements: smCount ?? 0,
+        },
+      });
+    } catch (error) {
+      console.error("Check inventory references error:", error);
+      res.status(500).json({ error: "Failed to check references" });
+    }
+  }
+);
+
 // POST /api/inventory
 // Add inventory item (UC45)
 // Roles: HM, POC, JS
@@ -841,9 +909,9 @@ router.delete(
         .select("id", { count: "exact", head: true })
         .eq("inventory_item_id", itemId);
 
-      const hasReferences = ((joiiCount ?? 0) + (poiCount ?? 0) + (smCount ?? 0)) > 0;
+      const hasNonMovementReferences = ((joiiCount ?? 0) + (poiCount ?? 0)) > 0;
 
-      if (hasReferences) {
+      if (hasNonMovementReferences) {
         // Soft delete: set status to inactive
         const { error: updateError } = await supabaseAdmin
           .from("inventory_items")
@@ -867,6 +935,11 @@ router.delete(
               sku_code: existing.sku_code,
               status: "inactive",
               reason: "soft_delete",
+              references: {
+                job_order_item_inventories: joiiCount ?? 0,
+                purchase_order_items: poiCount ?? 0,
+                stock_movements: smCount ?? 0,
+              },
             },
           });
         } catch (auditErr) {
@@ -877,16 +950,36 @@ router.delete(
           message: `Inventory item "${existing.item_name}" deactivated (referenced by other records)`,
         });
       } else {
-        // Hard delete: remove links first, then the item
-        await supabaseAdmin
+        // Hard delete: purge movement history and links first, then the item
+        const { error: stockMovementDeleteError } = await supabaseAdmin
+          .from("stock_movements")
+          .delete()
+          .eq("inventory_item_id", itemId);
+
+        if (stockMovementDeleteError) {
+          res.status(500).json({ error: stockMovementDeleteError.message });
+          return;
+        }
+
+        const { error: packageLinksDeleteError } = await supabaseAdmin
           .from("package_inventory_links")
           .delete()
           .eq("inventory_item_id", itemId);
 
-        await supabaseAdmin
+        if (packageLinksDeleteError) {
+          res.status(500).json({ error: packageLinksDeleteError.message });
+          return;
+        }
+
+        const { error: supplierProductsDeleteError } = await supabaseAdmin
           .from("supplier_products")
           .delete()
           .eq("inventory_item_id", itemId);
+
+        if (supplierProductsDeleteError) {
+          res.status(500).json({ error: supplierProductsDeleteError.message });
+          return;
+        }
 
         const { error: deleteError } = await supabaseAdmin
           .from("inventory_items")
@@ -909,6 +1002,7 @@ router.delete(
               item_name: existing.item_name,
               sku_code: existing.sku_code,
               deleted: true,
+              deleted_stock_movements: smCount ?? 0,
             },
           });
         } catch (auditErr) {

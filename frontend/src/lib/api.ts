@@ -1063,6 +1063,20 @@ export const inventoryApi = {
     });
   },
 
+  checkReferences: async (id: string) => {
+    return fetchWithAuth<{
+      hasReferences: boolean;
+      mode: "delete" | "deactivate";
+      nonMovementReferences: number;
+      stockMovementReferences: number;
+      references: {
+        job_order_item_inventories: number;
+        purchase_order_items: number;
+        stock_movements: number;
+      };
+    }>(`/api/inventory/${id}/references`);
+  },
+
   adjust: async (
     id: string,
     data: {
