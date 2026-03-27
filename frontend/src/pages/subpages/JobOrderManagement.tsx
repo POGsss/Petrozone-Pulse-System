@@ -3186,24 +3186,14 @@ export function JobOrderManagement() {
                   />
                 </div>
                 {editingActionRepairId ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleActionAddRepair}
-                      className="px-4.5 py-4.5 bg-positive text-white rounded-xl hover:bg-positive-950 transition-colors shrink-0"
-                      title="Save changes"
-                    >
-                      <LuCheck className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={cancelEditActionRepair}
-                      className="px-4.5 py-4.5 bg-neutral-200 text-neutral-900 rounded-xl hover:bg-neutral-300 transition-colors shrink-0"
-                      title="Cancel edit"
-                    >
-                      <LuX className="w-4 h-4" />
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    onClick={cancelEditActionRepair}
+                    className="px-4.5 py-4.5 bg-neutral-200 text-neutral-900 rounded-xl hover:bg-neutral-300 transition-colors shrink-0"
+                    title="Cancel edit"
+                  >
+                    <LuX className="w-4 h-4" />
+                  </button>
                 ) : (
                   <button
                     type="button"
@@ -3247,14 +3237,25 @@ export function JobOrderManagement() {
                         <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap">
                           {formatPrice(repair.cost)}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => startEditActionRepair(repair)}
-                          className="text-primary hover:text-primary-900 p-1"
-                          title="Edit repair"
-                        >
-                          <LuPencil className="w-4 h-4" />
-                        </button>
+                        {editingActionRepairId === repair.id ? (
+                          <button
+                            type="button"
+                            onClick={handleActionAddRepair}
+                            className="text-positive hover:text-positive-950 p-1"
+                            title="Save repair"
+                          >
+                            <LuCheck className="w-4 h-4" />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => startEditActionRepair(repair)}
+                            className="text-primary hover:text-primary-900 p-1"
+                            title="Edit repair"
+                          >
+                            <LuPencil className="w-4 h-4" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleActionDeleteRepair(repair.id)}
