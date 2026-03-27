@@ -536,42 +536,6 @@ export const packagesApi = {
     });
   },
 
-  // Inventory Links
-  getInventoryLinks: async (itemId: string) => {
-    return fetchWithAuth<import("../types").PackageInventoryItem[]>(
-      `/api/packages/${itemId}/inventory-links`
-    );
-  },
-
-  addInventoryLink: async (itemId: string, data: { inventory_item_id: string; quantity: number }) => {
-    return fetchWithAuth<import("../types").PackageInventoryItem>(
-      `/api/packages/${itemId}/inventory-links`,
-      {
-        method: "POST",
-        body: JSON.stringify(data),
-      }
-    );
-  },
-
-  updateInventoryLink: async (itemId: string, linkId: string, data: { quantity: number }) => {
-    return fetchWithAuth<import("../types").PackageInventoryItem>(
-      `/api/packages/${itemId}/inventory-links/${linkId}`,
-      {
-        method: "PUT",
-        body: JSON.stringify(data),
-      }
-    );
-  },
-
-  removeInventoryLink: async (itemId: string, linkId: string) => {
-    return fetchWithAuth<{ message: string }>(
-      `/api/packages/${itemId}/inventory-links/${linkId}`,
-      {
-        method: "DELETE",
-      }
-    );
-  },
-
   // Labor Links
   getLaborLinks: async (itemId: string) => {
     return fetchWithAuth<import("../types").PackageLaborItem[]>(
@@ -859,26 +823,6 @@ export const jobOrdersApi = {
     return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/complete`, {
       method: "PATCH",
       body: JSON.stringify(data),
-    });
-  },
-
-  addItem: async (id: string, data: { package_item_id: string; labor_item_id: string; quantity: number; inventory_quantities?: Array<{ inventory_item_id: string; quantity: number }> }) => {
-    return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/items`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-  },
-
-  updateItem: async (id: string, itemId: string, data: { quantity: number; inventory_quantities?: Array<{ inventory_item_id: string; quantity: number }> }) => {
-    return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/items/${itemId}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    });
-  },
-
-  removeItem: async (id: string, itemId: string) => {
-    return fetchWithAuth<import("../types").JobOrder>(`/api/job-orders/${id}/items/${itemId}`, {
-      method: "DELETE",
     });
   },
 

@@ -9,14 +9,26 @@ const router = Router();
 // All third-party repair routes require authentication
 router.use(requireAuth);
 
+const EDITABLE_REPAIR_STATUSES = ["draft", "pending_approval", "approved", "in_progress"] as const;
+
 /**
- * Recalculate job order total_amount = SUM(items.line_total) + SUM(repairs.cost)
+ * Recalculate job order total_amount = SUM(primary order lines) + SUM(repairs.cost)
+ * Primary line source is job_order_lines; falls back to legacy job_order_items if no lines exist.
  */
 async function recalcJoTotal(jobOrderId: string) {
-  const { data: items } = await supabaseAdmin
-    .from("job_order_items")
-    .select("line_total")
+  const { data: lines } = await supabaseAdmin
+    .from("job_order_lines")
+    .select("total")
     .eq("job_order_id", jobOrderId);
+
+  const hasLines = (lines || []).length > 0;
+
+  const { data: items } = hasLines
+    ? { data: [] as Array<{ line_total: number }> }
+    : await supabaseAdmin
+      .from("job_order_items")
+      .select("line_total")
+      .eq("job_order_id", jobOrderId);
 
   const { data: repairs } = await supabaseAdmin
     .from("third_party_repairs")
@@ -24,12 +36,14 @@ async function recalcJoTotal(jobOrderId: string) {
     .eq("job_order_id", jobOrderId)
     .eq("is_deleted", false);
 
-  const itemsTotal = (items || []).reduce((s: number, i: { line_total: number }) => s + i.line_total, 0);
+  const linesTotal = (lines || []).reduce((s: number, l: { total: number }) => s + Number(l.total || 0), 0);
+  const itemsTotal = (items || []).reduce((s: number, i: { line_total: number }) => s + Number(i.line_total || 0), 0);
   const repairsTotal = (repairs || []).reduce((s: number, r: { cost: number }) => s + r.cost, 0);
+  const baseTotal = hasLines ? linesTotal : itemsTotal;
 
   await supabaseAdmin
     .from("job_orders")
-    .update({ total_amount: itemsTotal + repairsTotal })
+    .update({ total_amount: baseTotal + repairsTotal })
     .eq("id", jobOrderId);
 }
 
@@ -222,10 +236,10 @@ router.post(
         return;
       }
 
-      // TPR can only be added when JO is in draft status
-      if (jobOrder.status !== "draft") {
+      // TPR can only be added while JO is not yet ready for release.
+      if (!EDITABLE_REPAIR_STATUSES.includes(jobOrder.status as typeof EDITABLE_REPAIR_STATUSES[number])) {
         res.status(400).json({
-          error: `Cannot add third-party repairs to a job order with status "${jobOrder.status}". Only draft orders can be modified.`,
+          error: `Cannot add third-party repairs to a job order with status "${jobOrder.status}". Repairs are editable only up to in-progress.`,
         });
         return;
       }
@@ -319,10 +333,10 @@ router.put(
         return;
       }
 
-      // TPR can only be edited when JO is in draft status
-      if (jobOrder.status !== "draft") {
+      // TPR can only be edited while JO is not yet ready for release.
+      if (!EDITABLE_REPAIR_STATUSES.includes(jobOrder.status as typeof EDITABLE_REPAIR_STATUSES[number])) {
         res.status(400).json({
-          error: `Cannot edit third-party repairs on a job order with status "${jobOrder.status}". Only draft orders can be modified.`,
+          error: `Cannot edit third-party repairs on a job order with status "${jobOrder.status}". Repairs are editable only up to in-progress.`,
         });
         return;
       }
@@ -424,7 +438,7 @@ router.put(
 
 /**
  * DELETE /api/third-party-repairs/:id
- * Hard delete a third-party repair (only when parent JO is in draft status)
+ * Hard delete a third-party repair (allowed while parent JO is up to in-progress)
  * Roles: HM, POC, JS, R, T
  */
 router.delete(
@@ -471,10 +485,10 @@ router.delete(
         return;
       }
 
-      // TPR can only be deleted when JO is in draft status
-      if (jobOrder.status !== "draft") {
+      // TPR can only be deleted while JO is not yet ready for release.
+      if (!EDITABLE_REPAIR_STATUSES.includes(jobOrder.status as typeof EDITABLE_REPAIR_STATUSES[number])) {
         res.status(400).json({
-          error: `Cannot delete third-party repairs on a job order with status "${jobOrder.status}". Only draft orders can be modified.`,
+          error: `Cannot delete third-party repairs on a job order with status "${jobOrder.status}". Repairs are editable only up to in-progress.`,
         });
         return;
       }

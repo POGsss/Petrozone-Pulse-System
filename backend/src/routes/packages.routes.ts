@@ -335,13 +335,20 @@ router.delete(
         return;
       }
 
-      // Check if referenced by job_order_items
-      const { count: joiCount } = await supabaseAdmin
-        .from("job_order_items")
-        .select("id", { count: "exact", head: true })
-        .eq("package_item_id", itemId);
+      // Check both legacy and current JO references before deciding delete mode.
+      const [{ count: legacyRefs }, { count: lineRefs }] = await Promise.all([
+        supabaseAdmin
+          .from("job_order_items")
+          .select("id", { count: "exact", head: true })
+          .eq("package_item_id", itemId),
+        supabaseAdmin
+          .from("job_order_lines")
+          .select("id", { count: "exact", head: true })
+          .eq("line_type", "package")
+          .eq("reference_id", itemId),
+      ]);
 
-      const hasReferences = (joiCount ?? 0) > 0;
+      const hasReferences = ((legacyRefs ?? 0) + (lineRefs ?? 0)) > 0;
 
       if (hasReferences) {
         // Soft delete: set status to inactive
@@ -373,21 +380,11 @@ router.delete(
           deactivated: true,
         });
       } else {
-        // Hard delete: remove inventory links first, then the item
+        // Hard delete: remove labor links first, then the item
         await supabaseAdmin
           .from("package_labor_items")
           .delete()
           .eq("package_id", itemId);
-
-        await supabaseAdmin
-          .from("package_inventory_items")
-          .delete()
-          .eq("package_id", itemId);
-
-        await supabaseAdmin
-          .from("package_inventory_links")
-          .delete()
-          .eq("package_item_id", itemId);
 
         const { error: deleteError } = await supabaseAdmin
           .from("package_items")
@@ -432,38 +429,8 @@ router.get(
   requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const itemId = req.params.itemId as string;
-
-      const { data: packageItem, error: catError } = await supabaseAdmin
-        .from("package_items")
-        .select("id")
-        .eq("id", itemId)
-        .single();
-
-      if (catError) {
-        if (catError.code === "PGRST116") {
-          res.status(404).json({ error: "Package item not found" });
-          return;
-        }
-        res.status(500).json({ error: catError.message });
-        return;
-      }
-
-      const { data: links, error } = await supabaseAdmin
-        .from("package_inventory_items")
-        .select(`
-          *,
-          inventory_items(id, item_name, sku_code, cost_price, unit_of_measure, branch_id)
-        `)
-        .eq("package_id", itemId)
-        .order("created_at", { ascending: true });
-
-      if (error) {
-        res.status(500).json({ error: error.message });
-        return;
-      }
-
-      res.json(links || []);
+      // Deprecated endpoint kept for backward compatibility after inventory template removal.
+      res.json([]);
     } catch (error) {
       console.error("Get package inventory links error:", error);
       res.status(500).json({ error: "Failed to fetch inventory links" });
@@ -481,81 +448,7 @@ router.post(
   requireRoles("HM", "POC", "JS"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const itemId = req.params.itemId as string;
-      const { inventory_item_id, quantity } = req.body;
-
-      if (!inventory_item_id) {
-        res.status(400).json({ error: "Inventory item ID is required" });
-        return;
-      }
-
-      const { data: packageItem, error: catError } = await supabaseAdmin
-        .from("package_items")
-        .select("id")
-        .eq("id", itemId)
-        .single();
-
-      if (catError) {
-        if (catError.code === "PGRST116") {
-          res.status(404).json({ error: "Package item not found" });
-          return;
-        }
-        res.status(500).json({ error: catError.message });
-        return;
-      }
-
-      const { data: invItem, error: invError } = await supabaseAdmin
-        .from("inventory_items")
-        .select("id, item_name, status")
-        .eq("id", inventory_item_id)
-        .single();
-
-      if (invError || !invItem) {
-        res.status(400).json({ error: "Inventory item not found" });
-        return;
-      }
-      if (invItem.status !== "active") {
-        res.status(400).json({ error: "Inventory item is not active" });
-        return;
-      }
-
-      const parsedQty = Number(quantity ?? 1);
-      if (Number.isNaN(parsedQty) || parsedQty <= 0) {
-        res.status(400).json({ error: "Quantity must be greater than 0" });
-        return;
-      }
-
-      const { data: existing } = await supabaseAdmin
-        .from("package_inventory_items")
-        .select("id")
-        .eq("package_id", itemId)
-        .eq("inventory_item_id", inventory_item_id)
-        .maybeSingle();
-
-      if (existing) {
-        res.status(409).json({ error: "This inventory item is already linked to this Package item" });
-        return;
-      }
-
-      const { data: link, error: insertError } = await supabaseAdmin
-        .from("package_inventory_items")
-        .insert({
-          package_id: itemId,
-          inventory_item_id,
-          quantity: parsedQty,
-        })
-        .select(`
-          *,
-          inventory_items(id, item_name, sku_code, cost_price, unit_of_measure, branch_id)
-        `)
-        .single();
-
-      if (insertError) {
-        res.status(500).json({ error: insertError.message });
-        return;
-      }
-
-      res.status(201).json(link);
+      res.status(410).json({ error: "Package inventory template links are no longer supported" });
     } catch (error) {
       console.error("Add package inventory link error:", error);
       res.status(500).json({ error: "Failed to add inventory link" });
@@ -573,37 +466,7 @@ router.put(
   requireRoles("HM", "POC", "JS"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const itemId = req.params.itemId as string;
-      const linkId = req.params.linkId as string;
-      const { quantity } = req.body;
-
-      const parsedQty = Number(quantity);
-      if (Number.isNaN(parsedQty) || parsedQty <= 0) {
-        res.status(400).json({ error: "Quantity must be greater than 0" });
-        return;
-      }
-
-      const { data: link, error } = await supabaseAdmin
-        .from("package_inventory_items")
-        .update({ quantity: parsedQty })
-        .eq("id", linkId)
-        .eq("package_id", itemId)
-        .select(`
-          *,
-          inventory_items(id, item_name, sku_code, cost_price, unit_of_measure, branch_id)
-        `)
-        .single();
-
-      if (error) {
-        if (error.code === "PGRST116") {
-          res.status(404).json({ error: "Package inventory item not found" });
-          return;
-        }
-        res.status(500).json({ error: error.message });
-        return;
-      }
-
-      res.json(link);
+      res.status(410).json({ error: "Package inventory template links are no longer supported" });
     } catch (error) {
       console.error("Update package inventory item error:", error);
       res.status(500).json({ error: "Failed to update package inventory item" });
@@ -621,36 +484,7 @@ router.delete(
   requireRoles("HM", "POC", "JS"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const itemId = req.params.itemId as string;
-      const linkId = req.params.linkId as string;
-
-      const { data: packageItem, error: catError } = await supabaseAdmin
-        .from("package_items")
-        .select("id")
-        .eq("id", itemId)
-        .single();
-
-      if (catError) {
-        if (catError.code === "PGRST116") {
-          res.status(404).json({ error: "Package item not found" });
-          return;
-        }
-        res.status(500).json({ error: catError.message });
-        return;
-      }
-
-      const { error: deleteError } = await supabaseAdmin
-        .from("package_inventory_items")
-        .delete()
-        .eq("id", linkId)
-        .eq("package_id", itemId);
-
-      if (deleteError) {
-        res.status(500).json({ error: deleteError.message });
-        return;
-      }
-
-      res.json({ message: "Inventory link removed successfully" });
+      res.status(410).json({ error: "Package inventory template links are no longer supported" });
     } catch (error) {
       console.error("Delete package inventory link error:", error);
       res.status(500).json({ error: "Failed to remove inventory link" });

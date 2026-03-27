@@ -961,16 +961,6 @@ router.delete(
           return;
         }
 
-        const { error: packageLinksDeleteError } = await supabaseAdmin
-          .from("package_inventory_links")
-          .delete()
-          .eq("inventory_item_id", itemId);
-
-        if (packageLinksDeleteError) {
-          res.status(500).json({ error: packageLinksDeleteError.message });
-          return;
-        }
-
         const { error: supplierProductsDeleteError } = await supabaseAdmin
           .from("supplier_products")
           .delete()

@@ -160,42 +160,9 @@ export interface PackageItem {
   description: string | null;
   price: number;
   status: PackageItemStatus;
-  inventory_types?: string[];
   created_by: string | null;
   created_at: string;
   updated_at: string;
-}
-
-// Package Inventory Link types
-export interface PackageInventoryLink {
-  id: string;
-  package_item_id: string;
-  inventory_item_id: string;
-  created_at: string;
-  inventory_items?: {
-    id: string;
-    item_name: string;
-    sku_code: string;
-    cost_price: number;
-    unit_of_measure: string;
-    branch_id: string;
-  };
-}
-
-export interface PackageInventoryItem {
-  id: string;
-  package_id: string;
-  inventory_item_id: string;
-  quantity: number;
-  created_at: string;
-  inventory_items?: {
-    id: string;
-    item_name: string;
-    sku_code: string;
-    cost_price: number;
-    unit_of_measure: string;
-    branch_id: string;
-  };
 }
 
 export interface PackageLaborItem {

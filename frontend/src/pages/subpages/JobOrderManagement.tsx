@@ -37,7 +37,7 @@ import {
   GridCard,
 } from "../../components";
 import type { FilterGroup } from "../../components";
-import type { JobOrder, JobOrderItem, JobOrderHistory, Branch, Customer, Vehicle, PackageItem, PackageInventoryItem, ThirdPartyRepair, VehicleClass, InventoryItem, LaborItem } from "../../types";
+import type { JobOrder, JobOrderItem, JobOrderHistory, Branch, Customer, Vehicle, PackageItem, ThirdPartyRepair, VehicleClass, InventoryItem, LaborItem } from "../../types";
 
 const ITEMS_PER_PAGE = 12;
 
@@ -89,6 +89,14 @@ function computeOrderGrandTotal(order: JobOrder, repairsOverride?: ThirdPartyRep
     ? repairsOverride.reduce((sum, repair) => sum + (repair.cost || 0), 0)
     : (order.third_party_repairs || []).reduce((sum, repair) => sum + (repair.cost || 0), 0);
   return itemsTotal + repairsTotal;
+}
+
+function isThirdPartyEditableStatus(status: string): boolean {
+  return ["draft", "pending_approval", "approved", "in_progress"].includes(status);
+}
+
+function isEstimatedTotalStatus(status: string): boolean {
+  return ["draft", "pending_approval", "approved", "in_progress"].includes(status);
 }
 
 // Status display helpers
@@ -265,7 +273,6 @@ export function JobOrderManagement() {
 
   // Edit modal items state (for created/rejected orders)
   const [editItems, setEditItems] = useState<JobOrderItem[]>([]);
-  const [origEditItems, setOrigEditItems] = useState<JobOrderItem[]>([]);
   const [editDraftItems, setEditDraftItems] = useState<DraftItem[]>([]);
   const [editPackageItems, setEditPackageItems] = useState<PackageItem[]>([]);
   const [editLaborItems, setEditLaborItems] = useState<LaborItem[]>([]);
@@ -623,6 +630,21 @@ export function JobOrderManagement() {
     },
     [viewOrder, repairs]
   );
+
+  const viewItemsTotal = useMemo(() => {
+    if (!viewOrder) return 0;
+    return computeOrderItemsTotal(viewOrder);
+  }, [viewOrder]);
+
+  const viewRepairsTotal = useMemo(
+    () => repairs.reduce((sum, repair) => sum + (repair.cost || 0), 0),
+    [repairs]
+  );
+
+  const viewUsesEstimatedLabels = useMemo(() => {
+    if (!viewOrder) return false;
+    return isEstimatedTotalStatus(viewOrder.status) && viewRepairsTotal > 0;
+  }, [viewOrder, viewRepairsTotal]);
 
   // Load lookups when add modal opens
   const loadLookups = useCallback(async (branchId: string) => {
@@ -1185,7 +1207,6 @@ export function JobOrderManagement() {
     setEditNotes(order.notes || "");
     setEditError(null);
     setEditItems([]);
-    setOrigEditItems([]);
     setEditDraftItems([]);
     setEditSelectedPackageId("");
     setEditSelectedLaborId("");
@@ -1283,38 +1304,7 @@ export function JobOrderManagement() {
         setEditLineInventoryLines(inventoryLines);
       }
 
-      // Augment existing items' inventories with available alternatives
-      const augmentedItems = await Promise.all(
-        items.map(async (item: JobOrderItem) => {
-          const catItem = packageItems.find((c: PackageItem) => c.id === item.package_item_id);
-          const invTypes = catItem?.inventory_types || [];
-          if (invTypes.length === 0 || !item.job_order_item_inventories?.length) return item;
-
-          // Fetch available items per category
-          try {
-            const catResults = await Promise.all(
-              invTypes.map((t: string) =>
-                inventoryApi.getAll({ category: t, branch_id: order.branch_id, status: "active", limit: 500 })
-              )
-            );
-            const updatedInv = item.job_order_item_inventories.map((inv, idx) => {
-              const categoryIdx = Math.min(idx, invTypes.length - 1);
-              const availItems = (catResults[categoryIdx]?.data || []).map((it: InventoryItem) => ({
-                id: it.id,
-                item_name: it.item_name,
-                cost_price: it.cost_price,
-              }));
-              return { ...inv, category: invTypes[categoryIdx], available_items: availItems };
-            });
-            return { ...item, job_order_item_inventories: updatedInv };
-          } catch {
-            return item;
-          }
-        })
-      );
-
-      setEditItems(augmentedItems);
-      setOrigEditItems(augmentedItems);
+      setEditItems(items);
     } catch {
       // Fail silently — items section won't populate
     } finally {
@@ -1415,7 +1405,6 @@ export function JobOrderManagement() {
       const vehicleClass = editOrder.vehicle_class || "light";
       const laborPrice = getLaborPriceByVehicleClass(laborItem, vehicleClass);
 
-      // Fetch inventory based on Package item's inventory_types or legacy links
       let editInvQuantities: Array<{
         inventory_item_id: string;
         inventory_item_name: string;
@@ -1424,58 +1413,6 @@ export function JobOrderManagement() {
         category?: string;
         available_items?: Array<{ id: string; item_name: string; cost_price: number }>;
       }> = [];
-
-      const catItemData = editPackageItems.find((c) => c.id === packageItem.id);
-      const invTypes = catItemData?.inventory_types || [];
-
-      if (invTypes.length > 0) {
-        // Category-based: fetch available items per required category
-        try {
-          const catResults = await Promise.all(
-            invTypes.map((t) => inventoryApi.getAll({ category: t, branch_id: editOrder.branch_id, status: "active", limit: 500 }))
-          );
-          for (let i = 0; i < invTypes.length; i++) {
-            const items = catResults[i]?.data || [];
-            const availableItems = items.map((it) => ({ id: it.id, item_name: it.item_name, cost_price: it.cost_price }));
-            if (items.length > 0) {
-              editInvQuantities.push({
-                inventory_item_id: items[0].id,
-                inventory_item_name: items[0].item_name,
-                unit_cost: items[0].cost_price,
-                quantity: 1,
-                category: invTypes[i],
-                available_items: availableItems,
-              });
-            } else {
-              editInvQuantities.push({
-                inventory_item_id: "",
-                inventory_item_name: `No ${invTypes[i]} items available`,
-                unit_cost: 0,
-                quantity: 1,
-                category: invTypes[i],
-                available_items: [],
-              });
-            }
-          }
-        } catch {
-          // ignore
-        }
-      } else {
-        // Legacy: use package_inventory_links template
-        try {
-          const linksRes = await packagesApi.getInventoryLinks(packageItem.id);
-          if (linksRes && linksRes.length > 0) {
-            editInvQuantities = linksRes.map((l: PackageInventoryItem) => ({
-              inventory_item_id: l.inventory_items?.id || l.inventory_item_id,
-              inventory_item_name: l.inventory_items?.item_name || "Unknown",
-              unit_cost: l.inventory_items?.cost_price || 0,
-              quantity: l.quantity || 1,
-            }));
-          }
-        } catch {
-          // ignore
-        }
-      }
 
       const editInvCost = editInvQuantities.reduce(
         (sum, iq) => sum + iq.unit_cost * iq.quantity,
@@ -1777,14 +1714,13 @@ export function JobOrderManagement() {
     setEditError(null);
 
     const hasLineBasedItems = (editOrder.job_order_lines?.length || 0) > 0;
-    const canEditItems = isEditableStatus(editOrder.status) && !hasLineBasedItems;
     const canEditLineItems = isEditableStatus(editOrder.status) && hasLineBasedItems;
 
-    // Validate: must have at least 1 item
-    if (canEditItems && editItems.length + editDraftItems.length === 0) {
-      setEditError("Job order must have at least 1 item");
+    if (!hasLineBasedItems) {
+      setEditError("Legacy item-based edit flow has been retired. Use line-based job orders only.");
       return;
     }
+
     if (canEditLineItems && editLinePackageLines.length + editLineLaborLines.length + editLineInventoryLines.length === 0) {
       setEditError("Job order must have at least 1 line item");
       return;
@@ -1793,96 +1729,34 @@ export function JobOrderManagement() {
     try {
       setEditingOrder(true);
 
-      if (hasLineBasedItems) {
-        const linesPayload = [
-          ...editLinePackageLines.map((line) => ({
-            line_type: "package" as const,
-            reference_id: line.package_item_id,
-            quantity: line.quantity,
-            vehicle_specific_components: {
-              inventory: line.vehicle_specific_inventory_components.map((c) => ({
-                inventory_item_id: c.inventory_item_id,
-                quantity: c.quantity,
-              })),
-            },
-          })),
-          ...editLineLaborLines.map((line) => ({
-            line_type: "labor" as const,
-            reference_id: line.labor_item_id,
-            quantity: line.quantity,
-          })),
-          ...editLineInventoryLines.map((line) => ({
-            line_type: "inventory" as const,
-            reference_id: line.inventory_item_id,
-            quantity: line.quantity,
-          })),
-        ];
-
-        await jobOrdersApi.patch(editOrder.id, {
-          notes: editNotes.trim() || null,
-          lines: linesPayload,
-        });
-
-        setShowEditModal(false);
-        setEditOrder(null);
-        showToast.success("Job order updated successfully");
-        fetchData();
-        return;
-      }
-
-      // Save notes
-      await jobOrdersApi.update(editOrder.id, { notes: editNotes.trim() || null });
-
-      // Process item changes if status allows
-      if (canEditItems) {
-        // Find removed items
-        const currentIds = new Set(editItems.map((i) => i.id));
-        const removedItems = origEditItems.filter((i) => !currentIds.has(i.id));
-
-        // Find updated items (qty or inventory changed)
-        const updatedItems = editItems.filter((item) => {
-          const orig = origEditItems.find((o) => o.id === item.id);
-          if (!orig) return false;
-          if (orig.quantity !== item.quantity) return true;
-          // Check if any inventory snapshot quantity changed
-          const origSnaps = orig.job_order_item_inventories || [];
-          const newSnaps = item.job_order_item_inventories || [];
-          return newSnaps.some((snap) => {
-            const origSnap = origSnaps.find((s) => s.inventory_item_id === snap.inventory_item_id);
-            return origSnap && origSnap.quantity !== snap.quantity;
-          });
-        });
-
-        // Process removals
-        for (const item of removedItems) {
-          await jobOrdersApi.removeItem(editOrder.id, item.id);
-        }
-
-        // Process updates
-        for (const item of updatedItems) {
-          const invQuantities = (item.job_order_item_inventories || []).map((inv) => ({
-            inventory_item_id: inv.inventory_item_id,
-            quantity: inv.quantity,
-          }));
-          await jobOrdersApi.updateItem(editOrder.id, item.id, {
-            quantity: item.quantity,
-            inventory_quantities: invQuantities.length > 0 ? invQuantities : undefined,
-          });
-        }
-
-        // Process new items
-        for (const draft of editDraftItems) {
-          await jobOrdersApi.addItem(editOrder.id, {
-            package_item_id: draft.package_item_id,
-            labor_item_id: draft.labor_item_id,
-            quantity: draft.quantity,
-            inventory_quantities: draft.inventory_quantities.map((iq) => ({
-              inventory_item_id: iq.inventory_item_id,
-              quantity: iq.quantity,
+      const linesPayload = [
+        ...editLinePackageLines.map((line) => ({
+          line_type: "package" as const,
+          reference_id: line.package_item_id,
+          quantity: line.quantity,
+          vehicle_specific_components: {
+            inventory: line.vehicle_specific_inventory_components.map((c) => ({
+              inventory_item_id: c.inventory_item_id,
+              quantity: c.quantity,
             })),
-          });
-        }
-      }
+          },
+        })),
+        ...editLineLaborLines.map((line) => ({
+          line_type: "labor" as const,
+          reference_id: line.labor_item_id,
+          quantity: line.quantity,
+        })),
+        ...editLineInventoryLines.map((line) => ({
+          line_type: "inventory" as const,
+          reference_id: line.inventory_item_id,
+          quantity: line.quantity,
+        })),
+      ];
+
+      await jobOrdersApi.patch(editOrder.id, {
+        notes: editNotes.trim() || null,
+        lines: linesPayload,
+      });
 
       setShowEditModal(false);
       setEditOrder(null);
@@ -2360,7 +2234,7 @@ export function JobOrderManagement() {
                         <LuCircleCheck className="w-4 h-4" /> Complete
                       </button>
                     )}
-                    {canRepair && order.status === "draft" && (
+                    {canRepair && isThirdPartyEditableStatus(order.status) && (
                       <button
                         onClick={(e) => { e.stopPropagation(); closeDropdown(); openRepairActionModal(order); }}
                         className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
@@ -3128,11 +3002,28 @@ export function JobOrderManagement() {
               </ModalSection>
             )}
 
-            <ModalSection title="Grand Total">
-              <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
-                <span className="font-semibold text-neutral-950">Grand Total</span>
-                <span className="font-bold text-primary text-lg">{formatPrice(viewGrandTotal)}</span>
-              </div>
+            <ModalSection title={viewUsesEstimatedLabels ? "Estimated Total" : "Grand Total"}>
+              {viewUsesEstimatedLabels ? (
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center px-4 py-3 bg-neutral-100 rounded-xl">
+                    <span className="font-medium text-neutral-950">Repair Total</span>
+                    <span className="font-semibold text-neutral-950">{formatPrice(viewItemsTotal)}</span>
+                  </div>
+                  <div className="flex justify-between items-center px-4 py-3 bg-neutral-100 rounded-xl">
+                    <span className="font-medium text-neutral-950">Estimated Third Party Total</span>
+                    <span className="font-semibold text-neutral-950">{formatPrice(viewRepairsTotal)}</span>
+                  </div>
+                  <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
+                    <span className="font-semibold text-neutral-950">Estimated Total</span>
+                    <span className="font-bold text-primary text-lg">{formatPrice(viewGrandTotal)}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
+                  <span className="font-semibold text-neutral-950">Grand Total</span>
+                  <span className="font-bold text-primary text-lg">{formatPrice(viewGrandTotal)}</span>
+                </div>
+              )}
             </ModalSection>
 
             {viewOrder.notes && (
@@ -3378,7 +3269,7 @@ export function JobOrderManagement() {
 
                   {/* Repairs Total */}
                   <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
-                    <span className="font-semibold text-neutral-950">Repairs Total</span>
+                    <span className="font-semibold text-neutral-950">Estimated Total</span>
                     <span className="font-bold text-primary text-lg">
                       {formatPrice(actionRepairs.reduce((sum, r) => sum + r.cost, 0))}
                     </span>
@@ -3601,7 +3492,7 @@ export function JobOrderManagement() {
 
               <ModalSection title="Items Total">
                 <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
-                  <span className="font-semibold text-neutral-950">Grand Total</span>
+                  <span className="font-semibold text-neutral-950">Repair Total</span>
                   <span className="font-bold text-primary text-lg">{formatPrice(editLineItemsTotal)}</span>
                 </div>
               </ModalSection>
