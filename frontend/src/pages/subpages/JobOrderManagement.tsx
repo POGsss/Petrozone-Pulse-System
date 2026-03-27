@@ -2135,14 +2135,14 @@ export function JobOrderManagement() {
               }] : []),
             ]}
             extraActions={
-              <div className="relative flex items-center gap-2" ref={openDropdownId === `card-${order.id}` ? dropdownRef : undefined}>
+              <div className="relative" ref={openDropdownId === `card-${order.id}` ? dropdownRef : undefined}>
                 {canDelete && order.status === "deactivated" && (
                   <button
                     onClick={async (e) => {
                       e.stopPropagation();
                       await handleRestoreOrder(order);
                     }}
-                    className="inline-flex items-center gap-1 text-sm text-positive hover:text-positive-950"
+                    className="inline-flex items-center gap-1 text-sm text-positive hover:text-positive-950 mr-2"
                     title="Restore job order"
                   >
                     <LuRefreshCw className="w-4 h-4" /> Restore
@@ -2150,7 +2150,7 @@ export function JobOrderManagement() {
                 )}
                 <button
                   onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${order.id}` ? null : `card-${order.id}`); }}
-                  className="inline-flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+                  className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
                   title="More actions"
                 >
                   <LuEllipsisVertical className="w-4 h-4" /> More

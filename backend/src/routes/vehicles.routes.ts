@@ -23,6 +23,27 @@ const VALID_VEHICLE_TYPES = [
 ];
 
 const VALID_VEHICLE_CLASSES = ["light", "heavy", "extra_heavy"];
+const supabaseAny = supabaseAdmin as any;
+
+type VehicleRepairHistoryItem = {
+  id: string;
+  history_type: "internal" | "external";
+  occurred_at: string;
+  title: string;
+  subtitle: string;
+  internal?: {
+    job_order_id: string;
+    order_number: string;
+    status: string;
+    total_amount: number;
+  };
+  external?: {
+    repair_name: string;
+    provider_name: string;
+    description: string;
+    notes: string | null;
+  };
+};
 
 /**
  * GET /api/vehicles
@@ -154,6 +175,462 @@ router.get(
     } catch (error) {
       console.error("Get vehicle error:", error);
       res.status(500).json({ error: "Failed to fetch vehicle" });
+    }
+  }
+);
+
+/**
+ * GET /api/vehicles/:vehicleId/external-repairs
+ * List external repairs for a vehicle (newest first)
+ */
+router.get(
+  "/:vehicleId/external-repairs",
+  requireRoles("HM", "POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const vehicleId = req.params.vehicleId as string;
+
+      const { data: vehicle, error: vehicleError } = await supabaseAdmin
+        .from("vehicles")
+        .select("id, branch_id")
+        .eq("id", vehicleId)
+        .single();
+
+      if (vehicleError || !vehicle) {
+        if (vehicleError?.code === "PGRST116") {
+          res.status(404).json({ error: "Vehicle not found" });
+          return;
+        }
+        res.status(500).json({ error: vehicleError?.message || "Failed to fetch vehicle" });
+        return;
+      }
+
+      if (!req.user!.roles.includes("HM") && !req.user!.branchIds.includes(vehicle.branch_id)) {
+        res.status(403).json({ error: "No access to this vehicle's branch" });
+        return;
+      }
+
+      const { data, error } = await supabaseAny
+        .from("vehicle_external_repairs")
+        .select("*")
+        .eq("vehicle_id", vehicleId)
+        .order("service_date", { ascending: false })
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        res.status(500).json({ error: error.message });
+        return;
+      }
+
+      res.json(data || []);
+    } catch (error) {
+      console.error("Get vehicle external repairs error:", error);
+      res.status(500).json({ error: "Failed to fetch vehicle external repairs" });
+    }
+  }
+);
+
+/**
+ * POST /api/vehicles/:vehicleId/external-repairs
+ * Record an external repair for a vehicle
+ */
+router.post(
+  "/:vehicleId/external-repairs",
+  requireRoles("HM", "POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const vehicleId = req.params.vehicleId as string;
+      const { repair_name, provider_name, description, service_date, notes } = req.body;
+
+      if (!repair_name || !String(repair_name).trim()) {
+        res.status(400).json({ error: "External repair name is required" });
+        return;
+      }
+      if (!provider_name || !String(provider_name).trim()) {
+        res.status(400).json({ error: "Provider name is required" });
+        return;
+      }
+      if (!description || !String(description).trim()) {
+        res.status(400).json({ error: "Description is required" });
+        return;
+      }
+      if (!service_date || Number.isNaN(new Date(service_date).getTime())) {
+        res.status(400).json({ error: "Valid service date is required" });
+        return;
+      }
+
+      const { data: vehicle, error: vehicleError } = await supabaseAdmin
+        .from("vehicles")
+        .select("id, branch_id")
+        .eq("id", vehicleId)
+        .single();
+
+      if (vehicleError || !vehicle) {
+        if (vehicleError?.code === "PGRST116") {
+          res.status(404).json({ error: "Vehicle not found" });
+          return;
+        }
+        res.status(500).json({ error: vehicleError?.message || "Failed to fetch vehicle" });
+        return;
+      }
+
+      if (!req.user!.roles.includes("HM") && !req.user!.branchIds.includes(vehicle.branch_id)) {
+        res.status(403).json({ error: "No access to this vehicle's branch" });
+        return;
+      }
+
+      const { data, error } = await supabaseAny
+        .from("vehicle_external_repairs")
+        .insert({
+          vehicle_id: vehicleId,
+          repair_name: String(repair_name).trim(),
+          provider_name: String(provider_name).trim(),
+          description: String(description).trim(),
+          service_date: new Date(service_date).toISOString(),
+          notes: notes?.trim() || null,
+          created_by: req.user!.id,
+        })
+        .select("*")
+        .single();
+
+      if (error) {
+        res.status(500).json({ error: error.message });
+        return;
+      }
+
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "CREATE",
+          p_entity_type: "VEHICLE_EXTERNAL_REPAIR",
+          p_entity_id: data.id,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: {
+            vehicle_id: vehicleId,
+            repair_name: data.repair_name,
+            provider_name: data.provider_name,
+            service_date: data.service_date,
+          },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      res.status(201).json(data);
+    } catch (error) {
+      console.error("Create vehicle external repair error:", error);
+      await logFailedAction(req, "CREATE", "VEHICLE_EXTERNAL_REPAIR", null, error instanceof Error ? error.message : "Failed to create vehicle external repair");
+      res.status(500).json({ error: "Failed to create vehicle external repair" });
+    }
+  }
+);
+
+/**
+ * PUT /api/vehicles/:vehicleId/external-repairs/:repairId
+ * Update an external repair record for a vehicle
+ */
+router.put(
+  "/:vehicleId/external-repairs/:repairId",
+  requireRoles("HM", "POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const vehicleId = req.params.vehicleId as string;
+      const repairId = req.params.repairId as string;
+      const { repair_name, provider_name, description, service_date, notes } = req.body;
+
+      const { data: vehicle, error: vehicleError } = await supabaseAdmin
+        .from("vehicles")
+        .select("id, branch_id")
+        .eq("id", vehicleId)
+        .single();
+
+      if (vehicleError || !vehicle) {
+        if (vehicleError?.code === "PGRST116") {
+          res.status(404).json({ error: "Vehicle not found" });
+          return;
+        }
+        res.status(500).json({ error: vehicleError?.message || "Failed to fetch vehicle" });
+        return;
+      }
+
+      if (!req.user!.roles.includes("HM") && !req.user!.branchIds.includes(vehicle.branch_id)) {
+        res.status(403).json({ error: "No access to this vehicle's branch" });
+        return;
+      }
+
+      const { data: existing, error: existingError } = await supabaseAny
+        .from("vehicle_external_repairs")
+        .select("id, vehicle_id, repair_name, provider_name, description, service_date, notes")
+        .eq("id", repairId)
+        .eq("vehicle_id", vehicleId)
+        .single();
+
+      if (existingError || !existing) {
+        if (existingError?.code === "PGRST116") {
+          res.status(404).json({ error: "External repair not found" });
+          return;
+        }
+        res.status(500).json({ error: existingError?.message || "Failed to fetch external repair" });
+        return;
+      }
+
+      const updateData: Record<string, unknown> = {};
+
+      if (repair_name !== undefined) {
+        if (!String(repair_name).trim()) {
+          res.status(400).json({ error: "External repair name is required" });
+          return;
+        }
+        updateData.repair_name = String(repair_name).trim();
+      }
+
+      if (provider_name !== undefined) {
+        if (!String(provider_name).trim()) {
+          res.status(400).json({ error: "Provider name is required" });
+          return;
+        }
+        updateData.provider_name = String(provider_name).trim();
+      }
+
+      if (description !== undefined) {
+        if (!String(description).trim()) {
+          res.status(400).json({ error: "Description is required" });
+          return;
+        }
+        updateData.description = String(description).trim();
+      }
+
+      if (service_date !== undefined) {
+        if (!service_date || Number.isNaN(new Date(service_date).getTime())) {
+          res.status(400).json({ error: "Valid service date is required" });
+          return;
+        }
+        updateData.service_date = new Date(service_date).toISOString();
+      }
+
+      if (notes !== undefined) {
+        updateData.notes = notes?.trim() || null;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        res.json(existing);
+        return;
+      }
+
+      const { data, error } = await supabaseAny
+        .from("vehicle_external_repairs")
+        .update(updateData)
+        .eq("id", repairId)
+        .eq("vehicle_id", vehicleId)
+        .select("*")
+        .single();
+
+      if (error) {
+        res.status(500).json({ error: error.message });
+        return;
+      }
+
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "UPDATE",
+          p_entity_type: "VEHICLE_EXTERNAL_REPAIR",
+          p_entity_id: repairId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: {
+            vehicle_id: vehicleId,
+            ...updateData,
+          },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      res.json(data);
+    } catch (error) {
+      console.error("Update vehicle external repair error:", error);
+      await logFailedAction(req, "UPDATE", "VEHICLE_EXTERNAL_REPAIR", req.params.repairId as string || null, error instanceof Error ? error.message : "Failed to update vehicle external repair");
+      res.status(500).json({ error: "Failed to update vehicle external repair" });
+    }
+  }
+);
+
+/**
+ * DELETE /api/vehicles/:vehicleId/external-repairs/:repairId
+ * Delete an external repair record for a vehicle
+ */
+router.delete(
+  "/:vehicleId/external-repairs/:repairId",
+  requireRoles("HM", "POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const vehicleId = req.params.vehicleId as string;
+      const repairId = req.params.repairId as string;
+
+      const { data: vehicle, error: vehicleError } = await supabaseAdmin
+        .from("vehicles")
+        .select("id, branch_id")
+        .eq("id", vehicleId)
+        .single();
+
+      if (vehicleError || !vehicle) {
+        if (vehicleError?.code === "PGRST116") {
+          res.status(404).json({ error: "Vehicle not found" });
+          return;
+        }
+        res.status(500).json({ error: vehicleError?.message || "Failed to fetch vehicle" });
+        return;
+      }
+
+      if (!req.user!.roles.includes("HM") && !req.user!.branchIds.includes(vehicle.branch_id)) {
+        res.status(403).json({ error: "No access to this vehicle's branch" });
+        return;
+      }
+
+      const { data: existing, error: existingError } = await supabaseAny
+        .from("vehicle_external_repairs")
+        .select("id, vehicle_id")
+        .eq("id", repairId)
+        .eq("vehicle_id", vehicleId)
+        .single();
+
+      if (existingError || !existing) {
+        if (existingError?.code === "PGRST116") {
+          res.status(404).json({ error: "External repair not found" });
+          return;
+        }
+        res.status(500).json({ error: existingError?.message || "Failed to fetch external repair" });
+        return;
+      }
+
+      const { error } = await supabaseAny
+        .from("vehicle_external_repairs")
+        .delete()
+        .eq("id", repairId)
+        .eq("vehicle_id", vehicleId);
+
+      if (error) {
+        res.status(500).json({ error: error.message });
+        return;
+      }
+
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "DELETE",
+          p_entity_type: "VEHICLE_EXTERNAL_REPAIR",
+          p_entity_id: repairId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: {
+            vehicle_id: vehicleId,
+            deleted: true,
+          },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      res.json({ message: "External repair deleted successfully" });
+    } catch (error) {
+      console.error("Delete vehicle external repair error:", error);
+      await logFailedAction(req, "DELETE", "VEHICLE_EXTERNAL_REPAIR", req.params.repairId as string || null, error instanceof Error ? error.message : "Failed to delete vehicle external repair");
+      res.status(500).json({ error: "Failed to delete vehicle external repair" });
+    }
+  }
+);
+
+/**
+ * GET /api/vehicles/:vehicleId/repair-history
+ * Combined repair history: internal JO records + external repairs
+ */
+router.get(
+  "/:vehicleId/repair-history",
+  requireRoles("HM", "POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const vehicleId = req.params.vehicleId as string;
+
+      const { data: vehicle, error: vehicleError } = await supabaseAdmin
+        .from("vehicles")
+        .select("id, branch_id")
+        .eq("id", vehicleId)
+        .single();
+
+      if (vehicleError || !vehicle) {
+        if (vehicleError?.code === "PGRST116") {
+          res.status(404).json({ error: "Vehicle not found" });
+          return;
+        }
+        res.status(500).json({ error: vehicleError?.message || "Failed to fetch vehicle" });
+        return;
+      }
+
+      if (!req.user!.roles.includes("HM") && !req.user!.branchIds.includes(vehicle.branch_id)) {
+        res.status(403).json({ error: "No access to this vehicle's branch" });
+        return;
+      }
+
+      const [{ data: internalRows, error: internalError }, { data: externalRows, error: externalError }] = await Promise.all([
+        supabaseAdmin
+          .from("job_orders")
+          .select("id, order_number, status, total_amount, created_at, approved_at, start_time, completion_time")
+          .eq("vehicle_id", vehicleId),
+        supabaseAny
+          .from("vehicle_external_repairs")
+          .select("id, repair_name, provider_name, description, notes, service_date, created_at")
+          .eq("vehicle_id", vehicleId),
+      ]);
+
+      if (internalError) {
+        res.status(500).json({ error: internalError.message });
+        return;
+      }
+      if (externalError) {
+        res.status(500).json({ error: externalError.message });
+        return;
+      }
+
+      const internalHistory: VehicleRepairHistoryItem[] = (internalRows || []).map((row: any) => {
+        const occurredAt = row.completion_time || row.start_time || row.approved_at || row.created_at;
+        return {
+          id: row.id,
+          history_type: "internal",
+          occurred_at: occurredAt,
+          title: row.order_number,
+          subtitle: String(row.status || "internal"),
+          internal: {
+            job_order_id: row.id,
+            order_number: row.order_number,
+            status: row.status,
+            total_amount: Number(row.total_amount || 0),
+          },
+        };
+      });
+
+      const externalHistory: VehicleRepairHistoryItem[] = (externalRows || []).map((row: any) => ({
+        id: row.id,
+        history_type: "external",
+        occurred_at: row.service_date || row.created_at,
+        title: row.repair_name,
+        subtitle: row.provider_name,
+        external: {
+          repair_name: row.repair_name,
+          provider_name: row.provider_name,
+          description: row.description,
+          notes: row.notes,
+        },
+      }));
+
+      const merged = [...internalHistory, ...externalHistory].sort((a, b) => {
+        const aTs = new Date(a.occurred_at).getTime();
+        const bTs = new Date(b.occurred_at).getTime();
+        return bTs - aTs;
+      });
+
+      res.json(merged);
+    } catch (error) {
+      console.error("Get vehicle repair history error:", error);
+      res.status(500).json({ error: "Failed to fetch vehicle repair history" });
     }
   }
 );

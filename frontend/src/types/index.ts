@@ -151,6 +151,39 @@ export interface Vehicle {
   };
 }
 
+export interface VehicleExternalRepair {
+  id: string;
+  vehicle_id: string;
+  service_date: string;
+  repair_name: string;
+  provider_name: string;
+  description: string;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VehicleRepairHistory {
+  id: string;
+  history_type: "internal" | "external";
+  occurred_at: string;
+  title: string;
+  subtitle: string;
+  internal?: {
+    job_order_id: string;
+    order_number: string;
+    status: string;
+    total_amount: number;
+  };
+  external?: {
+    repair_name: string;
+    provider_name: string;
+    description: string;
+    notes: string | null;
+  };
+}
+
 // Package types
 export type PackageItemStatus = "active" | "inactive";
 

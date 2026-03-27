@@ -1,10 +1,16 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
+  LuPlus,
   LuPencil,
   LuTrash2,
   LuCar,
+  LuHistory,
+  LuWrench,
+  LuEllipsisVertical,
+  LuX,
+  LuCheck,
 } from "react-icons/lu";
-import { vehiclesApi, customersApi, branchesApi, jobOrdersApi } from "../../lib/api";
+import { vehiclesApi, customersApi, branchesApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
 import { useAuth } from "../../auth";
 import {
@@ -23,7 +29,7 @@ import {
   GridCard,
 } from "../../components";
 import type { FilterGroup } from "../../components";
-import type { Vehicle, Customer, Branch, JobOrder } from "../../types";
+import type { Vehicle, Customer, Branch, VehicleExternalRepair, VehicleRepairHistory } from "../../types";
 
 const ITEMS_PER_PAGE = 12;
 
@@ -55,6 +61,16 @@ function formatDate(dateStr: string): string {
     year: "numeric",
     month: "short",
     day: "numeric",
+  });
+}
+
+function formatDateTime(dateStr: string): string {
+  return new Date(dateStr).toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   });
 }
 
@@ -106,8 +122,33 @@ export function VehicleManagement() {
   // View modal
   const [showViewModal, setShowViewModal] = useState(false);
   const [viewVehicle, setViewVehicle] = useState<Vehicle | null>(null);
-  const [linkedJobOrders, setLinkedJobOrders] = useState<JobOrder[]>([]);
-  const [loadingLinked, setLoadingLinked] = useState(false);
+
+  // Card dropdown actions
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const closeDropdown = useCallback(() => setOpenDropdownId(null), []);
+
+  // Repair history modal state
+  const [showRepairHistoryModal, setShowRepairHistoryModal] = useState(false);
+  const [repairHistoryVehicle, setRepairHistoryVehicle] = useState<Vehicle | null>(null);
+  const [repairHistory, setRepairHistory] = useState<VehicleRepairHistory[]>([]);
+  const [loadingRepairHistory, setLoadingRepairHistory] = useState(false);
+
+  // External repair modal state
+  const [showExternalRepairModal, setShowExternalRepairModal] = useState(false);
+  const [externalRepairVehicle, setExternalRepairVehicle] = useState<Vehicle | null>(null);
+  const [externalRepairs, setExternalRepairs] = useState<VehicleExternalRepair[]>([]);
+  const [originalExternalRepairs, setOriginalExternalRepairs] = useState<VehicleExternalRepair[]>([]);
+  const [loadingExternalRepairs, setLoadingExternalRepairs] = useState(false);
+  const [savingExternalRepair, setSavingExternalRepair] = useState(false);
+  const [editingExternalRepairId, setEditingExternalRepairId] = useState<string | null>(null);
+  const [externalRepairError, setExternalRepairError] = useState<string | null>(null);
+  const [externalRepairForm, setExternalRepairForm] = useState({
+    provider_name: "",
+    description: "",
+    service_date: new Date().toISOString().split("T")[0] || "",
+    notes: "",
+  });
 
   // Edit modal
   const [showEditModal, setShowEditModal] = useState(false);
@@ -205,6 +246,19 @@ export function VehicleManagement() {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, activeFilters]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        closeDropdown();
+      }
+    }
+
+    if (openDropdownId) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [openDropdownId, closeDropdown]);
 
   async function fetchData() {
     try {
@@ -334,21 +388,192 @@ export function VehicleManagement() {
   // --- View ---
   async function openViewModal(vehicle: Vehicle) {
     setViewVehicle(vehicle);
-    setLinkedJobOrders([]);
-    setLoadingLinked(true);
     setShowViewModal(true);
+  }
+
+  async function openRepairHistoryModal(vehicle: Vehicle) {
+    setRepairHistoryVehicle(vehicle);
+    setRepairHistory([]);
+    setLoadingRepairHistory(true);
+    setShowRepairHistoryModal(true);
+    closeDropdown();
 
     try {
-      const jobOrdersRes = await jobOrdersApi.getAll({
-        vehicle_id: vehicle.id,
-        include_deleted: false,
-        limit: 1000,
-      });
-      setLinkedJobOrders(jobOrdersRes.data || []);
-    } catch {
-      setLinkedJobOrders([]);
+      const history = await vehiclesApi.getRepairHistory(vehicle.id);
+      setRepairHistory(history || []);
+    } catch (err) {
+      setRepairHistory([]);
+      showToast.error(err instanceof Error ? err.message : "Failed to load repair history");
     } finally {
-      setLoadingLinked(false);
+      setLoadingRepairHistory(false);
+    }
+  }
+
+  async function openExternalRepairModal(vehicle: Vehicle) {
+    setExternalRepairVehicle(vehicle);
+    setExternalRepairs([]);
+    setOriginalExternalRepairs([]);
+    setExternalRepairError(null);
+    setEditingExternalRepairId(null);
+    setExternalRepairForm({
+      provider_name: "",
+      description: "",
+      service_date: new Date().toISOString().split("T")[0] || "",
+      notes: "",
+    });
+    setLoadingExternalRepairs(true);
+    setShowExternalRepairModal(true);
+    closeDropdown();
+
+    try {
+      const records = await vehiclesApi.getExternalRepairs(vehicle.id);
+      setExternalRepairs(records || []);
+      setOriginalExternalRepairs(records || []);
+    } catch (err) {
+      setExternalRepairs([]);
+      setOriginalExternalRepairs([]);
+      setExternalRepairError(err instanceof Error ? err.message : "Failed to load external repairs");
+    } finally {
+      setLoadingExternalRepairs(false);
+    }
+  }
+
+  function handleAddExternalRepair() {
+    setExternalRepairError(null);
+
+    if (!externalRepairForm.provider_name.trim()) {
+      setExternalRepairError("External shop is required");
+      return;
+    }
+    if (!externalRepairForm.description.trim()) {
+      setExternalRepairError("Repair description is required");
+      return;
+    }
+    if (!externalRepairForm.service_date) {
+      setExternalRepairError("Date is required");
+      return;
+    }
+
+    if (editingExternalRepairId) {
+      setExternalRepairs((prev) =>
+        prev.map((item) =>
+          item.id === editingExternalRepairId
+            ? {
+              ...item,
+              repair_name: externalRepairForm.provider_name.trim(),
+              provider_name: externalRepairForm.provider_name.trim(),
+              description: externalRepairForm.description.trim(),
+              service_date: externalRepairForm.service_date,
+              notes: externalRepairForm.notes.trim() || null,
+            }
+            : item
+        )
+      );
+      setEditingExternalRepairId(null);
+    } else {
+      const newItem: VehicleExternalRepair = {
+        id: `new-${crypto.randomUUID()}`,
+        vehicle_id: externalRepairVehicle?.id || "",
+        repair_name: externalRepairForm.provider_name.trim(),
+        provider_name: externalRepairForm.provider_name.trim(),
+        description: externalRepairForm.description.trim(),
+        service_date: externalRepairForm.service_date,
+        notes: externalRepairForm.notes.trim() || null,
+        created_by: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      setExternalRepairs((prev) => [...prev, newItem]);
+    }
+
+    setExternalRepairForm({
+      provider_name: "",
+      description: "",
+      service_date: new Date().toISOString().split("T")[0] || "",
+      notes: "",
+    });
+  }
+
+  function startEditExternalRepair(item: VehicleExternalRepair) {
+    setEditingExternalRepairId(item.id);
+    setExternalRepairForm({
+      provider_name: item.provider_name || "",
+      description: item.description || "",
+      service_date: item.service_date ? String(item.service_date).split("T")[0] || "" : "",
+      notes: item.notes || "",
+    });
+    setExternalRepairError(null);
+  }
+
+  function cancelEditExternalRepair() {
+    setEditingExternalRepairId(null);
+    setExternalRepairForm({
+      provider_name: "",
+      description: "",
+      service_date: new Date().toISOString().split("T")[0] || "",
+      notes: "",
+    });
+    setExternalRepairError(null);
+  }
+
+  function handleDeleteExternalRepair(id: string) {
+    setExternalRepairs((prev) => prev.filter((item) => item.id !== id));
+  }
+
+  async function handleSaveExternalRepairs() {
+    if (!externalRepairVehicle) return;
+    setSavingExternalRepair(true);
+    setExternalRepairError(null);
+
+    try {
+      const originalIds = new Set(originalExternalRepairs.map((r) => r.id));
+      const currentIds = new Set(externalRepairs.map((r) => r.id));
+
+      const toDelete = originalExternalRepairs.filter((r) => !currentIds.has(r.id));
+      const toCreate = externalRepairs.filter((r) => r.id.startsWith("new-"));
+      const toUpdate = externalRepairs.filter((r) => {
+        if (r.id.startsWith("new-")) return false;
+        if (!originalIds.has(r.id)) return false;
+        const orig = originalExternalRepairs.find((o) => o.id === r.id);
+        if (!orig) return false;
+        return (
+          (orig.provider_name || "") !== (r.provider_name || "") ||
+          (orig.description || "") !== (r.description || "") ||
+          String(orig.service_date).split("T")[0] !== String(r.service_date).split("T")[0] ||
+          (orig.notes || "") !== (r.notes || "")
+        );
+      });
+
+      await Promise.all([
+        ...toDelete.map((r) => vehiclesApi.deleteExternalRepair(externalRepairVehicle.id, r.id)),
+        ...toCreate.map((r) =>
+          vehiclesApi.createExternalRepair(externalRepairVehicle.id, {
+            repair_name: (r.provider_name || "").trim(),
+            provider_name: (r.provider_name || "").trim(),
+            description: (r.description || "").trim(),
+            service_date: String(r.service_date).split("T")[0] || "",
+            notes: r.notes || undefined,
+          })
+        ),
+        ...toUpdate.map((r) =>
+          vehiclesApi.updateExternalRepair(externalRepairVehicle.id, r.id, {
+            repair_name: (r.provider_name || "").trim(),
+            provider_name: (r.provider_name || "").trim(),
+            description: (r.description || "").trim(),
+            service_date: String(r.service_date).split("T")[0] || "",
+            notes: r.notes || null,
+          })
+        ),
+      ]);
+
+      setShowExternalRepairModal(false);
+      setExternalRepairVehicle(null);
+      showToast.success("External repairs saved successfully");
+      fetchData();
+    } catch (err) {
+      setExternalRepairError(err instanceof Error ? err.message : "Failed to save external repairs");
+    } finally {
+      setSavingExternalRepair(false);
     }
   }
 
@@ -549,6 +774,39 @@ export function VehicleManagement() {
                 className: "flex items-center gap-1 text-sm text-negative hover:text-negative-900",
               }] : []),
             ]}
+            extraActions={
+              <div className="relative" ref={openDropdownId === `vehicle-${vehicle.id}` ? dropdownRef : undefined}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenDropdownId(openDropdownId === `vehicle-${vehicle.id}` ? null : `vehicle-${vehicle.id}`);
+                  }}
+                  className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+                  title="More actions"
+                >
+                  <LuEllipsisVertical className="w-4 h-4" /> More
+                </button>
+                {openDropdownId === `vehicle-${vehicle.id}` && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); closeDropdown(); openRepairHistoryModal(vehicle); }}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                    >
+                      <LuHistory className="w-4 h-4" /> Repair History
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); closeDropdown(); openExternalRepairModal(vehicle); }}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                    >
+                      <LuWrench className="w-4 h-4" /> External Repair
+                    </button>
+                  </div>
+                )}
+              </div>
+            }
           />
         ))}
       </CardGrid>
@@ -805,39 +1063,6 @@ export function VehicleManagement() {
               />
             </ModalSection>
 
-            <ModalSection title="Linked Job Orders">
-              {loadingLinked ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {[1, 2].map((i) => (
-                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
-                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
-                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
-                    </div>
-                  ))}
-                </div>
-              ) : linkedJobOrders.length > 0 ? (
-                <div className="max-h-40 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {linkedJobOrders.map((jo, idx) => (
-                    <div
-                      key={jo.id}
-                      className={`bg-neutral-100 rounded-xl px-4 py-3${
-                        idx === linkedJobOrders.length - 1 && linkedJobOrders.length % 2 !== 0 ? " sm:col-span-2" : ""
-                      }`}
-                    >
-                      <p className="font-medium text-neutral-950 text-sm">
-                        {jo.order_number}
-                      </p>
-                      <p className="text-xs text-neutral-900">
-                        {jo.status} · {formatDate(jo.created_at)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-neutral-900 text-center py-3">No job orders linked.</p>
-              )}
-            </ModalSection>
-
             <ModalSection title="Timestamps">
               <div className="grid grid-cols-2 gap-4">
                 <ModalInput
@@ -856,6 +1081,194 @@ export function VehicleManagement() {
                 />
               </div>
             </ModalSection>
+          </div>
+        )}
+      </Modal>
+
+      {/* Vehicle Repair History Modal */}
+      <Modal
+        isOpen={showRepairHistoryModal && !!repairHistoryVehicle}
+        onClose={() => setShowRepairHistoryModal(false)}
+        title="Vehicle Repair History"
+        maxWidth="xl"
+      >
+        {repairHistoryVehicle && (
+          <div>
+            <ModalSection title="Vehicle">
+              <ModalInput
+                type="text"
+                value={`${repairHistoryVehicle.plate_number} · ${repairHistoryVehicle.model}`}
+                onChange={() => { }}
+                placeholder="Vehicle"
+                disabled
+              />
+            </ModalSection>
+
+            <ModalSection title="History">
+              {loadingRepairHistory ? (
+                <div className="space-y-4">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
+                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
+                    </div>
+                  ))}
+                </div>
+              ) : repairHistory.length > 0 ? (
+                <div className="space-y-3">
+                  {repairHistory.map((entry) => (
+                    <div key={`${entry.history_type}-${entry.id}`} className="bg-neutral-100 rounded-xl px-4 py-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <LuHistory className="w-3.5 h-3.5 text-neutral-600" />
+                        <span className="text-xs font-semibold text-neutral-950 uppercase truncate">{entry.title}</span>
+                        <span className="text-xs text-neutral-600 ml-auto">{formatDateTime(entry.occurred_at)}</span>
+                      </div>
+                      <p className="text-xs text-neutral-900">
+                        From: {entry.history_type}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-neutral-900 text-center py-3">No repair history available.</p>
+              )}
+            </ModalSection>
+          </div>
+        )}
+      </Modal>
+
+      {/* External Repair Modal */}
+      <Modal
+        isOpen={showExternalRepairModal && !!externalRepairVehicle}
+        onClose={() => { setShowExternalRepairModal(false); setExternalRepairVehicle(null); }}
+        title="External Repair"
+        maxWidth="xl"
+      >
+        {externalRepairVehicle && (
+          <div>
+            <ModalSection title={editingExternalRepairId ? "Edit Repair" : "Add Repair"}>
+              <ModalInput
+                type="text"
+                value={externalRepairForm.provider_name}
+                onChange={(v) => setExternalRepairForm((prev) => ({ ...prev, provider_name: v }))}
+                placeholder="External Shop *"
+              />
+              <textarea
+                value={externalRepairForm.description}
+                onChange={(e) => setExternalRepairForm((prev) => ({ ...prev, description: e.target.value }))}
+                placeholder="Repair Description *"
+                rows={3}
+                className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
+              />
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <ModalInput
+                    type="text"
+                    value={externalRepairForm.notes}
+                    onChange={(v) => setExternalRepairForm((prev) => ({ ...prev, notes: v }))}
+                    placeholder="Notes"
+                  />
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="date"
+                    value={externalRepairForm.service_date}
+                    onChange={(e) => setExternalRepairForm((prev) => ({ ...prev, service_date: e.target.value }))}
+                    className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all"
+                  />
+                </div>
+                {editingExternalRepairId ? (
+                  <button
+                    type="button"
+                    onClick={cancelEditExternalRepair}
+                    className="px-4.5 py-4.5 bg-neutral-200 text-neutral-900 rounded-xl hover:bg-neutral-300 transition-colors shrink-0"
+                    title="Cancel edit"
+                  >
+                    <LuX className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleAddExternalRepair}
+                    className="px-4.5 py-4.5 bg-primary text-white rounded-xl hover:bg-primary-950 transition-colors shrink-0"
+                    title="Add external repair"
+                  >
+                    <LuPlus className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              <ModalError message={externalRepairError} />
+            </ModalSection>
+
+            <ModalSection title="Repairs">
+              {loadingExternalRepairs ? (
+                <div className="space-y-4">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-neutral-100 rounded-xl px-4 py-3 animate-pulse">
+                      <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-neutral-200 rounded w-1/2" />
+                    </div>
+                  ))}
+                </div>
+              ) : externalRepairs.length > 0 ? (
+                <div className="space-y-4">
+                  {externalRepairs.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`flex items-center justify-between bg-neutral-100 rounded-xl px-4 py-3 ${editingExternalRepairId === item.id ? "ring-2 ring-primary" : ""}`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-neutral-950 text-sm truncate">{item.provider_name}</p>
+                        <p className="text-xs text-neutral-900 line-clamp-1">{item.description}</p>
+                        <p className="text-xs text-neutral-900">{formatDate(item.service_date)}</p>
+                      </div>
+                      <div className="flex items-center gap-2 ml-3">
+                        {editingExternalRepairId === item.id ? (
+                          <button
+                            type="button"
+                            onClick={handleAddExternalRepair}
+                            className="text-positive hover:text-positive-950 p-1"
+                            title="Save repair"
+                          >
+                            <LuCheck className="w-4 h-4" />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => startEditExternalRepair(item)}
+                            className="text-primary hover:text-primary-900 p-1"
+                            title="Edit repair"
+                          >
+                            <LuPencil className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteExternalRepair(item.id)}
+                          className="text-negative hover:text-negative-900 p-1"
+                          title="Delete repair"
+                        >
+                          <LuX className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-neutral-900 text-center py-4">
+                  No repairs yet. Fill in the details above and click +.
+                </p>
+              )}
+            </ModalSection>
+
+            <ModalButtons
+              onCancel={() => { setShowExternalRepairModal(false); setExternalRepairVehicle(null); }}
+              submitText={savingExternalRepair ? "Saving..." : "Save Changes"}
+              loading={savingExternalRepair}
+              onSubmit={handleSaveExternalRepairs}
+              type="button"
+            />
           </div>
         )}
       </Modal>

@@ -475,6 +475,66 @@ export const vehiclesApi = {
       `/api/vehicles/${id}/references`
     );
   },
+
+  getExternalRepairs: async (id: string) => {
+    return fetchWithAuth<import("../types").VehicleExternalRepair[]>(
+      `/api/vehicles/${id}/external-repairs`
+    );
+  },
+
+  createExternalRepair: async (
+    id: string,
+    data: {
+      repair_name: string;
+      provider_name: string;
+      description: string;
+      service_date: string;
+      notes?: string;
+    }
+  ) => {
+    return fetchWithAuth<import("../types").VehicleExternalRepair>(
+      `/api/vehicles/${id}/external-repairs`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    );
+  },
+
+  updateExternalRepair: async (
+    vehicleId: string,
+    repairId: string,
+    data: {
+      repair_name: string;
+      provider_name: string;
+      description: string;
+      service_date: string;
+      notes?: string | null;
+    }
+  ) => {
+    return fetchWithAuth<import("../types").VehicleExternalRepair>(
+      `/api/vehicles/${vehicleId}/external-repairs/${repairId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }
+    );
+  },
+
+  deleteExternalRepair: async (vehicleId: string, repairId: string) => {
+    return fetchWithAuth<{ message: string }>(
+      `/api/vehicles/${vehicleId}/external-repairs/${repairId}`,
+      {
+        method: "DELETE",
+      }
+    );
+  },
+
+  getRepairHistory: async (id: string) => {
+    return fetchWithAuth<import("../types").VehicleRepairHistory[]>(
+      `/api/vehicles/${id}/repair-history`
+    );
+  },
 };
 
 // Packages API
