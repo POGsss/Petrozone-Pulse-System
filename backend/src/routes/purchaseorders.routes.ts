@@ -8,12 +8,32 @@ import { logFailedAction, fixAuditLogUser, filterUnchangedFields } from "../lib/
 const router = Router();
 const PO_NUMBER_PATTERN = /^PO-[A-Z0-9]+-[0-9]{1,6}$/;
 const RECEIPT_BUCKET = "purchase-order-receipts";
+const RESTORABLE_PO_STATUSES = ["draft", "submitted", "approved", "received", "cancelled"] as const;
 const ALLOWED_RECEIPT_MIME_TYPES = [
   "image/jpeg",
   "image/jpg",
   "image/png",
   "application/pdf",
 ];
+
+function isRestorablePurchaseOrderStatus(value: unknown): value is (typeof RESTORABLE_PO_STATUSES)[number] {
+  return typeof value === "string" && (RESTORABLE_PO_STATUSES as readonly string[]).includes(value);
+}
+
+function mapPoActionToStatus(action: string | null | undefined): (typeof RESTORABLE_PO_STATUSES)[number] | null {
+  switch (action) {
+    case "CREATE":
+      return "draft";
+    case "SUBMIT":
+      return "submitted";
+    case "APPROVE":
+      return "approved";
+    case "CANCEL":
+      return "cancelled";
+    default:
+      return null;
+  }
+}
 
 const receiptUpload = multer({
   storage: multer.memoryStorage(),
@@ -1171,6 +1191,7 @@ router.delete(
           p_new_values: {
             po_number: po.po_number,
             status: "deactivated",
+            previous_status: po.status,
             type: "deactivation",
             deactivated_by: req.user!.id,
             deactivated_at: new Date().toISOString(),
@@ -1191,6 +1212,118 @@ router.delete(
         error instanceof Error ? error.message : "Failed to delete purchase order"
       );
       res.status(500).json({ error: "Failed to delete purchase order" });
+    }
+  }
+);
+
+// --- PATCH /api/purchase-orders/:id/restore ---------------------------
+// Restore a deactivated PO to its previous status
+// Roles: HM, POC, JS, R
+router.patch(
+  "/:id/restore",
+  requireRoles("HM", "POC", "JS", "R"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const poId = req.params.id as string;
+
+      const { data: po, error: fetchError } = await supabaseAdmin
+        .from("purchase_orders")
+        .select("id, po_number, branch_id, status")
+        .eq("id", poId)
+        .eq("status", "deactivated")
+        .single();
+
+      if (fetchError) {
+        if (fetchError.code === "PGRST116") {
+          res.status(404).json({ error: "Deactivated purchase order not found" });
+          return;
+        }
+        res.status(500).json({ error: fetchError.message });
+        return;
+      }
+
+      if (
+        !req.user!.roles.includes("HM") &&
+        !req.user!.branchIds.includes(po.branch_id)
+      ) {
+        res.status(403).json({ error: "No access to this branch" });
+        return;
+      }
+
+      let restoredStatus: (typeof RESTORABLE_PO_STATUSES)[number] | null = null;
+
+      const { data: deactivationAudit } = await supabaseAdmin
+        .from("audit_logs")
+        .select("new_values")
+        .eq("entity_type", "PURCHASE_ORDER")
+        .eq("entity_id", poId)
+        .eq("action", "PO_DEACTIVATED")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const newValues = (deactivationAudit?.new_values ?? null) as Record<string, unknown> | null;
+      if (newValues && isRestorablePurchaseOrderStatus(newValues.previous_status)) {
+        restoredStatus = newValues.previous_status;
+      }
+
+      if (!restoredStatus) {
+        const { data: latestStatusAction } = await supabaseAdmin
+          .from("audit_logs")
+          .select("action")
+          .eq("entity_type", "PURCHASE_ORDER")
+          .eq("entity_id", poId)
+          .in("action", ["CANCEL", "APPROVE", "SUBMIT", "CREATE"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        restoredStatus = mapPoActionToStatus(latestStatusAction?.action);
+      }
+
+      if (!restoredStatus) {
+        restoredStatus = "submitted";
+      }
+
+      const { error: updateError } = await supabaseAdmin
+        .from("purchase_orders")
+        .update({ status: restoredStatus })
+        .eq("id", poId);
+
+      if (updateError) {
+        res.status(500).json({ error: updateError.message });
+        return;
+      }
+
+      try {
+        await supabaseAdmin.rpc("log_admin_action", {
+          p_action: "PO_RESTORED",
+          p_entity_type: "PURCHASE_ORDER",
+          p_entity_id: poId,
+          p_performed_by_user_id: req.user!.id,
+          p_performed_by_branch_id: req.user!.branchIds[0] || null,
+          p_new_values: {
+            po_number: po.po_number,
+            status: restoredStatus,
+            restored_by: req.user!.id,
+            restored_at: new Date().toISOString(),
+          },
+        });
+      } catch (auditErr) {
+        console.error("Audit log error:", auditErr);
+      }
+
+      res.json({ message: `Purchase order ${po.po_number} restored to ${restoredStatus}` });
+    } catch (error) {
+      console.error("Restore purchase order error:", error);
+      await logFailedAction(
+        req,
+        "PO_RESTORED",
+        "PURCHASE_ORDER",
+        (req.params.id as string) || null,
+        error instanceof Error ? error.message : "Failed to restore purchase order"
+      );
+      res.status(500).json({ error: "Failed to restore purchase order" });
     }
   }
 );

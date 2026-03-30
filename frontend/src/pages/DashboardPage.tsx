@@ -148,8 +148,8 @@ function getNavItemsForRole(roles: string[]): NavItem[] {
     items.push({ id: "packages", label: "Packages", icon: <NavIcons.Packages /> });
   }
 
-  // Inventory: HM, POC, JS
-  if (hasAnyRole("HM", "POC", "JS")) {
+  // Inventory: HM, POC, JS, R
+  if (hasAnyRole("HM", "POC", "JS", "R")) {
     items.push({ id: "inventory", label: "Inventory", icon: <NavIcons.Inventory /> });
   }
 
@@ -228,7 +228,7 @@ export function DashboardPage() {
   const canViewCustomers = hasAnyRole("HM", "POC", "JS", "R", "T");
   const canViewVehicles = hasAnyRole("HM", "POC", "JS", "R");
   const canViewPackages = hasAnyRole("HM", "POC", "JS", "R");
-  const canViewInventory = hasAnyRole("HM", "POC", "JS");
+  const canViewInventory = hasAnyRole("HM", "POC", "JS", "R");
   const canViewPurchaseOrders = hasAnyRole("HM", "POC", "JS", "R");
   const canViewSuppliers = hasAnyRole("HM", "POC", "JS");
   const canViewNotifications = hasAnyRole("HM", "POC", "JS", "R", "T");
@@ -279,7 +279,7 @@ export function DashboardPage() {
           <PackagesManagement />
       )}
 
-      {/* Inventory Management - HM, POC, JS */}
+        {/* Inventory Management - HM, POC, JS, R */}
       {activeNav === "inventory" && canViewInventory && (
           <InventoryManagement />
       )}

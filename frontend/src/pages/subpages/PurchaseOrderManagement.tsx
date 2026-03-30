@@ -11,6 +11,7 @@ import {
   LuBadgeCheck,
   LuClipboardList,
   LuFileText,
+  LuRefreshCw,
   LuX,
   LuCheck,
 } from "react-icons/lu";
@@ -174,6 +175,7 @@ export function PurchaseOrderManagement() {
   // Delete modal
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [restoreLoadingId, setRestoreLoadingId] = useState<string | null>(null);
   const [orderToDelete, setOrderToDelete] = useState<PurchaseOrder | null>(null);
   const [orderHasReferences, setOrderHasReferences] = useState(false);
 
@@ -268,7 +270,7 @@ export function PurchaseOrderManagement() {
     setCurrentPage(1);
   }
 
-  async function fetchData(statusFilter: string = "all") {
+  async function fetchData(statusFilter: string = filterStatus) {
     try {
       setLoading(true);
       setError(null);
@@ -726,6 +728,19 @@ export function PurchaseOrderManagement() {
     }
   }
 
+  async function handleRestore(order: PurchaseOrder) {
+    try {
+      setRestoreLoadingId(order.id);
+      const result = await purchaseOrdersApi.restore(order.id);
+      showToast.success(result.message || "Purchase order restored successfully");
+      fetchData();
+    } catch (err) {
+      showToast.error(err instanceof Error ? err.message : "Failed to restore purchase order");
+    } finally {
+      setRestoreLoadingId(null);
+    }
+  }
+
   // ─── Submit PO confirmation ──────────────────────────────────────────
   function openSubmitConfirm(order: PurchaseOrder) {
     setOrderToSubmit(order);
@@ -959,8 +974,9 @@ export function PurchaseOrderManagement() {
               const dropdownActions = getDropdownActions(order);
               const showDots = dropdownActions.length > 0;
               const canEditThis = canUpdate && ["draft", "submitted"].includes(order.status);
-              const canDeleteThis = canDelete && order.status !== "received";
-              const hasActions = canEditThis || canDeleteThis || showDots;
+              const canDeleteThis = canDelete && order.status !== "received" && order.status !== "deactivated";
+              const canRestoreThis = canDelete && order.status === "deactivated";
+              const hasActions = canEditThis || canDeleteThis || canRestoreThis || showDots;
 
               return (
                 <MobileCard
@@ -985,6 +1001,16 @@ export function PurchaseOrderManagement() {
                         )}
                         {canDeleteThis && (
                           <button onClick={(e) => { e.stopPropagation(); openDeleteModal(order); }} className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"><LuTrash2 className="w-4 h-4" /> Delete</button>
+                        )}
+                        {canRestoreThis && (
+                          <button
+                            onClick={async (e) => { e.stopPropagation(); await handleRestore(order); }}
+                            disabled={restoreLoadingId === order.id}
+                            className="flex items-center gap-1 text-sm text-positive hover:text-positive-950 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <LuRefreshCw className="w-4 h-4" />
+                            {restoreLoadingId === order.id ? "Restoring..." : "Restore"}
+                          </button>
                         )}
                         {showDots && (
                           <div className="relative" ref={openDropdownId === `card-${order.id}` ? dropdownRef : undefined}>
@@ -1052,6 +1078,8 @@ export function PurchaseOrderManagement() {
               {paginatedItems.map((order) => {
                 const dropdownActions = getDropdownActions(order);
                 const showDots = dropdownActions.length > 0;
+                const canDeleteThis = canDelete && order.status !== "received" && order.status !== "deactivated";
+                const canRestoreThis = canDelete && order.status === "deactivated";
 
                 return (
                   <DesktopTableRow key={order.id} onClick={() => openViewModal(order)}>
@@ -1085,13 +1113,23 @@ export function PurchaseOrderManagement() {
                             <LuPencil className="w-4 h-4" />
                           </button>
                         )}
-                        {canDelete && order.status !== "received" && (
+                        {canDeleteThis && (
                           <button
                             onClick={(e) => { e.stopPropagation(); openDeleteModal(order); }}
                             className="p-2 text-negative-950 hover:text-negative-900 hover:bg-negative-50 rounded-lg transition-colors"
                             title="Delete"
                           >
                             <LuTrash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        {canRestoreThis && (
+                          <button
+                            onClick={async (e) => { e.stopPropagation(); await handleRestore(order); }}
+                            disabled={restoreLoadingId === order.id}
+                            className="p-2 text-positive hover:text-positive-950 hover:bg-positive-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Restore"
+                          >
+                            <LuRefreshCw className={`w-4 h-4 ${restoreLoadingId === order.id ? "animate-spin" : ""}`} />
                           </button>
                         )}
                         {showDots && (
@@ -1159,7 +1197,8 @@ export function PurchaseOrderManagement() {
               type="number"
               value={addForm.po_number}
               onChange={(v) => setAddForm({ ...addForm, po_number: v.replace(/\D/g, "").slice(0, 6) })}
-              placeholder="PO Number Suffix (max 6 digits; auto if blank)"
+              placeholder="PO Number (Auto-generated)"
+              disabled
             />
             <div className="grid grid-cols-2 gap-4">
               <ModalSelect

@@ -140,11 +140,11 @@ export function InventoryManagement() {
   const isHM = userRoles.includes("HM");
 
   // Permission checks
-  const canCreate = userRoles.some((r) => ["HM", "POC", "JS"].includes(r));
+  const canCreate = userRoles.some((r) => ["HM", "POC", "JS", "R"].includes(r));
   const canUpdate = canCreate;
   const canDelete = canCreate;
   const canAdjust = userRoles.some((r) => ["HM", "POC"].includes(r));
-  const canStockIn = canCreate;
+  const canStockIn = userRoles.some((r) => ["HM", "POC", "JS"].includes(r));
   const canApprove = userRoles.some((r) => ["HM", "POC"].includes(r));
 
   // Data state

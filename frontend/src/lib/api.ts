@@ -1222,6 +1222,12 @@ export const purchaseOrdersApi = {
     });
   },
 
+  restore: async (id: string) => {
+    return fetchWithAuth<{ message: string }>(`/api/purchase-orders/${id}/restore`, {
+      method: "PATCH",
+    });
+  },
+
   submit: async (id: string) => {
     return fetchWithAuth<import("../types").PurchaseOrder>(`/api/purchase-orders/${id}/submit`, {
       method: "PATCH",

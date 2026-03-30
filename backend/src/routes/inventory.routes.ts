@@ -253,10 +253,10 @@ router.get(
 
 // GET /api/inventory/:id/references
 // Check whether item has references that require deactivation instead of hard delete
-// Roles: HM, POC, JS
+// Roles: HM, POC, JS, R
 router.get(
   "/:id/references",
-  requireRoles("HM", "POC", "JS"),
+  requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const itemId = req.params.id as string;
@@ -321,10 +321,10 @@ router.get(
 
 // POST /api/inventory
 // Add inventory item (UC45)
-// Roles: HM, POC, JS
+// Roles: HM, POC, JS, R
 router.post(
   "/",
-  requireRoles("HM", "POC", "JS"),
+  requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const {
@@ -448,10 +448,10 @@ router.post(
 
 // PUT /api/inventory/:id
 // Update inventory item (UC47)
-// Roles: HM, POC, JS
+// Roles: HM, POC, JS, R
 router.put(
   "/:id",
-  requireRoles("HM", "POC", "JS"),
+  requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const itemId = req.params.id as string;
@@ -861,10 +861,10 @@ router.patch(
 
 // DELETE /api/inventory/:id
 // Hard-delete if no references, soft-delete (deactivate) if referenced
-// Roles: HM, POC, JS
+// Roles: HM, POC, JS, R
 router.delete(
   "/:id",
-  requireRoles("HM", "POC", "JS"),
+  requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const itemId = req.params.id as string;

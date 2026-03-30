@@ -194,10 +194,10 @@ export function JobOrderManagement() {
   const isHM = userRoles.includes("HM");
 
   // Permission checks
-  const canCreate = userRoles.some((r) => ["POC", "JS", "R"].includes(r));
-  const canUpdate = userRoles.some((r) => ["POC", "JS", "R", "T"].includes(r));
-  const canEditItems = userRoles.some((r) => ["POC", "JS", "R"].includes(r));
-  const canDelete = userRoles.some((r) => ["POC", "JS", "R"].includes(r));
+  const canCreate = userRoles.some((r) => ["HM", "POC", "JS", "R"].includes(r));
+  const canUpdate = userRoles.some((r) => ["HM", "POC", "JS", "R", "T"].includes(r));
+  const canEditItems = userRoles.some((r) => ["HM", "POC", "JS", "R"].includes(r));
+  const canDelete = userRoles.some((r) => ["HM", "POC", "JS", "R"].includes(r));
   const canRepair = userRoles.some((r) => ["HM", "POC", "JS", "R", "T"].includes(r));
   const canApproval = userRoles.some((r) => ["R", "T"].includes(r));
   const canApproveRework = userRoles.includes("HM");
@@ -2133,21 +2133,18 @@ export function JobOrderManagement() {
                 onClick: (e: React.MouseEvent) => { e.stopPropagation(); openDeleteConfirmModal(order); },
                 className: "flex items-center gap-1 text-sm text-negative hover:text-negative-900",
               }] : []),
+              ...(order.status === "deactivated" && canDelete ? [{
+                label: "Restore",
+                icon: <LuRefreshCw className="w-4 h-4" />,
+                onClick: async (e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  await handleRestoreOrder(order);
+                },
+                className: "flex items-center gap-1 text-sm text-positive hover:text-positive-950",
+              }] : []),
             ]}
             extraActions={
               <div className="relative" ref={openDropdownId === `card-${order.id}` ? dropdownRef : undefined}>
-                {canDelete && order.status === "deactivated" && (
-                  <button
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      await handleRestoreOrder(order);
-                    }}
-                    className="inline-flex items-center gap-1 text-sm text-positive hover:text-positive-950 mr-2"
-                    title="Restore job order"
-                  >
-                    <LuRefreshCw className="w-4 h-4" /> Restore
-                  </button>
-                )}
                 <button
                   onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${order.id}` ? null : `card-${order.id}`); }}
                   className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"

@@ -700,11 +700,11 @@ router.get(
 /**
  * POST /api/job-orders
  * Create a new job order with items
- * Roles: POC, JS, R (create)
+ * Roles: HM, POC, JS, R (create)
  */
 router.post(
   "/",
-  requireRoles("POC", "JS", "R"),
+  requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const {
@@ -1149,11 +1149,11 @@ router.post(
  * PUT /api/job-orders/:id
  * Update a job order notes (only when status is "draft")
  * Immutability rule: once past draft, the order is frozen.
- * Roles: POC, JS, R, T
+ * Roles: HM, POC, JS, R, T
  */
 router.put(
   "/:id",
-  requireRoles("POC", "JS", "R", "T"),
+  requireRoles("HM", "POC", "JS", "R", "T"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const orderId = req.params.id as string;
@@ -1264,11 +1264,11 @@ router.put(
 /**
  * PATCH /api/job-orders/:id
  * Update draft job order with optional notes and full line replacement.
- * Roles: POC, JS, R
+ * Roles: HM, POC, JS, R
  */
 router.patch(
   "/:id",
-  requireRoles("POC", "JS", "R"),
+  requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const orderId = req.params.id as string;
@@ -1388,11 +1388,11 @@ router.patch(
  * Conditional delete:
  *   - Hard delete if status is "draft" — cascades items, snapshots, repairs
  *   - Soft-deactivate (is_deleted = true) for all other statuses
- * Roles: POC, JS, R (DRAFT only per spec)
+ * Roles: HM, POC, JS, R (DRAFT only per spec)
  */
 router.delete(
   "/:id",
-  requireRoles("POC", "JS", "R"),
+  requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const orderId = req.params.id as string;
@@ -1535,11 +1535,11 @@ router.delete(
 /**
  * PATCH /api/job-orders/:id/restore
  * Restore a soft-deactivated job order by setting is_deleted=false
- * Roles: POC, JS, R
+ * Roles: HM, POC, JS, R
  */
 router.patch(
   "/:id/restore",
-  requireRoles("POC", "JS", "R"),
+  requireRoles("HM", "POC", "JS", "R"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const orderId = req.params.id as string;
