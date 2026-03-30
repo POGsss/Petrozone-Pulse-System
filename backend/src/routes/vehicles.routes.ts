@@ -683,12 +683,6 @@ router.post(
         return;
       }
 
-      // Validation: orcr required
-      if (!orcr || !orcr.trim()) {
-        res.status(400).json({ error: "OR/CR is required" });
-        return;
-      }
-
       // Validation: model required
       if (!model || !model.trim()) {
         res.status(400).json({ error: "Model is required" });
@@ -762,7 +756,7 @@ router.post(
           plate_number: plate_number.trim().toUpperCase(),
           vehicle_type,
           vehicle_class: vehicle_class || "light",
-          orcr: orcr.trim(),
+          orcr: orcr?.trim() || "",
           model: model.trim(),
           customer_id,
           branch_id,
@@ -902,11 +896,7 @@ router.put(
       }
 
       if (orcr !== undefined) {
-        if (!orcr.trim()) {
-          res.status(400).json({ error: "OR/CR cannot be empty" });
-          return;
-        }
-        updateData.orcr = orcr.trim();
+        updateData.orcr = orcr?.trim() || "";
       }
 
       if (model !== undefined) {

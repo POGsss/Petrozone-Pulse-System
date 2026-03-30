@@ -334,10 +334,6 @@ export function VehicleManagement() {
       setAddError("Plate number is required");
       return;
     }
-    if (!addForm.orcr.trim()) {
-      setAddError("OR/CR is required");
-      return;
-    }
     if (!addForm.model.trim()) {
       setAddError("Model is required");
       return;
@@ -607,10 +603,6 @@ export function VehicleManagement() {
       setEditError("Plate number cannot be empty");
       return;
     }
-    if (!editForm.orcr.trim()) {
-      setEditError("OR/CR cannot be empty");
-      return;
-    }
     if (!editForm.model.trim()) {
       setEditError("Model cannot be empty");
       return;
@@ -863,8 +855,7 @@ export function VehicleManagement() {
               type="text"
               value={addForm.orcr}
               onChange={(v) => setAddForm((prev) => ({ ...prev, orcr: v }))}
-              placeholder="OR/CR *"
-              required
+              placeholder="OR/CR (optional)"
             />
           </ModalSection>
 
@@ -1317,8 +1308,7 @@ export function VehicleManagement() {
               type="text"
               value={editForm.orcr}
               onChange={(v) => setEditForm((prev) => ({ ...prev, orcr: v }))}
-              placeholder="OR/CR *"
-              required
+              placeholder="OR/CR (optional)"
             />
             <ModalSelect
               value={editForm.status}
