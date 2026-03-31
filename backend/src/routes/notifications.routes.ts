@@ -579,7 +579,7 @@ router.delete(
 
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "HARD_DELETE",
+          p_action: "DELETE",
           p_entity_type: "NOTIFICATION",
           p_entity_id: notificationId,
           p_performed_by_user_id: req.user!.id,

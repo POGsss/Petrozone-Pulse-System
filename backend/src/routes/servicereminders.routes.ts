@@ -610,7 +610,7 @@ router.post(
         // Audit log
         try {
           await supabaseAdmin.rpc("log_admin_action", {
-            p_action: "SEND",
+            p_action: "UPDATE",
             p_entity_type: "SERVICE_REMINDER",
             p_entity_id: reminderId,
             p_performed_by_user_id: req.user!.id,
@@ -705,7 +705,7 @@ router.post(
       // Audit log
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "CANCEL",
+          p_action: "UPDATE",
           p_entity_type: "SERVICE_REMINDER",
           p_entity_id: reminderId,
           p_performed_by_user_id: req.user!.id,

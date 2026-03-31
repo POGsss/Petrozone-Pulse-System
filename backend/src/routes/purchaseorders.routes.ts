@@ -20,7 +20,17 @@ function isRestorablePurchaseOrderStatus(value: unknown): value is (typeof RESTO
   return typeof value === "string" && (RESTORABLE_PO_STATUSES as readonly string[]).includes(value);
 }
 
-function mapPoActionToStatus(action: string | null | undefined): (typeof RESTORABLE_PO_STATUSES)[number] | null {
+function mapPoActionToStatus(
+  action: string | null | undefined,
+  newValues?: Record<string, unknown> | null
+): (typeof RESTORABLE_PO_STATUSES)[number] | null {
+  if (action === "UPDATE") {
+    const statusFromNewValues = newValues?.status;
+    if (isRestorablePurchaseOrderStatus(statusFromNewValues)) {
+      return statusFromNewValues;
+    }
+  }
+
   switch (action) {
     case "CREATE":
       return "draft";
@@ -601,7 +611,7 @@ router.patch(
       // Audit log
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "SUBMIT",
+          p_action: "UPDATE",
           p_entity_type: "PURCHASE_ORDER",
           p_entity_id: poId,
           p_performed_by_user_id: req.user!.id,
@@ -678,7 +688,7 @@ router.patch(
       // Audit log
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "APPROVE",
+          p_action: "UPDATE",
           p_entity_type: "PURCHASE_ORDER",
           p_entity_id: poId,
           p_performed_by_user_id: req.user!.id,
@@ -802,7 +812,7 @@ router.post(
 
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "PO_RECEIPT_UPLOADED",
+          p_action: "UPDATE",
           p_entity_type: "PURCHASE_ORDER",
           p_entity_id: poId,
           p_performed_by_user_id: req.user!.id,
@@ -983,7 +993,7 @@ router.patch(
       // Audit log
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "RECEIVE",
+          p_action: "UPDATE",
           p_entity_type: "PURCHASE_ORDER",
           p_entity_id: poId,
           p_performed_by_user_id: req.user!.id,
@@ -1073,7 +1083,7 @@ router.patch(
       // Audit
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "CANCEL",
+          p_action: "UPDATE",
           p_entity_type: "PURCHASE_ORDER",
           p_entity_id: poId,
           p_performed_by_user_id: req.user!.id,
@@ -1183,7 +1193,7 @@ router.delete(
       // Audit
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "PO_DEACTIVATED",
+          p_action: "UPDATE",
           p_entity_type: "PURCHASE_ORDER",
           p_entity_id: poId,
           p_performed_by_user_id: req.user!.id,
@@ -1252,15 +1262,18 @@ router.patch(
 
       let restoredStatus: (typeof RESTORABLE_PO_STATUSES)[number] | null = null;
 
-      const { data: deactivationAudit } = await supabaseAdmin
+      const { data: auditTrail } = await supabaseAdmin
         .from("audit_logs")
-        .select("new_values")
+        .select("action, new_values")
         .eq("entity_type", "PURCHASE_ORDER")
         .eq("entity_id", poId)
-        .eq("action", "PO_DEACTIVATED")
         .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(30);
+
+      const deactivationAudit = (auditTrail || []).find((log: any) => {
+        const values = (log.new_values ?? null) as Record<string, unknown> | null;
+        return log.action === "PO_DEACTIVATED" || (log.action === "UPDATE" && values?.type === "deactivation");
+      });
 
       const newValues = (deactivationAudit?.new_values ?? null) as Record<string, unknown> | null;
       if (newValues && isRestorablePurchaseOrderStatus(newValues.previous_status)) {
@@ -1268,17 +1281,20 @@ router.patch(
       }
 
       if (!restoredStatus) {
-        const { data: latestStatusAction } = await supabaseAdmin
-          .from("audit_logs")
-          .select("action")
-          .eq("entity_type", "PURCHASE_ORDER")
-          .eq("entity_id", poId)
-          .in("action", ["CANCEL", "APPROVE", "SUBMIT", "CREATE"])
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const latestStatusAction = (auditTrail || []).find((log: any) => {
+          if (!["CANCEL", "APPROVE", "SUBMIT", "CREATE", "UPDATE"].includes(log.action)) return false;
 
-        restoredStatus = mapPoActionToStatus(latestStatusAction?.action);
+          const values = (log.new_values ?? null) as Record<string, unknown> | null;
+          const type = typeof values?.type === "string" ? values.type : null;
+
+          // Ignore lifecycle-neutral update entries during status reconstruction.
+          return type !== "deactivation" && type !== "hard_delete" && type !== "restoration";
+        });
+
+        restoredStatus = mapPoActionToStatus(
+          latestStatusAction?.action,
+          (latestStatusAction?.new_values ?? null) as Record<string, unknown> | null
+        );
       }
 
       if (!restoredStatus) {
@@ -1297,7 +1313,7 @@ router.patch(
 
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "PO_RESTORED",
+          p_action: "UPDATE",
           p_entity_type: "PURCHASE_ORDER",
           p_entity_id: poId,
           p_performed_by_user_id: req.user!.id,

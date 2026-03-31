@@ -340,6 +340,21 @@ async function deductStockForJobOrderLines(jobOrderId: string, branchId: string,
   return { success: true };
 }
 
+async function hasExistingStockDeduction(jobOrderId: string): Promise<boolean> {
+  const { count, error } = await supabaseAdmin
+    .from("stock_movements")
+    .select("id", { count: "exact", head: true })
+    .eq("reference_type", "job_order")
+    .eq("reference_id", jobOrderId)
+    .eq("movement_type", "stock_out");
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (count || 0) > 0;
+}
+
 /**
  * GET /api/job-orders
  * List job orders with filtering and pagination
@@ -602,7 +617,7 @@ router.post(
 
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "REWORK_CREATED",
+          p_action: "CREATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: created.id,
           p_performed_by_user_id: req.user!.id,
@@ -864,7 +879,7 @@ router.post(
 
         try {
           await supabaseAdmin.rpc("log_admin_action", {
-            p_action: "JO_CREATED",
+            p_action: "CREATE",
             p_entity_type: "JOB_ORDER",
             p_entity_id: order.id,
             p_performed_by_user_id: req.user!.id,
@@ -1118,7 +1133,7 @@ router.post(
       // Audit log: JO_CREATED
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "JO_CREATED",
+          p_action: "CREATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: order.id,
           p_performed_by_user_id: req.user!.id,
@@ -1241,7 +1256,7 @@ router.put(
       // Audit log
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "JO_UPDATED",
+          p_action: "UPDATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -1471,7 +1486,7 @@ router.delete(
         // Log hard delete (JO_SOFT_DELETED event name kept for audit completeness)
         try {
           await supabaseAdmin.rpc("log_admin_action", {
-            p_action: "JO_SOFT_DELETED",
+            p_action: "DELETE",
             p_entity_type: "JOB_ORDER",
             p_entity_id: orderId,
             p_performed_by_user_id: req.user!.id,
@@ -1505,7 +1520,7 @@ router.delete(
       // Log deactivation
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "JO_DEACTIVATED",
+          p_action: "UPDATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -1586,7 +1601,7 @@ router.patch(
 
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "JO_RESTORED",
+          p_action: "UPDATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -1756,7 +1771,7 @@ router.patch(
       // Audit log: APPROVAL_REQUESTED
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "APPROVAL_REQUESTED",
+          p_action: "UPDATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -1770,7 +1785,7 @@ router.patch(
       // Also log STATUS_CHANGED
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "STATUS_CHANGED",
+          p_action: "UPDATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -1860,35 +1875,6 @@ router.patch(
         return;
       }
 
-      // FR-3: If approving, check and deduct inventory stock first
-      if (decision === "approved") {
-        const { count: lineCount } = await supabaseAdmin
-          .from("job_order_lines")
-          .select("id", { count: "exact", head: true })
-          .eq("job_order_id", orderId);
-
-        let deductResult: { success: boolean; error?: string } = { success: true };
-        if ((lineCount || 0) > 0) {
-          deductResult = await deductStockForJobOrderLines(orderId, existing.branch_id, req.user!.id);
-        } else {
-          const { data: joItems } = await supabaseAdmin
-            .from("job_order_items")
-            .select("package_item_id, package_item_name, package_item_type, quantity")
-            .eq("job_order_id", orderId);
-
-          if (joItems && joItems.length > 0) {
-            deductResult = await deductStockForJobOrder(orderId, existing.branch_id, joItems, req.user!.id);
-          }
-        }
-
-        if (!deductResult.success) {
-          res.status(400).json({
-            error: deductResult.error || "Insufficient stock to approve this job order",
-          });
-          return;
-        }
-      }
-
       // Update status and approval fields
       const updatePayload: Record<string, unknown> = {
         status: decision,
@@ -1937,7 +1923,7 @@ router.patch(
       // Audit log: APPROVAL_RECORDED
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "APPROVAL_RECORDED",
+          p_action: "UPDATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -1957,7 +1943,7 @@ router.patch(
       // Also log STATUS_CHANGED
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "STATUS_CHANGED",
+          p_action: "UPDATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -1974,9 +1960,7 @@ router.patch(
       res.json(updated);
     } catch (error) {
       console.error("Record approval error:", error);
-      const bodyDecision = req.body?.decision;
-      const action = typeof bodyDecision === "string" && bodyDecision === "approved" ? "APPROVAL_RECORDED" : "APPROVAL_RECORDED";
-      await logFailedAction(req, action, "JOB_ORDER", req.params.id as string || null, error instanceof Error ? error.message : "Failed to record approval");
+      await logFailedAction(req, "UPDATE", "JOB_ORDER", req.params.id as string || null, error instanceof Error ? error.message : "Failed to record approval");
       res.status(500).json({ error: "Failed to record approval" });
     }
   }
@@ -2038,34 +2022,6 @@ router.patch(
         return;
       }
 
-      if (decision === "approved") {
-        const { count: lineCount } = await supabaseAdmin
-          .from("job_order_lines")
-          .select("id", { count: "exact", head: true })
-          .eq("job_order_id", orderId);
-
-        let deductResult: { success: boolean; error?: string } = { success: true };
-        if ((lineCount || 0) > 0) {
-          deductResult = await deductStockForJobOrderLines(orderId, existing.branch_id, req.user!.id);
-        } else {
-          const { data: joItems } = await supabaseAdmin
-            .from("job_order_items")
-            .select("package_item_id, package_item_name, package_item_type, quantity")
-            .eq("job_order_id", orderId);
-
-          if (joItems && joItems.length > 0) {
-            deductResult = await deductStockForJobOrder(orderId, existing.branch_id, joItems, req.user!.id);
-          }
-        }
-
-        if (!deductResult.success) {
-          res.status(400).json({
-            error: deductResult.error || "Insufficient stock to approve this rework job order",
-          });
-          return;
-        }
-      }
-
       const updatePayload: Record<string, unknown> = {
         status: decision,
         approved_at: now,
@@ -2097,10 +2053,9 @@ router.patch(
         return;
       }
 
-      const action = decision === "approved" ? "REWORK_APPROVED" : "REWORK_REJECTED";
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: action,
+          p_action: "UPDATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -2249,7 +2204,7 @@ router.patch(
       // Audit log: JO_CANCELLED
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "JO_CANCELLED",
+          p_action: "UPDATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -2263,7 +2218,7 @@ router.patch(
       // Also log STATUS_CHANGED
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "STATUS_CHANGED",
+          p_action: "UPDATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -2387,7 +2342,7 @@ router.patch(
       // Audit logs
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "WORK_STARTED",
+          p_action: "UPDATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -2400,7 +2355,7 @@ router.patch(
 
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "STATUS_CHANGED",
+          p_action: "UPDATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -2469,6 +2424,36 @@ router.patch(
         return;
       }
 
+      // Deduct inventory only when marking ready (skip if already deducted)
+      const alreadyDeducted = await hasExistingStockDeduction(orderId);
+      if (!alreadyDeducted) {
+        const { count: lineCount } = await supabaseAdmin
+          .from("job_order_lines")
+          .select("id", { count: "exact", head: true })
+          .eq("job_order_id", orderId);
+
+        let deductResult: { success: boolean; error?: string } = { success: true };
+        if ((lineCount || 0) > 0) {
+          deductResult = await deductStockForJobOrderLines(orderId, existing.branch_id, req.user!.id);
+        } else {
+          const { data: joItems } = await supabaseAdmin
+            .from("job_order_items")
+            .select("package_item_id, package_item_name, package_item_type, quantity")
+            .eq("job_order_id", orderId);
+
+          if (joItems && joItems.length > 0) {
+            deductResult = await deductStockForJobOrder(orderId, existing.branch_id, joItems, req.user!.id);
+          }
+        }
+
+        if (!deductResult.success) {
+          res.status(400).json({
+            error: deductResult.error || "Insufficient stock to mark this job order as ready",
+          });
+          return;
+        }
+      }
+
       // Update status
       const { error: updateError } = await supabaseAdmin
         .from("job_orders")
@@ -2502,7 +2487,7 @@ router.patch(
       // Audit logs
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "MARKED_READY",
+          p_action: "UPDATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -2515,7 +2500,7 @@ router.patch(
 
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "STATUS_CHANGED",
+          p_action: "UPDATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -2637,7 +2622,7 @@ router.patch(
 
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "PAYMENT_DETAILS_UPDATED",
+          p_action: "UPDATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -2759,7 +2744,7 @@ router.patch(
       // Audit logs
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "PAYMENT_RECORDED",
+          p_action: "UPDATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -2778,7 +2763,7 @@ router.patch(
 
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "STATUS_CHANGED",
+          p_action: "UPDATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -2913,7 +2898,7 @@ router.patch(
       // Audit logs
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "JO_COMPLETED",
+          p_action: "UPDATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
@@ -2926,7 +2911,7 @@ router.patch(
 
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "STATUS_CHANGED",
+          p_action: "UPDATE",
           p_entity_type: "JOB_ORDER",
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,

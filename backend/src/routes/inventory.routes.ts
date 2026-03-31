@@ -690,7 +690,7 @@ router.patch(
 
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "APPROVAL_REQUESTED",
+          p_action: "UPDATE",
           p_entity_type: "INVENTORY_ITEM",
           p_entity_id: itemId,
           p_performed_by_user_id: req.user!.id,
@@ -823,7 +823,7 @@ router.patch(
 
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "APPROVAL_RECORDED",
+          p_action: "UPDATE",
           p_entity_type: "INVENTORY_ITEM",
           p_entity_id: itemId,
           p_performed_by_user_id: req.user!.id,
@@ -1106,7 +1106,7 @@ router.post(
       // Audit log
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "ADJUSTMENT",
+          p_action: "UPDATE",
           p_entity_type: "INVENTORY_ITEM",
           p_entity_id: itemId,
           p_performed_by_user_id: req.user!.id,
@@ -1217,7 +1217,7 @@ router.post(
       // Audit log
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "STOCK_IN",
+          p_action: "UPDATE",
           p_entity_type: "INVENTORY_ITEM",
           p_entity_id: itemId,
           p_performed_by_user_id: req.user!.id,

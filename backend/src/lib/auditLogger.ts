@@ -1,6 +1,64 @@
 import { supabaseAdmin } from "./supabase.js";
 import type { Request } from "express";
 
+const ACTION_NORMALIZATION_MAP: Record<string, "LOGIN" | "LOGOUT" | "CREATE" | "UPDATE" | "DELETE"> = {
+  LOGIN: "LOGIN",
+  LOGOUT: "LOGOUT",
+  CREATE: "CREATE",
+  UPDATE: "UPDATE",
+  DELETE: "DELETE",
+
+  // Job order lifecycle and operational actions
+  JO_CREATED: "CREATE",
+  REWORK_CREATED: "CREATE",
+  JO_UPDATED: "UPDATE",
+  JO_CANCELLED: "UPDATE",
+  WORK_STARTED: "UPDATE",
+  MARKED_READY: "UPDATE",
+  JO_COMPLETED: "UPDATE",
+  JO_RESTORED: "UPDATE",
+  JO_DEACTIVATED: "UPDATE",
+  APPROVAL_REQUESTED: "UPDATE",
+  APPROVAL_RECORDED: "UPDATE",
+  REWORK_APPROVED: "UPDATE",
+  REWORK_REJECTED: "UPDATE",
+  STATUS_CHANGED: "UPDATE",
+  PAYMENT_DETAILS_UPDATED: "UPDATE",
+  PAYMENT_RECORDED: "UPDATE",
+  JO_SOFT_DELETED: "DELETE",
+
+  // Purchase order lifecycle and operational actions
+  SUBMIT: "UPDATE",
+  APPROVE: "UPDATE",
+  PO_RECEIPT_UPLOADED: "UPDATE",
+  RECEIVE: "UPDATE",
+  CANCEL: "UPDATE",
+  PO_DEACTIVATED: "UPDATE",
+  PO_RESTORED: "UPDATE",
+
+  // Inventory and reminders operational actions
+  ADJUSTMENT: "UPDATE",
+  STOCK_IN: "UPDATE",
+  SEND: "UPDATE",
+  HARD_DELETE: "DELETE",
+
+  // Reports
+  GENERATE: "CREATE",
+};
+
+export function normalizeAuditAction(action: string): "LOGIN" | "LOGOUT" | "CREATE" | "UPDATE" | "DELETE" {
+  return ACTION_NORMALIZATION_MAP[action] || "UPDATE";
+}
+
+export function getAuditActionVariants(primaryAction: string): string[] {
+  const normalized = normalizeAuditAction(primaryAction);
+  const variants = Object.entries(ACTION_NORMALIZATION_MAP)
+    .filter(([, mapped]) => mapped === normalized)
+    .map(([action]) => action);
+
+  return variants.length > 0 ? variants : [normalized];
+}
+
 /**
  * Log a failed action to the audit_logs table.
  * Used when a CREATE/UPDATE/DELETE operation fails so the attempt is recorded.
@@ -13,17 +71,21 @@ export async function logFailedAction(
   errorMessage: string
 ): Promise<void> {
   try {
+    const normalizedAction = normalizeAuditAction(action);
     const userId = req.user?.id ?? null;
     const branchId = req.user?.branchIds?.[0] ?? null;
 
     await supabaseAdmin.from("audit_logs").insert({
-      action,
+      action: normalizedAction,
       entity_type: entityType,
       entity_id: entityId,
       user_id: userId,
       branch_id: branchId,
       status: "FAILED",
-      new_values: { error: errorMessage },
+      new_values: {
+        error: errorMessage,
+        audit_subaction: action,
+      },
     });
   } catch (logError) {
     // Never let audit logging break the response flow

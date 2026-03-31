@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
+import { getAuditActionVariants, normalizeAuditAction } from "../lib/auditLogger.js";
 import { requireAuth, requireManagement, requireRoles } from "../middleware/auth.middleware.js";
 
 const router = Router();
@@ -39,7 +40,8 @@ router.get("/", requireRoles("HM", "POC"), async (req: Request, res: Response): 
 
     // Apply filters
     if (action) {
-      query = query.eq("action", action as string);
+      const actionVariants = getAuditActionVariants(action as string);
+      query = query.in("action", actionVariants);
     }
     if (entity_type) {
       query = query.eq("entity_type", entity_type as string);
@@ -194,7 +196,8 @@ router.get("/stats", requireRoles("HM", "POC"), async (req: Request, res: Respon
 
     // Count actions
     const actionStats = actionCounts?.reduce((acc, log) => {
-      acc[log.action] = (acc[log.action] || 0) + 1;
+      const normalized = normalizeAuditAction(log.action);
+      acc[normalized] = (acc[normalized] || 0) + 1;
       return acc;
     }, {} as Record<string, number>) ?? {};
 
