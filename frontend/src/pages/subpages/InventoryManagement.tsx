@@ -273,7 +273,11 @@ export function InventoryManagement() {
         item.category.toLowerCase().includes(q);
 
       const matchStatus =
-        filterStatus === "all" ? item.status !== "inactive" : item.status === filterStatus;
+        filterStatus === "all"
+          ? item.status !== "inactive"
+          : filterStatus === "low_stock"
+            ? item.status === "active" && item.is_low_stock
+            : item.status === filterStatus;
 
       const matchCategory =
         filterCategory === "all" || item.category === filterCategory;
@@ -653,6 +657,7 @@ export function InventoryManagement() {
               { value: "all", label: "All Status" },
               { value: "draft", label: "Draft" },
               { value: "active", label: "Active" },
+              { value: "low_stock", label: "Low Stock" },
               { value: "inactive", label: "Inactive" },
             ],
             onChange: setFilterStatus,

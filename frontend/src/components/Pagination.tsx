@@ -32,8 +32,8 @@ export function Pagination({
 
   const wrapperClass =
     variant === "card"
-      ? "flex flex-col sm:flex-row items-center justify-between gap-4 bg-white rounded-xl p-4 border border-neutral-200"
-      : "flex flex-col sm:flex-row items-center justify-between gap-4 p-4";
+      ? "flex flex-row items-center justify-between gap-4 bg-white rounded-xl p-4 border border-neutral-200"
+      : "flex flex-row border-t border-neutral-200 items-center justify-between gap-4 p-4";
 
   const infoText =
     variant === "card" ? (

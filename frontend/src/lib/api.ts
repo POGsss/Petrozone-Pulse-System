@@ -1619,7 +1619,7 @@ export const dashboardApi = {
     );
   },
 
-  getTopServices: async (params?: { branch_id?: string; date_from?: string; date_to?: string; limit?: number }) => {
+  getTopLabor: async (params?: { branch_id?: string; date_from?: string; date_to?: string; limit?: number }) => {
     const qs = new URLSearchParams();
     if (params?.branch_id) qs.set("branch_id", params.branch_id);
     if (params?.date_from) qs.set("date_from", params.date_from);
@@ -1627,8 +1627,13 @@ export const dashboardApi = {
     if (params?.limit) qs.set("limit", String(params.limit));
     const q = qs.toString();
     return fetchWithAuth<import("../types").TopService[]>(
-      `/api/dashboard/top-services${q ? `?${q}` : ""}`
+      `/api/dashboard/top-labor${q ? `?${q}` : ""}`
     );
+  },
+
+  // Backward compatibility alias
+  getTopServices: async (params?: { branch_id?: string; date_from?: string; date_to?: string; limit?: number }) => {
+    return dashboardApi.getTopLabor(params);
   },
 
   getJobStatusDistribution: async (params?: { branch_id?: string; date_from?: string; date_to?: string }) => {

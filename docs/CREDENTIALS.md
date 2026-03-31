@@ -7,3 +7,6 @@ T: t@petrozone.test / Technician / 0987654321 / Tecnician123!
 TECHNICIAN LIST:
 - robertjohnson@technician.com / RobertJ123!
 - samthompson@technician.com / SamT123!
+
+PETROZONE:
+- petrozonepulse@gmail.com / PetrozonePulse123!

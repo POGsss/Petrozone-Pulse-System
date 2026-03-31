@@ -181,63 +181,66 @@ router.get(
   }
 );
 
-// GET /api/dashboard/top-services
-// Returns top packages by revenue for bar chart
-router.get(
-  "/top-services",
-  requireRoles("HM", "POC", "JS", "R"),
-  async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { branch_id, limit = "10" } = req.query;
-      const branchScope = getBranchScope(req);
+// GET /api/dashboard/top-labor
+// Returns top labor by revenue for bar chart
+const topLaborHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { branch_id, date_from, date_to, limit = "10" } = req.query;
+    const branchScope = getBranchScope(req);
 
-      // Get completed job order IDs first (for branch filtering)
-      let joQuery = supabaseAdmin
-        .from("job_orders")
-        .select("id")
-        .eq("status", "completed");
+    // Get completed job order IDs first (for branch filtering)
+    let joQuery = supabaseAdmin
+      .from("job_orders")
+      .select("id")
+      .eq("status", "completed");
 
-      if (branch_id) joQuery = joQuery.eq("branch_id", branch_id as string);
-      else if (branchScope) joQuery = joQuery.in("branch_id", branchScope);
+    if (branch_id) joQuery = joQuery.eq("branch_id", branch_id as string);
+    else if (branchScope) joQuery = joQuery.in("branch_id", branchScope);
+    if (date_from) joQuery = joQuery.gte("created_at", date_from as string);
+    if (date_to) joQuery = joQuery.lte("created_at", date_to as string);
 
-      const { data: joIds } = await joQuery;
-      const ids = (joIds || []).map((j: any) => j.id);
+    const { data: joIds } = await joQuery;
+    const ids = (joIds || []).map((j: any) => j.id);
 
-      if (ids.length === 0) {
-        res.json([]);
-        return;
-      }
-
-      // Get line-based package rows for those completed orders.
-      const { data: lines } = await supabaseAdmin
-        .from("job_order_lines")
-        .select("job_order_id, name, total")
-        .eq("line_type", "package")
-        .in("job_order_id", ids);
-
-      // Aggregate by package name, counting how many completed orders used each package.
-      const packageMap: Record<string, { revenue: number; orderIds: Set<string> }> = {};
-      (lines || []).forEach((line: any) => {
-        const name = line.name;
-        if (!name) return;
-
-        if (!packageMap[name]) packageMap[name] = { revenue: 0, orderIds: new Set<string>() };
-        packageMap[name].revenue += line.total || 0;
-        if (line.job_order_id) packageMap[name].orderIds.add(line.job_order_id);
-      });
-
-      const result = Object.entries(packageMap)
-        .map(([name, { revenue, orderIds }]) => ({ name, revenue, count: orderIds.size }))
-        .sort((a, b) => b.revenue - a.revenue)
-        .slice(0, parseInt(limit as string));
-
-      res.json(result);
-    } catch (error) {
-      console.error("Top services error:", error);
-      res.status(500).json({ error: "Failed to fetch top services" });
+    if (ids.length === 0) {
+      res.json([]);
+      return;
     }
+
+    // Get line-based labor rows for those completed orders.
+    const { data: lines } = await supabaseAdmin
+      .from("job_order_lines")
+      .select("job_order_id, name, total")
+      .eq("line_type", "labor")
+      .in("job_order_id", ids);
+
+    // Aggregate by labor name, counting how many completed orders used each labor.
+    const laborMap: Record<string, { revenue: number; orderIds: Set<string> }> = {};
+    (lines || []).forEach((line: any) => {
+      const name = line.name;
+      if (!name) return;
+
+      if (!laborMap[name]) laborMap[name] = { revenue: 0, orderIds: new Set<string>() };
+      laborMap[name].revenue += line.total || 0;
+      if (line.job_order_id) laborMap[name].orderIds.add(line.job_order_id);
+    });
+
+    const result = Object.entries(laborMap)
+      .map(([name, { revenue, orderIds }]) => ({ name, revenue, count: orderIds.size }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, parseInt(limit as string));
+
+    res.json(result);
+  } catch (error) {
+    console.error("Top labor error:", error);
+    res.status(500).json({ error: "Failed to fetch top labor" });
   }
-);
+};
+
+router.get("/top-labor", requireRoles("HM", "POC", "JS", "R"), topLaborHandler);
+
+// Backward compatibility alias
+router.get("/top-services", requireRoles("HM", "POC", "JS", "R"), topLaborHandler);
 
 // GET /api/dashboard/job-status-distribution
 // Returns job order counts grouped by status for pie chart

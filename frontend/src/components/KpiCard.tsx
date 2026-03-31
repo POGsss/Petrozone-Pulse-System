@@ -11,8 +11,8 @@ interface KpiCardProps {
   icon: ReactNode;
   /** Background color class for icon container */
   iconBg?: string;
-  /** Top-right badge text (e.g., date label) */
-  badge?: string;
+  /** Top-right header content (badge text or custom control) */
+  badge?: ReactNode;
   /** Additional content below the main value */
   children?: ReactNode;
   /** Additional CSS classes */
@@ -37,7 +37,7 @@ export function KpiCard({
           <div className={`p-2 ${iconBg} rounded-lg`}>{icon}</div>
           <span className="text-sm font-medium text-neutral-900">{label}</span>
         </div>
-        {badge && <span className="text-xs text-neutral-900">{badge}</span>}
+        {badge && <div className="text-xs text-neutral-950">{badge}</div>}
       </div>
       {children || (
         <>

@@ -2,9 +2,8 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { dashboardApi, branchesApi } from "../../lib/api";
 import { useTheme } from "../../lib/ThemeContext";
 import { showToast } from "../../lib/toast";
-import { SkeletonLoader, ErrorAlert, PageHeader, KpiCard, ChartCard, DashboardCard, PeriodSelect, DashboardChat } from "../../components";
+import { SkeletonLoader, ErrorAlert, PageHeader, KpiCard, ChartCard, DashboardCard, DashboardChat } from "../../components";
 import {
-  LuDollarSign,
   LuClipboardList,
   LuUsers,
   LuTriangleAlert,
@@ -12,7 +11,11 @@ import {
   LuChevronDown,
   LuPackage,
   LuCircleAlert,
+  LuSlidersHorizontal,
+  LuInfo,
+  LuCheck,
 } from "react-icons/lu";
+import { TbCurrencyPeso } from "react-icons/tb";
 import {
   BarChart,
   Bar,
@@ -64,6 +67,24 @@ function formatCurrency(value: number): string {
   return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
 }
 
+function formatCompact(value: number): string {
+  if (value >= 1_000_000_000) return `${Math.round(value / 1_000_000_000)}b`;
+  if (value >= 1_000_000) return `${Math.round(value / 1_000_000)}m`;
+  if (value >= 1_000) return `${Math.round(value / 1_000)}k`;
+  return Math.round(value).toString();
+}
+
+function formatCompactCurrency(value: number): string {
+  return formatCompact(value);
+}
+
+function getRotatingBranches<T>(items: T[], startIndex: number): T[] {
+  if (items.length <= 2) return items;
+  const first = items[startIndex % items.length];
+  const second = items[(startIndex + 1) % items.length];
+  return [first, second];
+}
+
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
@@ -99,13 +120,15 @@ function getDateRange(range: string): { date_from: string; date_to: string } {
   return { date_from: from.toISOString(), date_to: to };
 }
 
-const DATE_RANGES = [
-  { value: "today", label: "Today" },
-  { value: "7d", label: "Last 7 Days" },
-  { value: "30d", label: "Last 30 Days" },
-  { value: "90d", label: "Last 90 Days" },
-  { value: "year", label: "This Year" },
-];
+const KPI_PERIODS = [
+  { value: "daily", label: "Daily", range: "today" },
+  { value: "weekly", label: "Weekly", range: "7d" },
+  { value: "monthly", label: "Monthly", range: "30d" },
+] as const;
+
+type KpiPeriod = (typeof KPI_PERIODS)[number]["value"];
+type FilterMenuKey = "top-labor" | "sales-summary" | "revenue-branch";
+type KpiInfoMenuKey = "sales" | "avg-sales" | "customers" | "orders";
 
 // ─── Status badge component ───
 function StatusBadge({ status }: { status: string }) {
@@ -170,18 +193,48 @@ export function AnalyticsDashboard() {
   const [jobDistribution, setJobDistribution] = useState<JobStatusDistribution[]>([]);
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
   const [branchRevenue, setBranchRevenue] = useState<BranchRevenue[]>([]);
+  const [branchCustomers, setBranchCustomers] = useState<Array<{ branch_id: string; name: string; customers: number }>>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [branchRotationIndex, setBranchRotationIndex] = useState(0);
+  const [isBranchAnimating, setIsBranchAnimating] = useState(false);
 
   // Filter states
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
-  const [dateRange] = useState<string>("30d");
-  const [salesPeriod, setSalesPeriod] = useState<string>("daily");
-  const [revenuePeriod, setRevenuePeriod] = useState<string>("daily");
+  const kpiPeriod: KpiPeriod = "monthly";
+  const [topLaborPeriod, setTopLaborPeriod] = useState<KpiPeriod>("monthly");
+  const [salesSummaryPeriod, setSalesSummaryPeriod] = useState<KpiPeriod>("daily");
+  const [revenuePeriod, setRevenuePeriod] = useState<KpiPeriod>("monthly");
+  const [openFilterMenu, setOpenFilterMenu] = useState<FilterMenuKey | null>(null);
+  const [openKpiInfoMenu, setOpenKpiInfoMenu] = useState<KpiInfoMenuKey | null>(null);
 
   // Determine branch filter param
   const branchParam = selectedBranch !== "all" ? selectedBranch : undefined;
-  // Memoize date params so they only change when dateRange selection changes
-  const dateParams = useMemo(() => getDateRange(dateRange), [dateRange]);
+  const selectedKpiPeriod = useMemo(
+    () => KPI_PERIODS.find((period) => period.value === kpiPeriod) || KPI_PERIODS[2],
+    [kpiPeriod]
+  );
+
+  // Memoize date params so they only change when KPI period changes
+  const dateParams = useMemo(() => getDateRange(selectedKpiPeriod.range), [selectedKpiPeriod.range]);
+
+  useEffect(() => {
+    const handleDocClick = () => {
+      setOpenFilterMenu(null);
+      setOpenKpiInfoMenu(null);
+    };
+    window.addEventListener("click", handleDocClick);
+    return () => window.removeEventListener("click", handleDocClick);
+  }, []);
+
+  const topLaborDateParams = useMemo(() => {
+    const selected = KPI_PERIODS.find((period) => period.value === topLaborPeriod) || KPI_PERIODS[2];
+    return getDateRange(selected.range);
+  }, [topLaborPeriod]);
+
+  const revenueDateParams = useMemo(() => {
+    const selected = KPI_PERIODS.find((period) => period.value === revenuePeriod) || KPI_PERIODS[2];
+    return getDateRange(selected.range);
+  }, [revenuePeriod]);
 
   // Load branches for filter
   useEffect(() => {
@@ -205,11 +258,16 @@ export function AnalyticsDashboard() {
 
       const [summaryData, salesData, servicesData, distributionData, ordersData, branchRevenueData] = await Promise.all([
         dashboardApi.getSummary(filterParams),
-        dashboardApi.getSalesOverTime({ ...filterParams, period: salesPeriod }),
-        dashboardApi.getTopServices({ branch_id: branchParam, limit: 8 }),
+        dashboardApi.getSalesOverTime({ ...filterParams, period: salesSummaryPeriod }),
+        dashboardApi.getTopLabor({
+          branch_id: branchParam,
+          date_from: topLaborDateParams.date_from,
+          date_to: topLaborDateParams.date_to,
+          limit: 8,
+        }),
         dashboardApi.getJobStatusDistribution(filterParams),
         dashboardApi.getRecentOrders({ branch_id: branchParam, limit: 8 }),
-        dashboardApi.getRevenuePerBranch({ date_from: dateParams.date_from, date_to: dateParams.date_to }),
+        dashboardApi.getRevenuePerBranch({ date_from: revenueDateParams.date_from, date_to: revenueDateParams.date_to }),
       ]);
 
       setSummary(summaryData);
@@ -218,13 +276,39 @@ export function AnalyticsDashboard() {
       setJobDistribution(distributionData);
       setRecentOrders(ordersData);
       setBranchRevenue(branchRevenueData);
+
+      if (!branchParam && branches.length > 0) {
+        const customerBreakdown = await Promise.allSettled(
+          branches.map(async (branch) => {
+            const branchSummary = await dashboardApi.getSummary({
+              branch_id: branch.id,
+              date_from: dateParams.date_from,
+              date_to: dateParams.date_to,
+            });
+
+            return {
+              branch_id: branch.id,
+              name: branch.name,
+              customers: branchSummary?.customers || 0,
+            };
+          })
+        );
+
+        setBranchCustomers(
+          customerBreakdown
+            .filter((result): result is PromiseFulfilledResult<{ branch_id: string; name: string; customers: number }> => result.status === "fulfilled")
+            .map((result) => result.value)
+        );
+      } else {
+        setBranchCustomers([]);
+      }
     } catch (err: any) {
       setError(err.message || "Failed to load dashboard data");
       showToast.error("Failed to load dashboard data");
     } finally {
       setLoading(false);
     }
-  }, [branchParam, dateRange, salesPeriod]);
+  }, [branchParam, branches, dateParams, revenueDateParams, salesSummaryPeriod, topLaborDateParams]);
 
   useEffect(() => {
     loadDashboard();
@@ -234,7 +318,137 @@ export function AnalyticsDashboard() {
     ? "All Branches"
     : branches.find(b => b.id === selectedBranch)?.name || "Branch";
 
-  const selectedDateLabel = DATE_RANGES.find(r => r.value === dateRange)?.label || "Last 30 Days";
+  const selectedDateLabel = selectedKpiPeriod.label;
+
+  const renderKpiInfo = (menuKey: KpiInfoMenuKey, message: string) => (
+    <div className="relative" onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpenKpiInfoMenu(openKpiInfoMenu === menuKey ? null : menuKey);
+        }}
+        className="inline-flex items-center text-neutral-950 hover:text-neutral-900"
+        title="Card information"
+        aria-label="Card information"
+      >
+        <LuInfo className="w-4 h-4" />
+      </button>
+      {openKpiInfoMenu === menuKey && (
+        <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+          <div className="px-4 py-2.5">
+            <p className="text-xs font-semibold text-neutral-950 mb-1">Quick Info</p>
+            <p className="text-xs text-neutral-900 leading-5">{message}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderPeriodFilter = (
+    menuKey: FilterMenuKey,
+    selectedPeriod: KpiPeriod,
+    onChangePeriod: (period: KpiPeriod) => void
+  ) => (
+    <div className="relative" onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpenFilterMenu(openFilterMenu === menuKey ? null : menuKey);
+        }}
+        className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+        title="Filter period"
+      >
+        <LuSlidersHorizontal className="w-4 h-4" />
+      </button>
+      {openFilterMenu === menuKey && (
+        <div className="absolute right-0 mt-2 w-40 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+          {KPI_PERIODS.map((period) => (
+            <button
+              key={period.value}
+              onClick={(e) => {
+                e.stopPropagation();
+                onChangePeriod(period.value);
+                setOpenFilterMenu(null);
+              }}
+              className="w-full flex items-center justify-between px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+            >
+              <span>{period.label}</span>
+              {selectedPeriod === period.value && <LuCheck className="w-4 h-4 text-primary" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const rangeDays = useMemo(() => {
+    const start = new Date(dateParams.date_from).getTime();
+    const end = new Date(dateParams.date_to).getTime();
+    const msInDay = 24 * 60 * 60 * 1000;
+    return Math.max(1, Math.ceil((end - start) / msInDay));
+  }, [dateParams]);
+
+  const averageDailySales = useMemo(
+    () => (summary?.total_sales || 0) / rangeDays,
+    [summary?.total_sales, rangeDays]
+  );
+
+  const averageActiveSales = useMemo(
+    () => summary?.active_job_orders ? (summary.total_sales || 0) / summary.active_job_orders : 0,
+    [summary?.active_job_orders, summary?.total_sales]
+  );
+
+  const averageCompletedSales = useMemo(
+    () => summary?.completed_job_orders ? (summary.total_sales || 0) / summary.completed_job_orders : 0,
+    [summary?.completed_job_orders, summary?.total_sales]
+  );
+
+  const sortedSalesBranches = useMemo(() => {
+    const revenueByBranchId = new Map(branchRevenue.map((item) => [item.branch_id, item.revenue]));
+
+    return branches
+      .map((branch) => ({
+        branch_id: branch.id,
+        name: branch.name,
+        revenue: revenueByBranchId.get(branch.id) || 0,
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
+  }, [branchRevenue, branches]);
+
+  const sortedCustomerBranches = useMemo(
+    () => [...branchCustomers].sort((a, b) => b.customers - a.customers),
+    [branchCustomers]
+  );
+
+  const visibleSalesBranches = useMemo(
+    () => getRotatingBranches(sortedSalesBranches, branchRotationIndex),
+    [sortedSalesBranches, branchRotationIndex]
+  );
+
+  const visibleCustomerBranches = useMemo(
+    () => getRotatingBranches(sortedCustomerBranches, branchRotationIndex),
+    [sortedCustomerBranches, branchRotationIndex]
+  );
+
+  useEffect(() => {
+    if (selectedBranch !== "all") return;
+
+    const maxBranchCount = Math.max(sortedSalesBranches.length, sortedCustomerBranches.length);
+    if (maxBranchCount <= 2) {
+      setBranchRotationIndex(0);
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setIsBranchAnimating(true);
+      window.setTimeout(() => {
+        setBranchRotationIndex((prev) => (prev + 1) % maxBranchCount);
+        setIsBranchAnimating(false);
+      }, 180);
+    }, 2000);
+
+    return () => window.clearInterval(intervalId);
+  }, [selectedBranch, sortedSalesBranches.length, sortedCustomerBranches.length]);
 
   // Build AI chat context from current dashboard data
   const chatContext = useMemo(() => ({
@@ -312,26 +526,96 @@ export function AnalyticsDashboard() {
       />
 
       {/* ─── Top Row: KPI Cards ─── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Sales Card */}
+        {selectedBranch === "all" ? (
+          <KpiCard
+            label="All Sales"
+            value={formatCompactCurrency(summary?.total_sales || 0)}
+            icon={<TbCurrencyPeso className="w-5 h-5 text-primary" />}
+            iconBg="bg-primary-100"
+            badge={renderKpiInfo("sales", "Shows total completed sales and rotating branch-level sales contribution.")}
+          >
+            <div className={`flex items-end gap-6 transition-opacity duration-300 ${isBranchAnimating ? "opacity-60" : "opacity-100"}`}>
+              <div>
+                <p className="text-2xl font-bold text-neutral-950">{formatCompactCurrency(summary?.total_sales || 0)}</p>
+                <p className="text-xs text-neutral-900 mt-1">Total</p>
+              </div>
+              {visibleSalesBranches.map((branch) => (
+                <div key={branch.branch_id}>
+                  <p className="text-lg font-semibold text-secondary-950">{formatCompactCurrency(branch.revenue)}</p>
+                  <p className="text-xs text-neutral-900">{branch.name}</p>
+                </div>
+              ))}
+            </div>
+          </KpiCard>
+        ) : (
+          <KpiCard
+            label="Sales"
+            value={formatCurrency(summary?.total_sales || 0)}
+            subtitle={`${summary?.completed_job_orders || 0} completed orders`}
+            icon={<TbCurrencyPeso className="w-5 h-5 text-primary" />}
+            iconBg="bg-primary-100"
+            badge={renderKpiInfo("sales", "Shows total completed sales for the selected branch and period.")}
+          />
+        )}
+
+        {/* Average Sales Card */}
         <KpiCard
-          label="Sales"
-          value={formatCurrency(summary?.total_sales || 0)}
-          subtitle={`${summary?.completed_job_orders || 0} completed orders`}
-          icon={<LuDollarSign className="w-5 h-5 text-primary" />}
-          iconBg="bg-primary-100"
-          badge={selectedDateLabel}
-        />
+          label="Avg Daily Sales"
+          value={formatCompactCurrency(averageDailySales)}
+          icon={<TbCurrencyPeso className="w-5 h-5 text-secondary-950" />}
+          iconBg="bg-secondary-200"
+          badge={renderKpiInfo("avg-sales", "Shows average sales metrics: daily total, per active order, and per completed order.")}
+        >
+          <div className="flex items-end gap-6">
+            <div>
+              <p className="text-2xl font-bold text-neutral-950">{formatCompactCurrency(averageDailySales)}</p>
+              <p className="text-xs text-neutral-900 mt-1">Total</p>
+            </div>
+            <div>
+              <p className="text-lg font-semibold text-secondary-950">{formatCompactCurrency(averageActiveSales)}</p>
+              <p className="text-xs text-neutral-900">Active</p>
+            </div>
+            <div>
+              <p className="text-lg font-semibold text-positive">{formatCompactCurrency(averageCompletedSales)}</p>
+              <p className="text-xs text-neutral-900">Completed</p>
+            </div>
+          </div>
+        </KpiCard>
 
         {/* Customers Card */}
-        <KpiCard
-          label="Customers"
-          value={(summary?.customers || 0).toLocaleString()}
-          subtitle="Active customers"
-          icon={<LuUsers className="w-5 h-5 text-secondary-950" />}
-          iconBg="bg-secondary-200"
-          badge={selectedBranchName}
-        />
+        {selectedBranch === "all" ? (
+          <KpiCard
+            label="All Customers"
+            value={formatCompact(summary?.customers || 0)}
+            icon={<LuUsers className="w-5 h-5 text-secondary-950" />}
+            iconBg="bg-secondary-200"
+            badge={renderKpiInfo("customers", "Shows total active customers and rotating branch-level customer counts.")}
+          >
+            <div className={`flex items-end gap-6 transition-opacity duration-300 ${isBranchAnimating ? "opacity-60" : "opacity-100"}`}>
+              <div>
+                <p className="text-2xl font-bold text-neutral-950">{formatCompact(summary?.customers || 0)}</p>
+                <p className="text-xs text-neutral-900 mt-1">Total</p>
+              </div>
+              {visibleCustomerBranches.map((branch) => (
+                <div key={branch.branch_id}>
+                  <p className="text-lg font-semibold text-secondary-950">{formatCompact(branch.customers)}</p>
+                  <p className="text-xs text-neutral-900">{branch.name}</p>
+                </div>
+              ))}
+            </div>
+          </KpiCard>
+        ) : (
+          <KpiCard
+            label="Customers"
+            value={(summary?.customers || 0).toLocaleString()}
+            subtitle="Active customers"
+            icon={<LuUsers className="w-5 h-5 text-secondary-950" />}
+            iconBg="bg-secondary-200"
+            badge={renderKpiInfo("customers", "Shows active customer count for the selected branch.")}
+          />
+        )}
 
         {/* Orders Card */}
         <KpiCard
@@ -339,7 +623,7 @@ export function AnalyticsDashboard() {
           value={(summary?.total_job_orders || 0).toLocaleString()}
           icon={<LuClipboardList className="w-5 h-5 text-positive" />}
           iconBg="bg-positive-100"
-          badge={selectedDateLabel}
+          badge={renderKpiInfo("orders", "Shows total job orders with active and completed order breakdown.")}
         >
           <div className="flex items-end gap-6">
             <div>
@@ -492,14 +776,12 @@ export function AnalyticsDashboard() {
           </div>
         </DashboardCard>
 
-        {/* Bottom-left spanning 2 cols under pie + inventory: Top Packages */}
+        {/* Bottom-left spanning 2 cols under pie + inventory: Top Labor */}
         <ChartCard
           className="lg:col-span-2"
-          title="Top Packages"
+          title="Top Labor"
           actions={
-            <>
-              <span className="text-xs text-neutral-900">All Completed Orders</span>
-            </>
+            renderPeriodFilter("top-labor", topLaborPeriod, setTopLaborPeriod)
           }
         >
           {topServices.length > 0 ? (
@@ -539,7 +821,7 @@ export function AnalyticsDashboard() {
             </ResponsiveContainer>
           ) : (
             <div className="h-75 flex items-center justify-center text-sm text-neutral-900">
-              No service data available for this period
+              No labor data available for this period
             </div>
           )}
         </ChartCard>
@@ -551,10 +833,7 @@ export function AnalyticsDashboard() {
         <ChartCard
           title="Sales Summary"
           actions={
-            <>
-              <PeriodSelect value={salesPeriod} onChange={setSalesPeriod} />
-              <span className="text-xs text-neutral-900">{selectedDateLabel}</span>
-            </>
+            renderPeriodFilter("sales-summary", salesSummaryPeriod, setSalesSummaryPeriod)
           }
         >
           {salesOverTime.length > 0 ? (
@@ -589,10 +868,7 @@ export function AnalyticsDashboard() {
         <ChartCard
           title="Revenue per Branch"
           actions={
-            <>
-              <PeriodSelect value={revenuePeriod} onChange={setRevenuePeriod} />
-              <span className="text-xs text-neutral-900">{selectedDateLabel}</span>
-            </>
+            renderPeriodFilter("revenue-branch", revenuePeriod, setRevenuePeriod)
           }
         >
           {branchRevenue.length > 0 ? (
