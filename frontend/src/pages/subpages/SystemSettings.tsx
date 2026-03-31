@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { LuMoon, LuSun, LuPanelLeftClose, LuPanelLeft, LuType, LuRotateCcw, LuCheck, LuSave, LuPalette, LuClipboardList } from "react-icons/lu";
+import { LuMoon, LuSun, LuPanelLeftClose, LuPanelLeft, LuType, LuRotateCcw, LuCheck, LuSave, LuPalette, LuClipboardList, LuShield } from "react-icons/lu";
 import { useTheme, COLOR_PRESETS, DEFAULT_SETTINGS, type FontSize, type ThemeSettings } from "../../lib/ThemeContext";
 import { showToast } from "../../lib/toast";
 
@@ -36,7 +36,8 @@ export function SystemSettings() {
         draft.primaryColor !== settings.primaryColor ||
         draft.sidebarCollapsed !== settings.sidebarCollapsed ||
         draft.fontSize !== settings.fontSize ||
-        draft.tableDensity !== settings.tableDensity;
+        draft.tableDensity !== settings.tableDensity ||
+        draft.loginLockoutEnabled !== settings.loginLockoutEnabled;
 
     function patchDraft(updates: Partial<ThemeSettings>) {
         setDraft((prev) => ({ ...prev, ...updates }));
@@ -208,6 +209,35 @@ export function SystemSettings() {
                     >
                         <span
                             className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full shadow transition-transform duration-300 ${draft.tableDensity === "compact" ? "translate-x-7" : "translate-x-0"
+                                }`}
+                        />
+                    </button>
+                </div>
+            </div>
+
+            {/* Login Lockout */}
+            <div className="bg-white border border-neutral-200 rounded-xl p-6">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="p-2.5 bg-neutral-100 rounded-lg">
+                            <LuShield className="w-5 h-5 text-neutral-950" />
+                        </div>
+                        <div>
+                            <h4 className="font-medium text-neutral-950">Login Attempt Lockout</h4>
+                            <p className="text-sm text-neutral-900">
+                                {draft.loginLockoutEnabled
+                                    ? "Enabled: lock account for 15 minutes after 5 failed attempts"
+                                    : "Disabled: users can retry login without account lockout"}
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => patchDraft({ loginLockoutEnabled: !draft.loginLockoutEnabled })}
+                        className={`relative w-14 h-7 rounded-full transition-colors duration-300 ${draft.loginLockoutEnabled ? "bg-primary" : "bg-neutral-300"
+                            }`}
+                    >
+                        <span
+                            className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full shadow transition-transform duration-300 ${draft.loginLockoutEnabled ? "translate-x-7" : "translate-x-0"
                                 }`}
                         />
                     </button>

@@ -45,7 +45,7 @@ router.put(
   requireRoles("HM"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { dark_mode, primary_color, sidebar_collapsed, font_size, table_density } = req.body;
+      const { dark_mode, primary_color, sidebar_collapsed, font_size, table_density, login_lockout_enabled } = req.body;
 
       const updates: Record<string, unknown> = {};
       if (typeof dark_mode === "boolean") updates.dark_mode = dark_mode;
@@ -56,6 +56,9 @@ router.put(
       }
       if (typeof table_density === "string" && ["comfortable", "compact"].includes(table_density)) {
         updates.table_density = table_density;
+      }
+      if (typeof login_lockout_enabled === "boolean") {
+        updates.login_lockout_enabled = login_lockout_enabled;
       }
 
       if (Object.keys(updates).length === 0) {

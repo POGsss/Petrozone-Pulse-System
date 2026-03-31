@@ -124,10 +124,26 @@ router.post("/reset-password", async (req: Request, res: Response): Promise<void
 router.post("/login", async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
+    let lockoutEnabled = true;
 
     if (!email || !password) {
       res.status(400).json({ error: "Email and password are required" });
       return;
+    }
+
+    // Load global lockout toggle from system settings; default to enabled.
+    try {
+      const { data: systemSettings } = await supabaseAdmin
+        .from("system_settings")
+        .select("*")
+        .limit(1)
+        .maybeSingle();
+
+      if (systemSettings && typeof (systemSettings as Record<string, unknown>).login_lockout_enabled === "boolean") {
+        lockoutEnabled = (systemSettings as Record<string, unknown>).login_lockout_enabled as boolean;
+      }
+    } catch (settingsError) {
+      console.error("Failed to fetch login lockout setting, using default enabled:", settingsError);
     }
 
     // Check if account exists and is locked
@@ -139,7 +155,7 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
 
     if (userProfile) {
       // Check if account is currently locked
-      if (userProfile.locked_until) {
+      if (lockoutEnabled && userProfile.locked_until) {
         const lockedUntil = new Date(userProfile.locked_until);
         if (lockedUntil > new Date()) {
           const minutesLeft = Math.ceil((lockedUntil.getTime() - Date.now()) / 60000);
@@ -197,7 +213,7 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
 
     if (error) {
       // Failed login: increment counter and log
-      if (userProfile) {
+      if (userProfile && lockoutEnabled) {
         const newAttempts = (userProfile.failed_login_attempts || 0) + 1;
         const updateData: { failed_login_attempts: number; locked_until?: string } = {
           failed_login_attempts: newAttempts,
@@ -234,6 +250,19 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
         const remaining = 5 - newAttempts;
         res.status(401).json({ error: `Invalid credentials. ${remaining} attempt(s) remaining before account lockout.` });
         return;
+      }
+
+      if (userProfile) {
+        try {
+          await supabaseAdmin.rpc("log_auth_event", {
+            p_user_id: userProfile.id,
+            p_event_type: "LOGIN",
+            p_branch_id: null,
+            p_status: "FAILED",
+          });
+        } catch (rpcError) {
+          console.error("RPC log_auth_event error:", rpcError);
+        }
       }
 
       res.status(401).json({ error: "Invalid credentials" });

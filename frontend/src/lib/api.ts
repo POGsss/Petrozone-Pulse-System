@@ -964,6 +964,7 @@ export const settingsApi = {
       sidebar_collapsed: boolean;
       font_size: string;
       table_density: string;
+      login_lockout_enabled?: boolean;
       updated_at: string;
       updated_by: string | null;
     }>("/api/settings");
@@ -975,6 +976,7 @@ export const settingsApi = {
     sidebar_collapsed?: boolean;
     font_size?: string;
     table_density?: string;
+    login_lockout_enabled?: boolean;
   }) => {
     return fetchWithAuth<{
       id: string;
@@ -983,6 +985,7 @@ export const settingsApi = {
       sidebar_collapsed: boolean;
       font_size: string;
       table_density: string;
+      login_lockout_enabled?: boolean;
       updated_at: string;
       updated_by: string | null;
     }>("/api/settings", {

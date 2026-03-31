@@ -1489,6 +1489,7 @@ export type Database = {
           dark_mode: boolean
           font_size: string
           id: string
+          login_lockout_enabled: boolean
           primary_color: string
           sidebar_collapsed: boolean
           table_density: string
@@ -1499,6 +1500,7 @@ export type Database = {
           dark_mode?: boolean
           font_size?: string
           id?: string
+          login_lockout_enabled?: boolean
           primary_color?: string
           sidebar_collapsed?: boolean
           table_density?: string
@@ -1509,6 +1511,7 @@ export type Database = {
           dark_mode?: boolean
           font_size?: string
           id?: string
+          login_lockout_enabled?: boolean
           primary_color?: string
           sidebar_collapsed?: boolean
           table_density?: string

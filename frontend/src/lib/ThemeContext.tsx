@@ -26,6 +26,7 @@ export interface ThemeSettings {
   sidebarCollapsed: boolean;
   fontSize: FontSize;
   tableDensity: TableDensity;
+  loginLockoutEnabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: ThemeSettings = {
@@ -34,6 +35,7 @@ export const DEFAULT_SETTINGS: ThemeSettings = {
   sidebarCollapsed: false,
   fontSize: "medium",
   tableDensity: "comfortable",
+  loginLockoutEnabled: true,
 };
 
 const STORAGE_KEY = "petrozone-theme-settings";
@@ -163,6 +165,7 @@ function fromDb(row: {
   sidebar_collapsed: boolean;
   font_size: string;
   table_density?: string;
+  login_lockout_enabled?: boolean;
 }, previousDensity?: TableDensity): ThemeSettings {
   const dbDensity = row.table_density;
   const normalizedDensity: TableDensity =
@@ -178,6 +181,10 @@ function fromDb(row: {
       ? row.font_size
       : "medium") as FontSize,
     tableDensity: normalizedDensity,
+    loginLockoutEnabled:
+      typeof row.login_lockout_enabled === "boolean"
+        ? row.login_lockout_enabled
+        : DEFAULT_SETTINGS.loginLockoutEnabled,
   };
 }
 
@@ -189,6 +196,7 @@ function toDb(s: ThemeSettings) {
     sidebar_collapsed: s.sidebarCollapsed,
     font_size: s.fontSize,
     table_density: s.tableDensity,
+    login_lockout_enabled: s.loginLockoutEnabled,
   };
 }
 
