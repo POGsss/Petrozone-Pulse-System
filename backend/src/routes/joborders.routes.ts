@@ -4,7 +4,7 @@ import { supabaseAdmin } from "../lib/supabase.js";
 import { requireAuth, requireRoles } from "../middleware/auth.middleware.js";
 import { logFailedAction, fixAuditLogUser } from "../lib/auditLogger.js";
 import { deductStockForJobOrder, restoreStockForJobOrder } from "./inventory.routes.js";
-import { createJobOrderNotification } from "./notifications.routes.js";
+import { createJobOrderNotification, createReadyForReleaseReminderNotification } from "./notifications.routes.js";
 
 const router = Router();
 
@@ -2517,6 +2517,13 @@ router.patch(
 
       // System notification for ready for release
       await createJobOrderNotification(existing.order_number, orderId, existing.branch_id, "in_progress", "ready_for_release", req.user!.id);
+      await createReadyForReleaseReminderNotification(
+        existing.order_number,
+        orderId,
+        existing.branch_id,
+        updated.vehicles?.plate_number || null,
+        req.user!.id
+      );
 
       res.json(updated);
     } catch (error) {

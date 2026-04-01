@@ -19,7 +19,7 @@ import {
   LuFileText,
   LuDownload,
 } from "react-icons/lu";
-import { jobOrdersApi, branchesApi, customersApi, vehiclesApi, packagesApi, laborItemsApi, thirdPartyRepairsApi, inventoryApi } from "../../lib/api";
+import { jobOrdersApi, branchesApi, customersApi, vehiclesApi, packagesApi, laborItemsApi, thirdPartyRepairsApi, inventoryApi, suppliersApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
 import { generateJobOrderPDF } from "../../lib/jobOrderPdfGenerator";
 import { useAuth } from "../../auth";
@@ -40,7 +40,7 @@ import {
   SearchableSelect,
 } from "../../components";
 import type { FilterGroup, SearchableSelectOption } from "../../components";
-import type { JobOrder, JobOrderItem, JobOrderHistory, Branch, Customer, Vehicle, PackageItem, ThirdPartyRepair, VehicleClass, InventoryItem, LaborItem } from "../../types";
+import type { JobOrder, JobOrderItem, JobOrderHistory, Branch, Customer, Vehicle, PackageItem, ThirdPartyRepair, VehicleClass, InventoryItem, LaborItem, Supplier } from "../../types";
 
 const ITEMS_PER_PAGE = 12;
 
@@ -255,6 +255,7 @@ export function JobOrderManagement() {
   const [packageItems, setPackageItems] = useState<PackageItem[]>([]);
   const [laborItems, setLaborItems] = useState<LaborItem[]>([]);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loadingLookups, setLoadingLookups] = useState(false);
 
   // Add item sub-form
@@ -542,6 +543,18 @@ export function JobOrderManagement() {
       }));
   }, [vehicles, customers, addBranchId]);
 
+  const thirdPartySupplierOptions = useMemo<SearchableSelectOption[]>(() => {
+    return suppliers
+      .filter((s) => s.status === "active")
+      .sort((a, b) => a.supplier_name.localeCompare(b.supplier_name))
+      .map((s) => ({
+        value: s.supplier_name,
+        label: s.supplier_name,
+        description: s.contact_person ? `Contact: ${s.contact_person}` : undefined,
+        keywords: [s.email, s.phone].filter(Boolean) as string[],
+      }));
+  }, [suppliers]);
+
   // Package item options (active items visible to user)
   const packageItemOptions = useMemo(() => {
     return packageItems
@@ -653,18 +666,20 @@ export function JobOrderManagement() {
   const loadLookups = useCallback(async (branchId: string) => {
     try {
       setLoadingLookups(true);
-      const [custRes, vehRes, catRes, laborRes, invRes] = await Promise.all([
+      const [custRes, vehRes, catRes, laborRes, invRes, supRes] = await Promise.all([
         customersApi.getAll({ limit: 1000, branch_id: branchId || undefined }),
         vehiclesApi.getAll({ limit: 1000, branch_id: branchId || undefined }),
         packagesApi.getAll({ limit: 1000 }),
         laborItemsApi.getAll({ limit: 1000, status: "active" }),
         inventoryApi.getAll({ limit: 1000, branch_id: branchId || undefined, status: "active" }),
+        suppliersApi.getAll({ limit: 1000, branch_id: branchId || undefined, status: "active" }),
       ]);
       setCustomers(custRes.data);
       setVehicles(vehRes.data);
       setPackageItems(catRes.data);
       setLaborItems(laborRes.data);
       setInventoryItems(invRes.data);
+      setSuppliers(supRes.data);
     } catch {
       // Silently fail — will show empty dropdowns
     } finally {
@@ -1004,7 +1019,7 @@ export function JobOrderManagement() {
 
   // Draft repair functions for create modal
   function handleAddDraftRepair() {
-    if (!newRepairProvider.trim()) { setAddError("Provider name is required"); return; }
+    if (!newRepairProvider.trim()) { setAddError("Supplier is required"); return; }
     if (!newRepairDescription.trim()) { setAddError("Description is required"); return; }
     if (!newRepairCost || isNaN(Number(newRepairCost)) || Number(newRepairCost) < 0) {
       setAddError("Valid cost is required"); return;
@@ -1902,9 +1917,13 @@ export function JobOrderManagement() {
     setShowRepairActionModal(true);
 
     try {
-      const res = await thirdPartyRepairsApi.getAll({ job_order_id: order.id });
+      const [res, suppliersRes] = await Promise.all([
+        thirdPartyRepairsApi.getAll({ job_order_id: order.id }),
+        suppliersApi.getAll({ limit: 1000, branch_id: order.branch_id, status: "active" }),
+      ]);
       setActionRepairs(res.data);
       setOriginalActionRepairs(res.data);
+      setSuppliers(suppliersRes.data);
     } catch {
       setActionRepairError("Failed to load repairs");
     } finally {
@@ -1917,7 +1936,7 @@ export function JobOrderManagement() {
     if (!repairActionOrder) return;
     setActionRepairError(null);
 
-    if (!actionRepairProvider.trim()) { setActionRepairError("Provider name is required"); return; }
+    if (!actionRepairProvider.trim()) { setActionRepairError("Supplier is required"); return; }
     if (!actionRepairDescription.trim()) { setActionRepairError("Description is required"); return; }
     if (!actionRepairCost || isNaN(Number(actionRepairCost)) || Number(actionRepairCost) < 0) {
       setActionRepairError("Valid cost is required"); return;
@@ -1964,12 +1983,18 @@ export function JobOrderManagement() {
   }
 
   function startEditActionRepair(repair: ThirdPartyRepair) {
+    const hasSupplierMatch = thirdPartySupplierOptions.some((option) => option.value === repair.provider_name);
+
     setEditingActionRepairId(repair.id);
-    setActionRepairProvider(repair.provider_name);
+    setActionRepairProvider(hasSupplierMatch ? repair.provider_name : "");
     setActionRepairDescription(repair.description);
     setActionRepairCost(String(repair.cost));
     setActionRepairDate(repair.repair_date);
-    setActionRepairError(null);
+    setActionRepairError(
+      hasSupplierMatch
+        ? null
+        : "This repair used a legacy provider name. Please select a supplier before saving."
+    );
   }
 
   function cancelEditActionRepair() {
@@ -2586,11 +2611,14 @@ export function JobOrderManagement() {
 
           <ModalSection title="Third Party Repairs">
             {/* Add repair inputs */}
-            <ModalInput
-              type="text"
+            <SearchableSelect
               value={newRepairProvider}
               onChange={setNewRepairProvider}
-              placeholder="Provider Name"
+              options={thirdPartySupplierOptions}
+              placeholder={loadingLookups ? "Loading suppliers..." : "Search Supplier *"}
+              disabled={loadingLookups}
+              maxResults={10}
+              noResultsText="No suppliers found"
             />
             <textarea
               value={newRepairDescription}
@@ -3036,11 +3064,11 @@ export function JobOrderManagement() {
               </ModalSection>
             )}
 
-            <ModalSection title={viewUsesEstimatedLabels ? "Estimated Total" : "Grand Total"}>
+            <ModalSection title={viewUsesEstimatedLabels ? "Quotation" : "Quotation"}>
               {viewUsesEstimatedLabels ? (
                 <div className="space-y-2">
                   <div className="flex justify-between items-center px-4 py-3 bg-neutral-100 rounded-xl">
-                    <span className="font-medium text-neutral-950">Repair Total</span>
+                    <span className="font-medium text-neutral-950">Repairs Total</span>
                     <span className="font-semibold text-neutral-950">{formatPrice(viewItemsTotal)}</span>
                   </div>
                   <div className="flex justify-between items-center px-4 py-3 bg-neutral-100 rounded-xl">
@@ -3048,7 +3076,7 @@ export function JobOrderManagement() {
                     <span className="font-semibold text-neutral-950">{formatPrice(viewRepairsTotal)}</span>
                   </div>
                   <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
-                    <span className="font-semibold text-neutral-950">Estimated Total</span>
+                    <span className="font-semibold text-neutral-950">Estimated Grand Total</span>
                     <span className="font-bold text-primary text-lg">{formatPrice(viewGrandTotal)}</span>
                   </div>
                 </div>
@@ -3189,11 +3217,14 @@ export function JobOrderManagement() {
         {repairActionOrder && (
           <div>
             <ModalSection title={editingActionRepairId ? "Edit Repair" : "Add Repair"}>
-              <ModalInput
-                type="text"
+              <SearchableSelect
                 value={actionRepairProvider}
                 onChange={setActionRepairProvider}
-                placeholder="Provider Name *"
+                options={thirdPartySupplierOptions}
+                placeholder={loadingActionRepairs ? "Loading suppliers..." : "Search Supplier *"}
+                disabled={loadingActionRepairs}
+                maxResults={10}
+                noResultsText="No suppliers found"
               />
               <textarea
                 value={actionRepairDescription}

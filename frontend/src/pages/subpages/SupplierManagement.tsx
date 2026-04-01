@@ -732,7 +732,6 @@ export function SupplierManagement() {
                     : "bg-neutral-100 text-neutral hover:bg-neutral-200"
                     }`}
                 >
-                  {addForm.branch_ids.includes(branch.id) ? <LuCheck className="w-4 h-4" /> : <LuX className="w-4 h-4" />}
                   {branch.name} ({branch.code})
                 </button>
               ))}
@@ -851,7 +850,6 @@ export function SupplierManagement() {
                       : "bg-neutral-100 text-neutral hover:bg-neutral-200"
                       }`}
                   >
-                    {editForm.branch_ids.includes(branch.id) ? <LuCheck className="w-4 h-4" /> : <LuX className="w-4 h-4" />}
                     {branch.name} ({branch.code})
                   </button>
                 ))}
@@ -980,13 +978,29 @@ export function SupplierManagement() {
             </ModalSection>
 
             <ModalSection title="Assignment">
-              <ModalInput
-                type="text"
-                value={viewSupplier.branches?.name || "-"}
-                onChange={() => { }}
-                placeholder="Branch"
-                disabled
-              />
+              {getSupplierBranchIds(viewSupplier).length === 0 ? (
+                <p className="text-sm text-neutral-400">No branches assigned</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {getSupplierBranchIds(viewSupplier).map((branchId) => {
+                    const assignmentBranch = viewSupplier.supplier_branch_assignments?.find((a) => a.branch_id === branchId)?.branches;
+                    const branch = branches.find((b) => b.id === branchId);
+                    const label = assignmentBranch?.name || branch?.name || (viewSupplier.branch_id === branchId ? viewSupplier.branches?.name : null) || branchId.slice(0, 8);
+                    const code = assignmentBranch?.code || branch?.code || (viewSupplier.branch_id === branchId ? viewSupplier.branches?.code : null);
+
+                    return (
+                      <button
+                        key={branchId}
+                        type="button"
+                        disabled
+                        className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all bg-neutral-100 text-neutral cursor-readonly"
+                      >
+                        {code ? `${label} (${code})` : label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </ModalSection>
 
             {/* Linked Products (read-only) */}

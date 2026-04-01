@@ -750,6 +750,10 @@ export async function createJobOrderNotification(
   contextLabel?: string
 ): Promise<void> {
   try {
+    const normalizedOrderIdentifier = orderNumber.trim().toUpperCase().startsWith("JO-")
+      ? orderNumber.trim()
+      : `JO-${orderNumber.trim()}`;
+
     const statusLabels: Record<string, string> = {
       draft: "Draft",
       pending_approval: "Pending Approval",
@@ -762,8 +766,8 @@ export async function createJobOrderNotification(
     };
 
     const contextPrefix = contextLabel ? `${contextLabel} ` : "";
-    const title = `${contextPrefix}Job Order ${orderNumber} - Status Update`;
-    const message = `${contextPrefix}Job Order ${orderNumber} has been updated from "${statusLabels[fromStatus] || fromStatus}" to "${statusLabels[toStatus] || toStatus}".`;
+  const title = `${contextPrefix}Status Update (${normalizedOrderIdentifier})`;
+  const message = `${contextPrefix}Job Order ${normalizedOrderIdentifier} has been updated from "${statusLabels[fromStatus] || fromStatus}" to "${statusLabels[toStatus] || toStatus}".`;
 
     // Create system notification targeting all users in the branch
     const { data: notification, error } = await supabaseAdmin
@@ -792,6 +796,78 @@ export async function createJobOrderNotification(
     await createReceipts(notification.id, "branch", branchId, branchId);
   } catch (err) {
     console.error("JO notification error:", err);
+  }
+}
+
+/**
+ * Create a ready-status reminder notification for users who can access Service Reminder.
+ */
+export async function createReadyForReleaseReminderNotification(
+  orderNumber: string,
+  orderId: string,
+  branchId: string,
+  plateNumber: string | null,
+  triggeredByUserId: string
+): Promise<void> {
+  try {
+    const title = `Remind Customer (${plateNumber || "No Plate"})`;
+    const message = `Job Order ${orderNumber} is ready for release. Please create a customer reminder via SMS or email in Service Reminder.`;
+
+    const { data: notification, error } = await supabaseAdmin
+      .from("notifications")
+      .insert({
+        title,
+        message,
+        target_type: "branch",
+        target_value: branchId,
+        status: "active",
+        notification_type: "system",
+        reference_type: "JOB_ORDER",
+        reference_id: orderId,
+        branch_id: branchId,
+        created_by: triggeredByUserId,
+      })
+      .select()
+      .single();
+
+    if (error || !notification) {
+      console.error("Failed to create ready reminder notification:", error);
+      return;
+    }
+
+    const { data: branchUsers, error: branchUsersError } = await supabaseAdmin
+      .from("user_branch_assignments")
+      .select("user_id")
+      .eq("branch_id", branchId);
+
+    if (branchUsersError || !branchUsers || branchUsers.length === 0) {
+      return;
+    }
+
+    const branchUserIds = Array.from(new Set(branchUsers.map((u) => u.user_id)));
+
+    const { data: roleUsers, error: roleUsersError } = await supabaseAdmin
+      .from("user_roles")
+      .select("user_id")
+      .in("user_id", branchUserIds)
+      .in("role", ["HM", "POC", "JS", "R"] as any);
+
+    if (roleUsersError || !roleUsers || roleUsers.length === 0) {
+      return;
+    }
+
+    const recipientIds = Array.from(new Set(roleUsers.map((r) => r.user_id)));
+    const receipts = recipientIds.map((userId) => ({
+      notification_id: notification.id,
+      user_id: userId,
+      is_read: false,
+    }));
+
+    if (receipts.length > 0) {
+      await supabaseAdmin.from("notification_receipts").insert(receipts);
+    }
+  } catch (err) {
+    console.error("Ready reminder notification error:", err);
   }
 }
 

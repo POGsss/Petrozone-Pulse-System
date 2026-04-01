@@ -1899,11 +1899,8 @@ export function PurchaseOrderManagement() {
               </p>
             </div>
             <p className="text-sm text-neutral-900 mb-2">
-              This will mark the PO as received, create stock-in movements for every line item, and update on-hand quantities. <strong>This action is irreversible.</strong>
+              {orderToReceive.receipt_attachment ? "This will mark the PO as received, create stock-in movements for every line item, and update on-hand quantities." : "Cannot record stock-in without a receipt. Upload a receipt first before receiving purchase order."}
             </p>
-            {!orderToReceive.receipt_attachment && (
-              <p className="text-sm text-negative mb-2">Upload receipt before receiving purchase order.</p>
-            )}
             <div className="flex gap-3 mt-6">
               <button
                 type="button"
