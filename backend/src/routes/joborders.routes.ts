@@ -1680,10 +1680,10 @@ router.patch(
         return;
       }
 
-      // Validate status transition: only "draft" can go to "pending_approval"
-      if (existing.status !== "draft") {
+      // Validate status transition: only "draft" or "rejected" can go to "pending_approval"
+      if (!["draft", "rejected"].includes(existing.status)) {
         res.status(400).json({
-          error: `Cannot request approval for a job order with status "${existing.status}". Only draft orders can be sent for approval.`,
+          error: `Cannot request approval for a job order with status "${existing.status}". Only draft or rejected orders can be sent for approval.`,
         });
         return;
       }
@@ -1739,6 +1739,10 @@ router.patch(
           status: "pending_approval",
           approval_status: "REQUESTED",
           approval_requested_at: now,
+          approved_at: null,
+          approved_by: null,
+          approval_method: null,
+          rejection_reason: null,
         })
         .eq("id", orderId);
 
@@ -1790,14 +1794,14 @@ router.patch(
           p_entity_id: orderId,
           p_performed_by_user_id: req.user!.id,
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
-          p_new_values: { from: "draft", to: "pending_approval" },
+          p_new_values: { from: existing.status, to: "pending_approval" },
         });
       } catch (auditErr) {
         console.error("Audit log error:", auditErr);
       }
 
       // System notification for status change
-      await createJobOrderNotification(existing.order_number, orderId, existing.branch_id, "draft", "pending_approval", req.user!.id);
+      await createJobOrderNotification(existing.order_number, orderId, existing.branch_id, existing.status, "pending_approval", req.user!.id);
 
       res.json(updated);
     } catch (error) {

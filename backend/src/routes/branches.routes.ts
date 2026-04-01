@@ -90,7 +90,7 @@ router.get(
 /**
  * POST /api/branches
  * Create a new branch
- * HM, POC, JS, R can create (US1)
+ * HM, POC, JS can create (US1)
  */
 router.post("/", requireBranchManager, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -155,7 +155,7 @@ router.post("/", requireBranchManager, async (req: Request, res: Response): Prom
 /**
  * PUT /api/branches/:branchId
  * Update a branch
- * HM, POC, JS, R can update (US2)
+ * HM, POC, JS can update (US2)
  */
 router.put("/:branchId", requireBranchManager, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -231,7 +231,7 @@ router.put("/:branchId", requireBranchManager, async (req: Request, res: Respons
 /**
  * DELETE /api/branches/:branchId
  * Soft delete a branch (set is_active to false)
- * HM, POC, JS, R can delete (US3)
+ * HM, POC, JS can delete (US3)
  */
 router.delete("/:branchId", requireBranchManager, async (req: Request, res: Response): Promise<void> => {
   try {

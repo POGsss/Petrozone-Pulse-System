@@ -35,8 +35,9 @@ import {
   SkeletonLoader,
   CardGrid,
   GridCard,
+  SearchableSelect,
 } from "../../components";
-import type { FilterGroup } from "../../components";
+import type { FilterGroup, SearchableSelectOption } from "../../components";
 import type { JobOrder, JobOrderItem, JobOrderHistory, Branch, Customer, Vehicle, PackageItem, ThirdPartyRepair, VehicleClass, InventoryItem, LaborItem } from "../../types";
 
 const ITEMS_PER_PAGE = 12;
@@ -520,24 +521,23 @@ export function JobOrderManagement() {
     return branches.map((b) => ({ value: b.id, label: b.name }));
   }, [branches, user, isHM]);
 
-  // Customer options filtered by branch
-  const customerOptions = useMemo(() => {
-    return customers
-      .filter((c) => c.status === "active" && (!addBranchId || c.branch_id === addBranchId))
-      .map((c) => ({ value: c.id, label: c.full_name }));
-  }, [customers, addBranchId]);
-
   const selectedAddCustomer = useMemo(
     () => customers.find((c) => c.id === addCustomerId) || null,
     [customers, addCustomerId]
   );
 
-  // Vehicle options filtered by customer
-  const vehicleOptions = useMemo(() => {
+  const vehicleSearchOptions = useMemo<SearchableSelectOption[]>(() => {
+    const customerMap = new Map(customers.map((c) => [c.id, c.full_name]));
     return vehicles
-      .filter((v) => v.status === "active" && (!addCustomerId || v.customer_id === addCustomerId))
-      .map((v) => ({ value: v.id, label: `${v.model} (${v.plate_number})` }));
-  }, [vehicles, addCustomerId]);
+      .filter((v) => v.status === "active" && (!addBranchId || v.branch_id === addBranchId))
+      .sort((a, b) => a.plate_number.localeCompare(b.plate_number))
+      .map((v) => ({
+        value: v.id,
+        label: v.plate_number,
+        description: `${v.model} • ${customerMap.get(v.customer_id) || "Unknown Customer"}`,
+        keywords: [v.model],
+      }));
+  }, [vehicles, customers, addBranchId]);
 
   // Package item options (active items visible to user)
   const packageItemOptions = useMemo(() => {
@@ -715,16 +715,6 @@ export function JobOrderManagement() {
     loadLookups(newBranchId);
   }
 
-  // When customer changes, clear vehicle
-  function handleCustomerChange(newCustomerId: string) {
-    setAddCustomerId(newCustomerId);
-    setAddVehicleId("");
-    setAddVehicleClass("light");
-    if (!addSameAsCustomer) return;
-    const selected = customers.find((c) => c.id === newCustomerId);
-    setAddDeliveredBy(selected?.full_name || "");
-  }
-
   useEffect(() => {
     if (!addSameAsCustomer) return;
     setAddDeliveredBy(selectedAddCustomer?.full_name || "");
@@ -735,6 +725,7 @@ export function JobOrderManagement() {
     setAddVehicleId(newVehicleId);
     if (newVehicleId) {
       const selectedVehicle = vehicles.find((v) => v.id === newVehicleId);
+      setAddCustomerId(selectedVehicle?.customer_id || "");
       if (selectedVehicle?.vehicle_class) {
         const newClass = selectedVehicle.vehicle_class as VehicleClass;
         setAddVehicleClass(newClass);
@@ -744,6 +735,7 @@ export function JobOrderManagement() {
         setSelectedLaborItemId("");
       }
     } else {
+      setAddCustomerId("");
       setAddVehicleClass("light");
       setSelectedLaborItemId("");
     }
@@ -1050,7 +1042,6 @@ export function JobOrderManagement() {
       setAddError("Odometer reading must be a non-negative number");
       return;
     }
-    if (!addVehicleBay) { setAddError("Vehicle bay is required"); return; }
     if (draftPackageLines.length + draftLaborLines.length + draftInventoryLines.length === 0) {
       setAddError("Add at least one line item");
       return;
@@ -1859,6 +1850,8 @@ export function JobOrderManagement() {
   // --- Open Payment Modal from card/dropdown ---
   function openPaymentModal(order: JobOrder) {
     setPaymentOrder(order);
+    setPaymentInvoiceNumber(order.invoice_number || "");
+    setPaymentReference(order.payment_reference || "");
     setShowPaymentModal(true);
   }
 
@@ -2160,13 +2153,19 @@ export function JobOrderManagement() {
                     >
                       <LuHistory className="w-4 h-4" /> Job Order History
                     </button>
-                    {((order.job_type !== "backorder" && canApproval && (order.status === "draft" || order.status === "pending_approval")) ||
-                      (order.job_type === "backorder" && canApproveRework && order.status === "pending_approval")) && (
+                    {(((order.status === "draft" || order.status === "rejected") && canApproval) ||
+                      (order.status === "pending_approval" && order.job_type !== "backorder" && canApproval) ||
+                      (order.status === "pending_approval" && order.job_type === "backorder" && canApproveRework)) && (
                       <button
                         onClick={(e) => { e.stopPropagation(); closeDropdown(); openApprovalModal(order); }}
                         className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
                       >
-                        <LuSend className="w-4 h-4" /> {order.job_type === "backorder" ? "Rework Approval" : "Customer Approval"}
+                        <LuSend className="w-4 h-4" />
+                        {order.status === "rejected"
+                          ? "Re Approve"
+                          : order.status === "pending_approval" && order.job_type === "backorder"
+                            ? "Rework Approval"
+                            : "Customer Approval"}
                       </button>
                     )}
                     {canApproval && (order.status === "draft" || order.status === "pending_approval") && (
@@ -2287,19 +2286,21 @@ export function JobOrderManagement() {
               placeholder="Select Branch *"
               options={branchOptions}
             />
-            <ModalSelect
-              value={addCustomerId}
-              onChange={handleCustomerChange}
-              placeholder={loadingLookups ? "Loading customers..." : "Select Customer *"}
-              options={customerOptions}
-              disabled={loadingLookups || !addBranchId}
-            />
-            <ModalSelect
+            <SearchableSelect
               value={addVehicleId}
               onChange={handleVehicleChange}
-              placeholder={loadingLookups ? "Loading vehicles..." : "Select Vehicle *"}
-              options={vehicleOptions}
-              disabled={loadingLookups || !addCustomerId}
+              options={vehicleSearchOptions}
+              placeholder={loadingLookups ? "Loading vehicles..." : addBranchId ? "Search Vehicle by Plate Number *" : "Select Branch first"}
+              disabled={loadingLookups || !addBranchId}
+              maxResults={10}
+              noResultsText="No vehicles found"
+            />
+            <ModalInput
+              type="text"
+              value={selectedAddCustomer?.full_name || ""}
+              onChange={() => {}}
+              placeholder="Customer"
+              disabled
             />
             <ModalInput
               type="text"
@@ -2326,8 +2327,9 @@ export function JobOrderManagement() {
               <ModalSelect
                 value={addVehicleBay}
                 onChange={setAddVehicleBay}
-                placeholder="Vehicle Bay *"
+                placeholder="Vehicle Bay"
                 options={[
+                  { value: "unassigned", label: "Unassigned" },
                   { value: "bay1", label: "Bay 1" },
                   { value: "bay2", label: "Bay 2" },
                 ]}
@@ -2376,11 +2378,11 @@ export function JobOrderManagement() {
           <ModalSection title="Packages">
             <div className="flex gap-2 items-end">
               <div className="flex-1">
-                <ModalSelect
+                <SearchableSelect
                   value={selectedPackageItemId}
                   onChange={setSelectedPackageItemId}
-                  placeholder={loadingLookups ? "Loading..." : "Select package..."}
                   options={packageItemOptions}
+                  placeholder={loadingLookups ? "Loading..." : "Select package..."}
                   disabled={loadingLookups || !addBranchId}
                 />
               </div>
@@ -2453,12 +2455,12 @@ export function JobOrderManagement() {
 
                       <div className="flex gap-2 items-end pt-1">
                         <div className="flex-1">
-                          <ModalSelect
+                          <SearchableSelect
                             value={vehicleSpecificItemByPackage[line.package_item_id] || ""}
                             onChange={(value) => handleVehicleSpecificItemChange(line.package_item_id, value)}
-                            placeholder="Select inventory..."
                             options={inventoryItemOptions}
-                            className="bg-white"
+                            placeholder="Select inventory..."
+                            inputClassName="bg-white"
                           />
                         </div>
                         <button
@@ -2480,7 +2482,12 @@ export function JobOrderManagement() {
           <ModalSection title="Labor">
             <div className="flex gap-2 items-end">
               <div className="flex-1">
-                <ModalSelect value={selectedLaborItemId} onChange={setSelectedLaborItemId} placeholder="Select labor..." options={laborItemOptions} />
+                <SearchableSelect
+                  value={selectedLaborItemId}
+                  onChange={setSelectedLaborItemId}
+                  options={laborItemOptions}
+                  placeholder="Select labor..."
+                />
               </div>
               <div className="w-20">
                 <ModalInput type="number" value={selectedLaborQty} onChange={setSelectedLaborQty} placeholder="Qty" />
@@ -2512,7 +2519,12 @@ export function JobOrderManagement() {
           <ModalSection title="Inventory">
             <div className="flex gap-2 items-end">
               <div className="flex-1">
-                <ModalSelect value={selectedInventoryItemId} onChange={setSelectedInventoryItemId} placeholder="Select inventory..." options={inventoryItemOptions} />
+                <SearchableSelect
+                  value={selectedInventoryItemId}
+                  onChange={setSelectedInventoryItemId}
+                  options={inventoryItemOptions}
+                  placeholder="Select inventory..."
+                />
               </div>
               <div className="w-20">
                 <ModalInput type="number" value={selectedInventoryQty} onChange={setSelectedInventoryQty} placeholder="Qty" />
@@ -2563,6 +2575,7 @@ export function JobOrderManagement() {
               rows={3}
               className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
             />
+            
             <div className="flex gap-2 items-end">
               <div className="flex-1">
                 <ModalInput
@@ -2780,7 +2793,7 @@ export function JobOrderManagement() {
                 />
                 <ModalInput
                   type="text"
-                  value={viewOrder.vehicle_bay ? (viewOrder.vehicle_bay === "bay1" ? "Bay 1" : viewOrder.vehicle_bay === "bay2" ? "Bay 2" : viewOrder.vehicle_bay) : "—"}
+                  value={viewOrder.vehicle_bay ? (viewOrder.vehicle_bay === "unassigned" ? "Unassigned" : viewOrder.vehicle_bay === "bay1" ? "Bay 1" : viewOrder.vehicle_bay === "bay2" ? "Bay 2" : viewOrder.vehicle_bay) : "—"}
                   onChange={() => { }}
                   placeholder="Vehicle Bay"
                   disabled
@@ -3324,11 +3337,11 @@ export function JobOrderManagement() {
               <ModalSection title="Packages">
                 <div className="flex gap-2 items-end">
                   <div className="flex-1">
-                    <ModalSelect
+                    <SearchableSelect
                       value={editLineSelectedPackageId}
                       onChange={setEditLineSelectedPackageId}
-                      placeholder="Select package..."
                       options={editPackageItemOptions}
+                      placeholder="Select package..."
                     />
                   </div>
                   <div className="w-20">
@@ -3400,12 +3413,12 @@ export function JobOrderManagement() {
 
                           <div className="flex gap-2 items-end pt-1">
                             <div className="flex-1">
-                              <ModalSelect
+                              <SearchableSelect
                                 value={editVehicleSpecificItemByPackage[line.package_item_id] || ""}
                                 onChange={(value) => handleEditVehicleSpecificItemChange(line.package_item_id, value)}
-                                placeholder="Select inventory..."
                                 options={editInventoryItemOptions}
-                                className="bg-white"
+                                placeholder="Select inventory..."
+                                inputClassName="bg-white"
                               />
                             </div>
                             <button
@@ -3427,7 +3440,12 @@ export function JobOrderManagement() {
               <ModalSection title="Labor">
                 <div className="flex gap-2 items-end">
                   <div className="flex-1">
-                    <ModalSelect value={editLineSelectedLaborId} onChange={setEditLineSelectedLaborId} placeholder="Select labor..." options={editLaborItemOptions} />
+                    <SearchableSelect
+                      value={editLineSelectedLaborId}
+                      onChange={setEditLineSelectedLaborId}
+                      options={editLaborItemOptions}
+                      placeholder="Select labor..."
+                    />
                   </div>
                   <div className="w-20">
                     <ModalInput type="number" value={editLineSelectedLaborQty} onChange={setEditLineSelectedLaborQty} placeholder="Qty" />
@@ -3459,7 +3477,12 @@ export function JobOrderManagement() {
               <ModalSection title="Inventory">
                 <div className="flex gap-2 items-end">
                   <div className="flex-1">
-                    <ModalSelect value={editLineSelectedInventoryId} onChange={setEditLineSelectedInventoryId} placeholder="Select inventory..." options={editInventoryItemOptions} />
+                    <SearchableSelect
+                      value={editLineSelectedInventoryId}
+                      onChange={setEditLineSelectedInventoryId}
+                      options={editInventoryItemOptions}
+                      placeholder="Select inventory..."
+                    />
                   </div>
                   <div className="w-20">
                     <ModalInput type="number" value={editLineSelectedInventoryQty} onChange={setEditLineSelectedInventoryQty} placeholder="Qty" />
@@ -3507,19 +3530,19 @@ export function JobOrderManagement() {
                   {/* Add item row */}
                   <div className="flex gap-2 items-end mt-2">
                     <div className="flex-1">
-                      <ModalSelect
+                      <SearchableSelect
                         value={editSelectedPackageId}
                         onChange={setEditSelectedPackageId}
-                        placeholder="Select Package item"
                         options={editPackageItemOptions}
+                        placeholder="Select Package item"
                       />
                     </div>
                     <div className="flex-1">
-                      <ModalSelect
+                      <SearchableSelect
                         value={editSelectedLaborId}
                         onChange={setEditSelectedLaborId}
-                        placeholder="Select Labor"
                         options={editLaborItemOptions}
+                        placeholder="Select Labor"
                       />
                     </div>
                     <div className="w-20">
@@ -3806,7 +3829,7 @@ export function JobOrderManagement() {
       <Modal
         isOpen={showApprovalModal && !!approvalOrder}
         onClose={() => setShowApprovalModal(false)}
-        title="Customer Approval"
+        title={approvalOrder?.status === "rejected" ? "Re Approve" : "Customer Approval"}
         maxWidth="sm"
       >
         {approvalOrder && (
@@ -3815,6 +3838,9 @@ export function JobOrderManagement() {
               <p className="text-neutral-900">
                 {approvalOrder.status === "draft" && (
                   <>Request customer approval for <strong className="text-neutral-950">{approvalOrder.order_number}</strong>?</>
+                )}
+                {approvalOrder.status === "rejected" && (
+                  <>Re-request customer approval for <strong className="text-neutral-950">{approvalOrder.order_number}</strong>?</>
                 )}
                 {approvalOrder.status === "pending_approval" && (
                   <>
@@ -3827,13 +3853,14 @@ export function JobOrderManagement() {
             </div>
             <p className="text-sm text-neutral-900 mb-2">
               {approvalOrder.status === "draft" && "This will change the status to Pending Approval and notify the customer for review."}
+              {approvalOrder.status === "rejected" && "This will move the status back to Pending Approval and notify the customer for review again."}
               {approvalOrder.status === "pending_approval" &&
                 (approvalOrder.job_type === "backorder"
                   ? "Select whether HM approves or rejects this rework job order."
                   : "Select whether the customer approved or rejected this job order.")}
             </p>
 
-            {approvalOrder.status === "draft" && (
+            {(approvalOrder.status === "draft" || approvalOrder.status === "rejected") && (
               <div className="flex gap-3 mt-6">
                 <button
                   type="button"
@@ -3851,7 +3878,11 @@ export function JobOrderManagement() {
                       await jobOrdersApi.requestApproval(approvalOrder.id);
                       setShowApprovalModal(false);
                       setApprovalOrder(null);
-                      showToast.success("Approval requested — status changed to Pending Approval");
+                      showToast.success(
+                        approvalOrder.status === "rejected"
+                          ? "Approval re-requested — status changed to Pending Approval"
+                          : "Approval requested — status changed to Pending Approval"
+                      );
                       fetchData();
                     } catch (err) {
                       showToast.error(err instanceof Error ? err.message : "Failed to request approval");
@@ -3861,7 +3892,7 @@ export function JobOrderManagement() {
                   }}
                   className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  {processingApproval ? "Processing..." : "Request"}
+                  {processingApproval ? "Processing..." : approvalOrder.status === "rejected" ? "Re-request" : "Request"}
                 </button>
               </div>
             )}
@@ -4009,7 +4040,7 @@ export function JobOrderManagement() {
         {paymentOrder && (
           <div>
             {(() => {
-              const requiresPaymentDetails = !paymentOrder.is_free_rework;
+              const hasPaymentDetails = !!paymentInvoiceNumber.trim() && !!paymentReference.trim();
               return (
                 <>
             <div className="bg-neutral-100 rounded-xl p-4 my-4">
@@ -4018,7 +4049,7 @@ export function JobOrderManagement() {
               </p>
             </div>
 
-            {requiresPaymentDetails && (!paymentOrder.invoice_number || !paymentOrder.payment_reference) ? (
+            {!hasPaymentDetails ? (
               <p className="text-sm text-neutral-900 mb-2">Add Payment Method details first before confirming Record Payment.</p>
             ) : (
               <p className="text-sm text-neutral-900 mb-2">This will mark the job order as payment received and change the status to Pending Payment.</p>
@@ -4037,7 +4068,7 @@ export function JobOrderManagement() {
               </button>
               <button
                 type="button"
-                disabled={processingPayment || (requiresPaymentDetails && (!paymentOrder.invoice_number || !paymentOrder.payment_reference))}
+                disabled={processingPayment || !hasPaymentDetails}
                 onClick={async () => {
                   try {
                     setProcessingPayment(true);
@@ -4239,8 +4270,9 @@ export function JobOrderManagement() {
               <ModalSelect
                 value={reworkVehicleBay}
                 onChange={setReworkVehicleBay}
-                placeholder="Vehicle Bay *"
+                placeholder="Vehicle Bay"
                 options={[
+                  { value: "unassigned", label: "Unassigned" },
                   { value: "bay1", label: "Bay 1" },
                   { value: "bay2", label: "Bay 2" },
                 ]}
@@ -4287,7 +4319,7 @@ export function JobOrderManagement() {
               loading={creatingRework}
               type="button"
               onSubmit={handleCreateRework}
-              disabled={!reworkReason.trim() || !reworkVehicleBay}
+              disabled={!reworkReason.trim()}
             />
           </div>
         )}

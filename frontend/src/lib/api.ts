@@ -1042,6 +1042,7 @@ export const inventoryApi = {
     reorder_threshold?: number;
     branch_id: string;
     initial_stock?: number;
+    supplier_id?: string;
   }) => {
     return fetchWithAuth<import("../types").InventoryItem>("/api/inventory", {
       method: "POST",

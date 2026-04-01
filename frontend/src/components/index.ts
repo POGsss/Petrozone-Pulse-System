@@ -25,3 +25,5 @@ export type { DesktopTableColumn, DesktopTableRowProps } from "./DesktopTable";
 export { CardGrid } from "./CardGrid";
 export { GridCard } from "./GridCard";
 export type { GridCardAction, GridCardProps } from "./GridCard";
+export { SearchableSelect } from "./SearchableSelect";
+export type { SearchableSelectOption } from "./SearchableSelect";

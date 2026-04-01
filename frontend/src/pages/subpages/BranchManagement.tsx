@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { LuPencil, LuTrash2, LuBuilding } from "react-icons/lu";
 import { branchesApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
+import { useAuth } from "../../auth";
 import { Modal, ModalSection, ModalInput, ModalButtons, ModalError, SearchFilter, PageHeader, ErrorAlert, SkeletonLoader, CardGrid, GridCard } from "../../components";
 import type { FilterGroup } from "../../components";
 import type { Branch } from "../../types";
@@ -15,6 +16,10 @@ function formatDate(dateStr: string): string {
 }
 
 export function BranchManagement() {
+  const { user } = useAuth();
+  const userRoles = user?.roles || [];
+  const canManageBranches = userRoles.some((r) => ["HM", "POC", "JS"].includes(r));
+
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -305,6 +310,7 @@ export function BranchManagement() {
         subtitle={`${branches.length} branches total`}
         buttonLabel="Add New Branch"
         onAdd={() => setShowAddModal(true)}
+        showButton={canManageBranches}
       />
 
       {/* Search & Filter bar */}
@@ -327,7 +333,9 @@ export function BranchManagement() {
         emptyMessage={
           searchQuery || Object.values(activeFilters).some((v) => v && v !== "all")
             ? "No branches match your search or filters."
-            : 'No branches found. Click "Add Branch" to create one.'
+            : canManageBranches
+              ? 'No branches found. Click "Add Branch" to create one.'
+              : "No branches found."
         }
       >
         {filteredBranches.map((branch) => (
@@ -354,17 +362,19 @@ export function BranchManagement() {
               </>
             }
             actions={[
-              {
-                label: "Edit",
-                icon: <LuPencil className="w-4 h-4" />,
-                onClick: (e) => { e.stopPropagation(); openEditModal(branch); },
-              },
-              {
-                label: "Delete",
-                icon: <LuTrash2 className="w-4 h-4" />,
-                onClick: (e) => { e.stopPropagation(); openDeleteConfirm(branch); },
-                className: "flex items-center gap-1 text-sm text-negative hover:text-negative-900",
-              },
+              ...(canManageBranches ? [
+                {
+                  label: "Edit",
+                  icon: <LuPencil className="w-4 h-4" />,
+                  onClick: (e: React.MouseEvent) => { e.stopPropagation(); openEditModal(branch); },
+                },
+                {
+                  label: "Delete",
+                  icon: <LuTrash2 className="w-4 h-4" />,
+                  onClick: (e: React.MouseEvent) => { e.stopPropagation(); openDeleteConfirm(branch); },
+                  className: "flex items-center gap-1 text-sm text-negative hover:text-negative-900",
+                },
+              ] : []),
             ]}
           />
         ))}
