@@ -1305,6 +1305,7 @@ export const suppliersApi = {
     address: string;
     status?: string;
     branch_id: string;
+    branch_ids?: string[];
     notes?: string;
   }) => {
     return fetchWithAuth<import("../types").Supplier>("/api/suppliers", {
@@ -1329,6 +1330,16 @@ export const suppliersApi = {
       method: "PUT",
       body: JSON.stringify(data),
     });
+  },
+
+  updateBranches: async (id: string, branchIds: string[], primaryBranchId?: string | null) => {
+    return fetchWithAuth<{ message: string; branch_ids: string[]; primary_branch_id: string }>(
+      `/api/suppliers/${id}/branches`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ branch_ids: branchIds, primary_branch_id: primaryBranchId || null }),
+      }
+    );
   },
 
   delete: async (id: string) => {

@@ -17,9 +17,11 @@ import {
   LuCircleCheck,
   LuCreditCard,
   LuFileText,
+  LuDownload,
 } from "react-icons/lu";
 import { jobOrdersApi, branchesApi, customersApi, vehiclesApi, packagesApi, laborItemsApi, thirdPartyRepairsApi, inventoryApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
+import { generateJobOrderPDF } from "../../lib/jobOrderPdfGenerator";
 import { useAuth } from "../../auth";
 import {
   Modal,
@@ -343,6 +345,7 @@ export function JobOrderManagement() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentOrder, setPaymentOrder] = useState<JobOrder | null>(null);
   const [processingPayment, setProcessingPayment] = useState(false);
+  const [exportingOrderPdfId, setExportingOrderPdfId] = useState<string | null>(null);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [completeOrder, setCompleteOrder] = useState<JobOrder | null>(null);
   const [completePickedUpBy, setCompletePickedUpBy] = useState("");
@@ -1855,6 +1858,20 @@ export function JobOrderManagement() {
     setShowPaymentModal(true);
   }
 
+  async function handleExportOrderPDF(order: JobOrder) {
+    try {
+      setExportingOrderPdfId(order.id);
+      closeDropdown();
+      const fullOrder = await jobOrdersApi.getById(order.id);
+      generateJobOrderPDF(fullOrder);
+      showToast.success("Job order exported as PDF");
+    } catch (err) {
+      showToast.error(err instanceof Error ? err.message : "Failed to export job order PDF");
+    } finally {
+      setExportingOrderPdfId(null);
+    }
+  }
+
   function openCompleteModal(order: JobOrder) {
     setCompleteOrder(order);
     setCompletePickedUpBy(order.picked_up_by || "");
@@ -2152,6 +2169,13 @@ export function JobOrderManagement() {
                       className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
                     >
                       <LuHistory className="w-4 h-4" /> Job Order History
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleExportOrderPDF(order); }}
+                      disabled={exportingOrderPdfId === order.id}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors disabled:opacity-50"
+                    >
+                      <LuDownload className="w-4 h-4" /> Export to PDF
                     </button>
                     {(((order.status === "draft" || order.status === "rejected") && canApproval) ||
                       (order.status === "pending_approval" && order.job_type !== "backorder" && canApproval) ||

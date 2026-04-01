@@ -15,6 +15,22 @@ router.use(requireAuth);
 const requireSupplierAccess = requireRoles("HM", "POC", "JS");
 const requireSupplierRead = requireRoles("HM", "POC", "JS", "R");
 
+async function getSupplierBranchIds(supplierId: string, fallbackBranchId?: string): Promise<string[]> {
+  const { data: assignments } = await (supabaseAdmin as any)
+    .from("supplier_branch_assignments")
+    .select("branch_id")
+    .eq("supplier_id", supplierId);
+
+  const assignmentBranchIds = (assignments || []).map((a: any) => a.branch_id as string);
+  const all = [...assignmentBranchIds, ...(fallbackBranchId ? [fallbackBranchId] : [])];
+  return Array.from(new Set(all));
+}
+
+function canAccessSupplier(user: NonNullable<Request["user"]>, supplierBranchIds: string[]): boolean {
+  if (user.roles.includes("HM")) return true;
+  return supplierBranchIds.some((branchId) => user.branchIds.includes(branchId));
+}
+
 /**
  * GET /api/suppliers
  * Get suppliers with filtering and pagination
@@ -38,21 +54,13 @@ router.get(
         .select(
           `
           *,
-          branches(id, name, code)
-        `,
-          { count: "exact" }
+          branches(id, name, code),
+          supplier_branch_assignments(branch_id, branches(id, name, code))
+        `
         )
         .order("created_at", { ascending: false });
 
-      // Branch scoping: HM sees all, others see their branches only
-      if (!req.user!.roles.includes("HM")) {
-        query = query.in("branch_id", req.user!.branchIds);
-      }
-
       // Apply filters
-      if (branch_id) {
-        query = query.eq("branch_id", branch_id as string);
-      }
       if (status) {
         query = query.eq("status", status as "active" | "inactive");
       }
@@ -63,25 +71,39 @@ router.get(
         );
       }
 
-      // Apply pagination
-      query = query.range(
-        parseInt(offset as string),
-        parseInt(offset as string) + parseInt(limit as string) - 1
-      );
-
-      const { data: suppliers, error, count } = await query;
+      const { data: suppliers, error } = await query;
 
       if (error) {
         res.status(500).json({ error: error.message });
         return;
       }
 
+      const requestedBranchId = branch_id as string | undefined;
+      const filteredSuppliers = (suppliers || []).filter((supplier: any) => {
+        const assignmentBranchIds = (supplier.supplier_branch_assignments || []).map((a: any) => a.branch_id as string);
+        const supplierBranchIds = Array.from(new Set([supplier.branch_id, ...assignmentBranchIds]));
+
+        if (!canAccessSupplier(req.user!, supplierBranchIds)) {
+          return false;
+        }
+
+        if (requestedBranchId && !supplierBranchIds.includes(requestedBranchId)) {
+          return false;
+        }
+
+        return true;
+      });
+
+      const offsetNum = parseInt(offset as string);
+      const limitNum = parseInt(limit as string);
+      const paginated = filteredSuppliers.slice(offsetNum, offsetNum + limitNum);
+
       res.json({
-        data: suppliers,
+        data: paginated,
         pagination: {
-          total: count,
-          limit: parseInt(limit as string),
-          offset: parseInt(offset as string),
+          total: filteredSuppliers.length,
+          limit: limitNum,
+          offset: offsetNum,
         },
       });
     } catch (error) {
@@ -106,7 +128,8 @@ router.get(
         .from("suppliers")
         .select(`
           *,
-          branches(id, name, code)
+          branches(id, name, code),
+          supplier_branch_assignments(branch_id, branches(id, name, code))
         `)
         .eq("id", supplierId)
         .single();
@@ -120,8 +143,9 @@ router.get(
         return;
       }
 
-      // Branch access check for non-HM users
-      if (!req.user!.roles.includes("HM") && !req.user!.branchIds.includes(supplier.branch_id)) {
+      const supplierBranchIds = await getSupplierBranchIds(supplier.id, supplier.branch_id);
+
+      if (!canAccessSupplier(req.user!, supplierBranchIds)) {
         res.status(403).json({ error: "No access to this supplier" });
         return;
       }
@@ -143,7 +167,7 @@ router.post(
   requireSupplierAccess,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { supplier_name, contact_person, email, phone, address, status, branch_id, notes } = req.body;
+      const { supplier_name, contact_person, email, phone, address, status, branch_id, branch_ids, notes } = req.body;
 
       // Mandatory field validation
       if (!supplier_name?.trim()) {
@@ -166,8 +190,15 @@ router.post(
         res.status(400).json({ error: "Address is required" });
         return;
       }
-      if (!branch_id) {
-        res.status(400).json({ error: "Branch is required" });
+      const requestedBranchIdsRaw: string[] = Array.isArray(branch_ids)
+        ? (branch_ids as string[])
+        : branch_id
+          ? [branch_id as string]
+          : [];
+      const requestedBranchIds = Array.from(new Set(requestedBranchIdsRaw.filter(Boolean)));
+
+      if (requestedBranchIds.length === 0) {
+        res.status(400).json({ error: "At least one branch assignment is required" });
         return;
       }
 
@@ -186,10 +217,15 @@ router.post(
       }
 
       // Branch access check for non-HM users
-      if (!req.user!.roles.includes("HM") && !req.user!.branchIds.includes(branch_id)) {
-        res.status(403).json({ error: "No access to this branch" });
-        return;
+      if (!req.user!.roles.includes("HM")) {
+        const unauthorizedBranch = requestedBranchIds.find((id) => !req.user!.branchIds.includes(id));
+        if (unauthorizedBranch) {
+          res.status(403).json({ error: "No access to one or more selected branches" });
+          return;
+        }
       }
+
+      const primaryBranchId = (branch_id as string) || requestedBranchIds[0]!;
 
       const supplierData: SupplierInsert = {
         supplier_name: supplier_name.trim(),
@@ -198,7 +234,7 @@ router.post(
         phone: phone.trim(),
         address: address.trim(),
         status: status || "active",
-        branch_id,
+        branch_id: primaryBranchId,
         notes: notes?.trim() || null,
         created_by: req.user!.id,
       };
@@ -214,6 +250,21 @@ router.post(
 
       if (error) {
         res.status(500).json({ error: error.message });
+        return;
+      }
+
+      const assignmentRows = requestedBranchIds.map((assignedBranchId) => ({
+        supplier_id: supplier.id,
+        branch_id: assignedBranchId,
+      }));
+
+      const { error: assignmentError } = await (supabaseAdmin as any)
+        .from("supplier_branch_assignments")
+        .insert(assignmentRows);
+
+      if (assignmentError) {
+        await supabaseAdmin.from("suppliers").delete().eq("id", supplier.id);
+        res.status(500).json({ error: "Failed to assign supplier branches" });
         return;
       }
 
@@ -265,8 +316,9 @@ router.put(
         return;
       }
 
-      // Branch access check for non-HM users
-      if (!req.user!.roles.includes("HM") && !req.user!.branchIds.includes(existing.branch_id)) {
+      const supplierBranchIds = await getSupplierBranchIds(existing.id, existing.branch_id);
+
+      if (!canAccessSupplier(req.user!, supplierBranchIds)) {
         res.status(403).json({ error: "No access to this supplier" });
         return;
       }
@@ -368,6 +420,95 @@ router.put(
 );
 
 /**
+ * PUT /api/suppliers/:supplierId/branches
+ * Update supplier branch assignments
+ */
+router.put(
+  "/:supplierId/branches",
+  requireSupplierAccess,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const supplierId = req.params.supplierId as string;
+      const { branch_ids, primary_branch_id } = req.body as { branch_ids?: string[]; primary_branch_id?: string | null };
+
+      if (!Array.isArray(branch_ids) || branch_ids.length === 0) {
+        res.status(400).json({ error: "At least one branch assignment is required" });
+        return;
+      }
+
+      const normalizedBranchIds = Array.from(new Set(branch_ids.filter(Boolean)));
+      const primaryBranchId = primary_branch_id && normalizedBranchIds.includes(primary_branch_id)
+        ? primary_branch_id
+        : normalizedBranchIds[0]!;
+
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("suppliers")
+        .select("id, branch_id")
+        .eq("id", supplierId)
+        .single();
+
+      if (fetchError || !existing) {
+        res.status(404).json({ error: "Supplier not found" });
+        return;
+      }
+
+      const existingBranchIds = await getSupplierBranchIds(supplierId, existing.branch_id);
+      if (!canAccessSupplier(req.user!, existingBranchIds)) {
+        res.status(403).json({ error: "No access to this supplier" });
+        return;
+      }
+
+      if (!req.user!.roles.includes("HM")) {
+        const unauthorizedBranch = normalizedBranchIds.find((id) => !req.user!.branchIds.includes(id));
+        if (unauthorizedBranch) {
+          res.status(403).json({ error: "No access to one or more selected branches" });
+          return;
+        }
+      }
+
+      const { error: updateSupplierError } = await supabaseAdmin
+        .from("suppliers")
+        .update({ branch_id: primaryBranchId })
+        .eq("id", supplierId);
+
+      if (updateSupplierError) {
+        res.status(500).json({ error: updateSupplierError.message });
+        return;
+      }
+
+      const { error: clearError } = await (supabaseAdmin as any)
+        .from("supplier_branch_assignments")
+        .delete()
+        .eq("supplier_id", supplierId);
+
+      if (clearError) {
+        res.status(500).json({ error: clearError.message });
+        return;
+      }
+
+      const assignmentRows = normalizedBranchIds.map((branchId) => ({
+        supplier_id: supplierId,
+        branch_id: branchId,
+      }));
+
+      const { error: assignError } = await (supabaseAdmin as any)
+        .from("supplier_branch_assignments")
+        .insert(assignmentRows);
+
+      if (assignError) {
+        res.status(500).json({ error: assignError.message });
+        return;
+      }
+
+      res.json({ message: "Supplier branch assignments updated successfully", branch_ids: normalizedBranchIds, primary_branch_id: primaryBranchId });
+    } catch (error) {
+      console.error("Update supplier branches error:", error);
+      res.status(500).json({ error: "Failed to update supplier branches" });
+    }
+  }
+);
+
+/**
  * DELETE /api/suppliers/:supplierId
  * Delete a supplier profile (UC56)
  * Soft-delete by setting status to inactive if referenced, otherwise hard delete
@@ -391,8 +532,9 @@ router.delete(
         return;
       }
 
-      // Branch access check for non-HM users
-      if (!req.user!.roles.includes("HM") && !req.user!.branchIds.includes(existing.branch_id)) {
+      const supplierBranchIds = await getSupplierBranchIds(existing.id, existing.branch_id);
+
+      if (!canAccessSupplier(req.user!, supplierBranchIds)) {
         res.status(403).json({ error: "No access to this supplier" });
         return;
       }

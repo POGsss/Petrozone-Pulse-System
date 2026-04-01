@@ -8,8 +8,8 @@ import {
 } from "react-icons/lu";
 import { reportsApi, branchesApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
-import { generateReportPDF } from "../../lib/pdfGenerator";
-import { generateReportExcel } from "../../lib/excelGenerator";
+import { generateReportPDF } from "../../lib/reportsPdfGenerator";
+import { generateReportExcel } from "../../lib/reportsExcelGenerator";
 import { useTheme } from "../../lib/ThemeContext";
 import { useAuth } from "../../auth";
 import type { Report, ReportType, ReportData, Branch } from "../../types";
