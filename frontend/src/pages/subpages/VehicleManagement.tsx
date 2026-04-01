@@ -78,6 +78,36 @@ function vehicleTypeLabel(type: string): string {
   return VEHICLE_TYPE_OPTIONS.find((o) => o.value === type)?.label || type;
 }
 
+const PLATE_NUMBER_PATTERN = /^[A-Z]{3}-\d{3,4}$/;
+
+function formatPlateNumberInput(rawValue: string): string {
+  const cleaned = rawValue.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+  let letters = "";
+  let digits = "";
+
+  for (const ch of cleaned) {
+    if (/[A-Z]/.test(ch) && letters.length < 3) {
+      letters += ch;
+      continue;
+    }
+
+    if (/\d/.test(ch) && letters.length === 3 && digits.length < 4) {
+      digits += ch;
+    }
+  }
+
+  if (letters.length === 3) {
+    return `${letters}-${digits}`;
+  }
+
+  return letters;
+}
+
+function isValidPlateNumber(value: string): boolean {
+  return PLATE_NUMBER_PATTERN.test(value);
+}
+
 export function VehicleManagement() {
   const { user } = useAuth();
   const userRoles = user?.roles || [];
@@ -107,13 +137,14 @@ export function VehicleManagement() {
     plate_number: "",
     vehicle_type: "sedan",
     vehicle_class: "light" as string,
+    make: "",
     orcr: "",
     model: "",
     customer_id: "",
     branch_id: "",
     color: "",
     year: "",
-    engine_number: "",
+    conduction_sticker: "",
     chassis_number: "",
     notes: "",
   });
@@ -158,13 +189,15 @@ export function VehicleManagement() {
     plate_number: "",
     vehicle_type: "sedan",
     vehicle_class: "light" as string,
+    make: "",
     orcr: "",
     model: "",
     customer_id: "",
+    branch_id: "",
     status: "active",
     color: "",
     year: "",
-    engine_number: "",
+    conduction_sticker: "",
     chassis_number: "",
     notes: "",
   });
@@ -213,6 +246,7 @@ export function VehicleManagement() {
       const matchSearch =
         !q ||
         v.plate_number.toLowerCase().includes(q) ||
+        v.make.toLowerCase().includes(q) ||
         v.model.toLowerCase().includes(q) ||
         v.orcr.toLowerCase().includes(q) ||
         v.color?.toLowerCase().includes(q) ||
@@ -312,13 +346,14 @@ export function VehicleManagement() {
       plate_number: "",
       vehicle_type: "sedan",
       vehicle_class: "light",
+      make: "",
       orcr: "",
       model: "",
       customer_id: "",
       branch_id: defaultBranchId,
       color: "",
       year: "",
-      engine_number: "",
+      conduction_sticker: "",
       chassis_number: "",
       notes: "",
     });
@@ -332,6 +367,10 @@ export function VehicleManagement() {
 
     if (!addForm.plate_number.trim()) {
       setAddError("Plate number is required");
+      return;
+    }
+    if (!isValidPlateNumber(addForm.plate_number.trim())) {
+      setAddError("Plate number must follow AAA-000 or AAA-0000 format");
       return;
     }
     if (!addForm.model.trim()) {
@@ -360,13 +399,14 @@ export function VehicleManagement() {
         plate_number: addForm.plate_number.trim(),
         vehicle_type: addForm.vehicle_type,
         vehicle_class: addForm.vehicle_class,
+        make: addForm.make.trim() || undefined,
         orcr: addForm.orcr.trim(),
         model: addForm.model.trim(),
         customer_id: addForm.customer_id,
         branch_id: addForm.branch_id,
         color: addForm.color.trim() || undefined,
         year: addForm.year ? parseInt(addForm.year) : undefined,
-        engine_number: addForm.engine_number.trim() || undefined,
+        conduction_sticker: addForm.conduction_sticker.trim() || undefined,
         chassis_number: addForm.chassis_number.trim() || undefined,
         notes: addForm.notes.trim() || undefined,
       });
@@ -580,13 +620,15 @@ export function VehicleManagement() {
       plate_number: vehicle.plate_number,
       vehicle_type: vehicle.vehicle_type,
       vehicle_class: vehicle.vehicle_class || "light",
+      make: vehicle.make || "",
       orcr: vehicle.orcr,
       model: vehicle.model,
       customer_id: vehicle.customer_id,
+      branch_id: vehicle.branch_id,
       status: vehicle.status,
       color: vehicle.color || "",
       year: vehicle.year?.toString() || "",
-      engine_number: vehicle.engine_number || "",
+      conduction_sticker: vehicle.conduction_sticker || "",
       chassis_number: vehicle.chassis_number || "",
       notes: vehicle.notes || "",
     });
@@ -601,6 +643,10 @@ export function VehicleManagement() {
 
     if (!editForm.plate_number.trim()) {
       setEditError("Plate number cannot be empty");
+      return;
+    }
+    if (!isValidPlateNumber(editForm.plate_number.trim())) {
+      setEditError("Plate number must follow AAA-000 or AAA-0000 format");
       return;
     }
     if (!editForm.model.trim()) {
@@ -625,13 +671,15 @@ export function VehicleManagement() {
         plate_number: editForm.plate_number.trim(),
         vehicle_type: editForm.vehicle_type,
         vehicle_class: editForm.vehicle_class,
+        make: editForm.make.trim() || undefined,
         orcr: editForm.orcr.trim(),
         model: editForm.model.trim(),
         customer_id: editForm.customer_id,
+        branch_id: editForm.branch_id,
         status: editForm.status,
         color: editForm.color.trim() || null,
         year: editForm.year ? parseInt(editForm.year) : null,
-        engine_number: editForm.engine_number.trim() || null,
+        conduction_sticker: editForm.conduction_sticker.trim() || null,
         chassis_number: editForm.chassis_number.trim() || null,
         notes: editForm.notes.trim() || null,
       });
@@ -747,9 +795,9 @@ export function VehicleManagement() {
             details={
               <>
                 <p className="text-neutral-900">{vehicleTypeLabel(vehicle.vehicle_type)} · {vehicleClassLabel(vehicle.vehicle_class || "light")}</p>
-                <p className="text-neutral-900">{vehicle.model}</p>
+                  <p className="text-neutral-900">{vehicle.make} · {vehicle.model}{vehicle.year ? ` · ${vehicle.year}` : ""}</p>
                 <p className="text-neutral-900">{vehicle.orcr}</p>
-                {vehicle.color && <p className="text-neutral-900">{vehicle.color}{vehicle.year ? ` · ${vehicle.year}` : ""}</p>}
+                  {vehicle.color && <p className="text-neutral-900">{vehicle.color}</p>}
                 {vehicle.customers && <p className="text-neutral-900">{vehicle.customers.full_name}</p>}
               </>
             }
@@ -824,25 +872,34 @@ export function VehicleManagement() {
               type="text"
               value={addForm.plate_number}
               onChange={(v) =>
-                setAddForm((prev) => ({ ...prev, plate_number: v.toUpperCase() }))
+                setAddForm((prev) => ({ ...prev, plate_number: formatPlateNumberInput(v) }))
               }
-              placeholder="Plate Number *"
+              placeholder="Plate Number * (AAA-000 or AAA-0000)"
               required
               className="font-mono uppercase"
+              maxLength={8}
             />
-            <ModalSelect
-              value={addForm.vehicle_type}
-              onChange={(v) =>
-                setAddForm((prev) => ({ ...prev, vehicle_type: v }))
-              }
-              options={VEHICLE_TYPE_OPTIONS}
-            />
-            <ModalSelect
-              value={addForm.vehicle_class}
-              onChange={(v) =>
-                setAddForm((prev) => ({ ...prev, vehicle_class: v }))
-              }
-              options={VEHICLE_CLASS_OPTIONS}
+            <div className="grid grid-cols-2 gap-4">
+              <ModalSelect
+                value={addForm.vehicle_type}
+                onChange={(v) =>
+                  setAddForm((prev) => ({ ...prev, vehicle_type: v }))
+                }
+                options={VEHICLE_TYPE_OPTIONS}
+              />
+              <ModalSelect
+                value={addForm.vehicle_class}
+                onChange={(v) =>
+                  setAddForm((prev) => ({ ...prev, vehicle_class: v }))
+                }
+                options={VEHICLE_CLASS_OPTIONS}
+              />
+            </div>
+            <ModalInput
+              type="text"
+              value={addForm.make}
+              onChange={(v) => setAddForm((prev) => ({ ...prev, make: v }))}
+              placeholder="Make"
             />
             <ModalInput
               type="text"
@@ -852,10 +909,10 @@ export function VehicleManagement() {
               required
             />
             <ModalInput
-              type="text"
-              value={addForm.orcr}
-              onChange={(v) => setAddForm((prev) => ({ ...prev, orcr: v }))}
-              placeholder="OR/CR (optional)"
+              type="number"
+              value={addForm.year}
+              onChange={(v) => setAddForm((prev) => ({ ...prev, year: v }))}
+              placeholder="Year"
             />
           </ModalSection>
 
@@ -893,19 +950,19 @@ export function VehicleManagement() {
                 placeholder="Color"
               />
               <ModalInput
-                type="number"
-                value={addForm.year}
-                onChange={(v) => setAddForm((prev) => ({ ...prev, year: v }))}
-                placeholder="Year"
+                type="text"
+                value={addForm.orcr}
+                onChange={(v) => setAddForm((prev) => ({ ...prev, orcr: v }))}
+                placeholder="OR/CR"
               />
             </div>
             <ModalInput
               type="text"
-              value={addForm.engine_number}
+              value={addForm.conduction_sticker}
               onChange={(v) =>
-                setAddForm((prev) => ({ ...prev, engine_number: v }))
+                setAddForm((prev) => ({ ...prev, conduction_sticker: v }))
               }
-              placeholder="Engine Number"
+              placeholder="Conduction Sticker"
             />
             <ModalInput
               type="text"
@@ -913,7 +970,7 @@ export function VehicleManagement() {
               onChange={(v) =>
                 setAddForm((prev) => ({ ...prev, chassis_number: v }))
               }
-              placeholder="Chassis Number"
+              placeholder="Chasis Number"
             />
             <textarea
               value={addForm.notes}
@@ -968,6 +1025,13 @@ export function VehicleManagement() {
               />
               <ModalInput
                 type="text"
+                value={viewVehicle.make || "-"}
+                onChange={() => { }}
+                placeholder="Make"
+                disabled
+              />
+              <ModalInput
+                type="text"
                 value={viewVehicle.model}
                 onChange={() => { }}
                 placeholder="Model"
@@ -975,9 +1039,9 @@ export function VehicleManagement() {
               />
               <ModalInput
                 type="text"
-                value={viewVehicle.orcr}
+                value={viewVehicle.year?.toString() || "-"}
                 onChange={() => { }}
-                placeholder="OR/CR"
+                placeholder="Year"
                 disabled
               />
               <ModalSelect
@@ -1025,24 +1089,24 @@ export function VehicleManagement() {
                 />
                 <ModalInput
                   type="text"
-                  value={viewVehicle.year?.toString() || "-"}
+                  value={viewVehicle.orcr || "-"}
                   onChange={() => { }}
-                  placeholder="Year"
+                  placeholder="OR/CR"
                   disabled
                 />
               </div>
               <ModalInput
                 type="text"
-                value={viewVehicle.engine_number || "-"}
+                value={viewVehicle.conduction_sticker || "-"}
                 onChange={() => { }}
-                placeholder="Engine Number"
+                placeholder="Conduction Sticker"
                 disabled
               />
               <ModalInput
                 type="text"
                 value={viewVehicle.chassis_number || "-"}
                 onChange={() => { }}
-                placeholder="Chassis Number"
+                placeholder="Chasis Number"
                 disabled
               />
               <textarea
@@ -1277,25 +1341,34 @@ export function VehicleManagement() {
               type="text"
               value={editForm.plate_number}
               onChange={(v) =>
-                setEditForm((prev) => ({ ...prev, plate_number: v.toUpperCase() }))
+                setEditForm((prev) => ({ ...prev, plate_number: formatPlateNumberInput(v) }))
               }
-              placeholder="Plate Number *"
+              placeholder="Plate Number * (AAA-000 or AAA-0000)"
               required
               className="font-mono uppercase"
+              maxLength={8}
             />
-            <ModalSelect
-              value={editForm.vehicle_type}
-              onChange={(v) =>
-                setEditForm((prev) => ({ ...prev, vehicle_type: v }))
-              }
-              options={VEHICLE_TYPE_OPTIONS}
-            />
-            <ModalSelect
-              value={editForm.vehicle_class}
-              onChange={(v) =>
-                setEditForm((prev) => ({ ...prev, vehicle_class: v }))
-              }
-              options={VEHICLE_CLASS_OPTIONS}
+            <div className="grid grid-cols-2 gap-4">
+              <ModalSelect
+                value={editForm.vehicle_type}
+                onChange={(v) =>
+                  setEditForm((prev) => ({ ...prev, vehicle_type: v }))
+                }
+                options={VEHICLE_TYPE_OPTIONS}
+              />
+              <ModalSelect
+                value={editForm.vehicle_class}
+                onChange={(v) =>
+                  setEditForm((prev) => ({ ...prev, vehicle_class: v }))
+                }
+                options={VEHICLE_CLASS_OPTIONS}
+              />
+            </div>
+            <ModalInput
+              type="text"
+              value={editForm.make}
+              onChange={(v) => setEditForm((prev) => ({ ...prev, make: v }))}
+              placeholder="Make"
             />
             <ModalInput
               type="text"
@@ -1305,10 +1378,12 @@ export function VehicleManagement() {
               required
             />
             <ModalInput
-              type="text"
-              value={editForm.orcr}
-              onChange={(v) => setEditForm((prev) => ({ ...prev, orcr: v }))}
-              placeholder="OR/CR (optional)"
+              type="number"
+              value={editForm.year}
+              onChange={(v) =>
+                setEditForm((prev) => ({ ...prev, year: v }))
+              }
+              placeholder="Year"
             />
             <ModalSelect
               value={editForm.status}
@@ -1324,14 +1399,21 @@ export function VehicleManagement() {
 
           <ModalSection title="Assignment">
             <ModalSelect
+              value={editForm.branch_id}
+              onChange={(v) =>
+                setEditForm((prev) => ({ ...prev, branch_id: v, customer_id: "" }))
+              }
+              placeholder="Select Branch *"
+              options={branchOptions}
+            />
+            <ModalSelect
               value={editForm.customer_id}
               onChange={(v) =>
                 setEditForm((prev) => ({ ...prev, customer_id: v }))
               }
               placeholder="Select Customer *"
-              options={getCustomerOptionsForBranch(
-                selectedVehicle?.branch_id || ""
-              )}
+              options={getCustomerOptionsForBranch(editForm.branch_id)}
+              disabled={!editForm.branch_id}
             />
           </ModalSection>
 
@@ -1346,21 +1428,19 @@ export function VehicleManagement() {
                 placeholder="Color"
               />
               <ModalInput
-                type="number"
-                value={editForm.year}
-                onChange={(v) =>
-                  setEditForm((prev) => ({ ...prev, year: v }))
-                }
-                placeholder="Year"
+                type="text"
+                value={editForm.orcr}
+                onChange={(v) => setEditForm((prev) => ({ ...prev, orcr: v }))}
+                placeholder="OR/CR"
               />
             </div>
             <ModalInput
               type="text"
-              value={editForm.engine_number}
+              value={editForm.conduction_sticker}
               onChange={(v) =>
-                setEditForm((prev) => ({ ...prev, engine_number: v }))
+                setEditForm((prev) => ({ ...prev, conduction_sticker: v }))
               }
-              placeholder="Engine Number"
+              placeholder="Conduction Sticker"
             />
             <ModalInput
               type="text"
@@ -1368,7 +1448,7 @@ export function VehicleManagement() {
               onChange={(v) =>
                 setEditForm((prev) => ({ ...prev, chassis_number: v }))
               }
-              placeholder="Chassis Number"
+              placeholder="Chasis Number"
             />
             <textarea
               value={editForm.notes}

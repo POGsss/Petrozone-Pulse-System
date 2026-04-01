@@ -1681,12 +1681,13 @@ export type Database = {
         Row: {
           branch_id: string
           chassis_number: string | null
+          conduction_sticker: string | null
           color: string | null
           created_at: string
           created_by: string | null
           customer_id: string
-          engine_number: string | null
           id: string
+          make: string
           model: string
           notes: string | null
           orcr: string
@@ -1700,12 +1701,13 @@ export type Database = {
         Insert: {
           branch_id: string
           chassis_number?: string | null
+          conduction_sticker?: string | null
           color?: string | null
           created_at?: string
           created_by?: string | null
           customer_id: string
-          engine_number?: string | null
           id?: string
+          make?: string
           model: string
           notes?: string | null
           orcr: string
@@ -1719,12 +1721,13 @@ export type Database = {
         Update: {
           branch_id?: string
           chassis_number?: string | null
+          conduction_sticker?: string | null
           color?: string | null
           created_at?: string
           created_by?: string | null
           customer_id?: string
-          engine_number?: string | null
           id?: string
+          make?: string
           model?: string
           notes?: string | null
           orcr?: string

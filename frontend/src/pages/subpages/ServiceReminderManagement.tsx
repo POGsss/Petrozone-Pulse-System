@@ -70,11 +70,29 @@ export function ServiceReminderManagement() {
     customer_id: "",
     vehicle_id: "",
     service_type: "", // Used as "Subject" in UI
-    scheduled_at: "",
+    scheduled_date: "",
+    scheduled_time: "08:00",
     delivery_method: "email" as string,
     message_template: "",
     status: "draft" as string,
   });
+
+  function getDateInputValue(isoString: string): string {
+    const d = new Date(isoString);
+    if (Number.isNaN(d.getTime())) return "";
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
+  function getTimeInputValue(isoString: string): string {
+    const d = new Date(isoString);
+    if (Number.isNaN(d.getTime())) return "08:00";
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${hh}:${mm}`;
+  }
 
   const userRoles = user?.roles || [];
   const canCreate = userRoles.some((r) => ["POC", "JS", "R"].includes(r));
@@ -197,7 +215,8 @@ export function ServiceReminderManagement() {
       customer_id: "",
       vehicle_id: "",
       service_type: "",
-      scheduled_at: "",
+      scheduled_date: "",
+      scheduled_time: "08:00",
       delivery_method: "email",
       message_template: "",
       status: "draft",
@@ -216,7 +235,8 @@ export function ServiceReminderManagement() {
       customer_id: r.customer_id,
       vehicle_id: r.vehicle_id,
       service_type: r.service_type,
-      scheduled_at: r.scheduled_at ? new Date(r.scheduled_at).toISOString().slice(0, 16) : "",
+      scheduled_date: r.scheduled_at ? getDateInputValue(r.scheduled_at) : "",
+      scheduled_time: r.scheduled_at ? getTimeInputValue(r.scheduled_at) : "08:00",
       delivery_method: r.delivery_method,
       message_template: r.message_template,
       status: r.status,
@@ -252,7 +272,8 @@ export function ServiceReminderManagement() {
     if (!form.customer_id) { setFormError("Customer is required"); return; }
     if (!form.vehicle_id) { setFormError("Vehicle is required"); return; }
     if (!form.service_type.trim()) { setFormError("Subject is required"); return; }
-    if (!form.scheduled_at) { setFormError("Scheduled date is required"); return; }
+    if (!form.scheduled_date) { setFormError("Scheduled date is required"); return; }
+    if (!form.scheduled_time) { setFormError("Scheduled time is required"); return; }
     if (!form.message_template.trim()) { setFormError("Message is required"); return; }
 
     // Auto-derive branch from selected customer
@@ -266,7 +287,8 @@ export function ServiceReminderManagement() {
         customer_id: form.customer_id,
         vehicle_id: form.vehicle_id,
         service_type: form.service_type.trim(),
-        scheduled_at: new Date(form.scheduled_at).toISOString(),
+        scheduled_date: form.scheduled_date,
+        scheduled_time: form.scheduled_time,
         delivery_method: form.delivery_method,
         message_template: form.message_template.trim(),
         branch_id: branchId,
@@ -293,7 +315,8 @@ export function ServiceReminderManagement() {
         customer_id: form.customer_id,
         vehicle_id: form.vehicle_id,
         service_type: form.service_type.trim(),
-        scheduled_at: new Date(form.scheduled_at).toISOString(),
+        scheduled_date: form.scheduled_date,
+        scheduled_time: form.scheduled_time,
         delivery_method: form.delivery_method,
         message_template: form.message_template.trim(),
         status: form.status,
@@ -400,7 +423,11 @@ export function ServiceReminderManagement() {
           rows={3}
           className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 placeholder:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all resize-none"
         />
-        <div className="grid grid-cols-2 gap-4">
+      </ModalSection>
+
+
+      <ModalSection title="Schedule & Delivery">
+        <div className="grid grid-cols-3 gap-4">
           <ModalSelect
             value={form.delivery_method}
             onChange={(v) => setForm({ ...form, delivery_method: v })}
@@ -412,9 +439,16 @@ export function ServiceReminderManagement() {
           />
           <ModalInput
             type="date"
-            value={form.scheduled_at}
-            onChange={(v) => setForm({ ...form, scheduled_at: v })}
+            value={form.scheduled_date}
+            onChange={(v) => setForm({ ...form, scheduled_date: v })}
             placeholder="Scheduled Date *"
+            required
+          />
+          <ModalInput
+            type="time"
+            value={form.scheduled_time}
+            onChange={(v) => setForm({ ...form, scheduled_time: v })}
+            placeholder="Scheduled Time *"
             required
           />
         </div>
@@ -530,86 +564,86 @@ export function ServiceReminderManagement() {
               : 'No reminders found. Click "Create Reminder" to create one.'
           }
         >
-            {paginatedReminders.map((r) => {
-              const sc = statusConfig[r.status] || statusConfig.draft;
-              const canEditThis = canEdit && ["draft", "scheduled", "failed"].includes(r.status);
-              const canDeleteThis = canDelete;
-              const canSendThis = canSend && ["draft", "scheduled", "failed"].includes(r.status);
-              const canCancelThis = canEdit && ["draft", "scheduled"].includes(r.status);
-              const showDots = canSendThis || canCancelThis;
-              const hasActions = canEditThis || canDeleteThis || showDots;
-              return (
-                <MobileCard
-                  key={r.id}
-                  onClick={() => openViewModal(r)}
-                  icon={<LuClock className="w-5 h-5 text-primary" />}
-                  title={r.customers?.full_name || "—"}
-                  subtitle={r.branches?.name || "—"}
-                  statusBadge={{ label: sc.label, className: sc.className }}
-                  details={
+          {paginatedReminders.map((r) => {
+            const sc = statusConfig[r.status] || statusConfig.draft;
+            const canEditThis = canEdit && ["draft", "scheduled", "failed"].includes(r.status);
+            const canDeleteThis = canDelete;
+            const canSendThis = canSend && ["draft", "scheduled", "failed"].includes(r.status);
+            const canCancelThis = canEdit && ["draft", "scheduled"].includes(r.status);
+            const showDots = canSendThis || canCancelThis;
+            const hasActions = canEditThis || canDeleteThis || showDots;
+            return (
+              <MobileCard
+                key={r.id}
+                onClick={() => openViewModal(r)}
+                icon={<LuClock className="w-5 h-5 text-primary" />}
+                title={r.customers?.full_name || "—"}
+                subtitle={r.branches?.name || "—"}
+                statusBadge={{ label: sc.label, className: sc.className }}
+                details={
+                  <>
+                    <p>{r.service_type}</p>
+                    <p className="text-neutral-900">{r.vehicles?.plate_number || "—"}</p>
+                    <p className="text-neutral-900">{r.delivery_method === "email" ? "Email" : "SMS"}</p>
+                    <p className="text-neutral-900">{new Date(r.scheduled_at).toLocaleString()}</p>
+                  </>
+                }
+                extraActions={
+                  hasActions ? (
                     <>
-                      <p>{r.service_type}</p>
-                      <p className="text-neutral-900">{r.vehicles?.plate_number || "—"}</p>
-                      <p className="text-neutral-900">{r.delivery_method === "email" ? "Email" : "SMS"}</p>
-                      <p className="text-neutral-900">{new Date(r.scheduled_at).toLocaleString()}</p>
+                      {canEditThis && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openEditModal(r); }}
+                          className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
+                        >
+                          <LuPencil className="w-4 h-4" /> Edit
+                        </button>
+                      )}
+                      {canDeleteThis && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openDeleteModal(r); }}
+                          className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
+                        >
+                          <LuTrash2 className="w-4 h-4" /> Delete
+                        </button>
+                      )}
+                      {showDots && (
+                        <div className="relative" ref={openDropdownId === `card-${r.id}` ? dropdownRef : undefined}>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${r.id}` ? null : `card-${r.id}`); }}
+                            className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
+                            title="More actions"
+                          >
+                            <LuEllipsisVertical className="w-4 h-4" /> More
+                          </button>
+                          {openDropdownId === `card-${r.id}` && (
+                            <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                              {canSendThis && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); closeDropdown(); openSendModal(r); }}
+                                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                >
+                                  <LuSend className="w-4 h-4" /> Send Reminder
+                                </button>
+                              )}
+                              {canCancelThis && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelModal(r); }}
+                                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                                >
+                                  <LuBan className="w-4 h-4" /> Cancel Reminder
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </>
-                  }
-                  extraActions={
-                    hasActions ? (
-                      <>
-                        {canEditThis && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); openEditModal(r); }}
-                            className="flex items-center gap-1 text-sm text-primary hover:text-primary-900"
-                          >
-                            <LuPencil className="w-4 h-4" /> Edit
-                          </button>
-                        )}
-                        {canDeleteThis && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); openDeleteModal(r); }}
-                            className="flex items-center gap-1 text-sm text-negative hover:text-negative-900"
-                          >
-                            <LuTrash2 className="w-4 h-4" /> Delete
-                          </button>
-                        )}
-                        {showDots && (
-                          <div className="relative" ref={openDropdownId === `card-${r.id}` ? dropdownRef : undefined}>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `card-${r.id}` ? null : `card-${r.id}`); }}
-                              className="flex items-center gap-1 text-sm text-neutral-950 hover:text-neutral-900"
-                              title="More actions"
-                            >
-                              <LuEllipsisVertical className="w-4 h-4" /> More
-                            </button>
-                            {openDropdownId === `card-${r.id}` && (
-                              <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
-                                {canSendThis && (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); closeDropdown(); openSendModal(r); }}
-                                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                                  >
-                                    <LuSend className="w-4 h-4" /> Send Reminder
-                                  </button>
-                                )}
-                                {canCancelThis && (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelModal(r); }}
-                                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                                  >
-                                    <LuBan className="w-4 h-4" /> Cancel Reminder
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </>
-                    ) : undefined
-                  }
-                />
-              );
-            })}
+                  ) : undefined
+                }
+              />
+            );
+          })}
         </MobileCardList>
 
         {/* Desktop Table View */}
@@ -629,89 +663,89 @@ export function ServiceReminderManagement() {
               : "No reminders found. Click \"Create Reminder\" to create one."
           }
         >
-              {paginatedReminders.map((r) => {
-                const sc = statusConfig[r.status] || statusConfig.draft;
-                const canEditThis = canEdit && ["draft", "scheduled", "failed"].includes(r.status);
-                const canDeleteThis = canDelete;
-                const canSendThis = canSend && ["draft", "scheduled", "failed"].includes(r.status);
-                const canCancelThis = canEdit && ["draft", "scheduled"].includes(r.status);
-                const showDots = canSendThis || canCancelThis;
-                return (
-                  <DesktopTableRow key={r.id} onClick={() => openViewModal(r)}>
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <span className="font-medium text-neutral-900">{r.customers?.full_name || "—"}</span>
-                    </td>
-                    <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap">{r.service_type}</td>
-                    <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap">
-                      {new Date(r.scheduled_at).toLocaleString()}
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary`}>
-                        {r.delivery_method.toLocaleLowerCase() === "email" ? "Email" : "SMS"}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${sc.className}`}>
-                        {sc.label}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <div className="flex items-center justify-center gap-2">
-                        {canEditThis && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); openEditModal(r); }}
-                            className="p-2 text-primary-950 hover:text-primary-900 hover:bg-primary-50 rounded-lg transition-colors"
-                            title="Edit"
-                          >
-                            <LuPencil className="w-4 h-4" />
-                          </button>
-                        )}
-                        {canDeleteThis && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); openDeleteModal(r); }}
-                            className="p-2 text-negative-950 hover:text-negative-900 hover:bg-negative-50 rounded-lg transition-colors"
-                            title="Delete"
-                          >
-                            <LuTrash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                        {/* More actions dropdown */}
-                        {showDots && (
-                          <div className="relative" ref={openDropdownId === `table-${r.id}` ? dropdownRef : undefined}>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `table-${r.id}` ? null : `table-${r.id}`); }}
-                              className="p-2 text-neutral-950 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"
-                              title="More actions"
-                            >
-                              <LuEllipsisVertical className="w-4 h-4" />
-                            </button>
-                            {openDropdownId === `table-${r.id}` && (
-                              <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
-                                {canSendThis && (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); closeDropdown(); openSendModal(r); }}
-                                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                                  >
-                                    <LuSend className="w-4 h-4" /> Send Reminder
-                                  </button>
-                                )}
-                                {canCancelThis && (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelModal(r); }}
-                                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
-                                  >
-                                    <LuBan className="w-4 h-4" /> Cancel Reminder
-                                  </button>
-                                )}
-                              </div>
+          {paginatedReminders.map((r) => {
+            const sc = statusConfig[r.status] || statusConfig.draft;
+            const canEditThis = canEdit && ["draft", "scheduled", "failed"].includes(r.status);
+            const canDeleteThis = canDelete;
+            const canSendThis = canSend && ["draft", "scheduled", "failed"].includes(r.status);
+            const canCancelThis = canEdit && ["draft", "scheduled"].includes(r.status);
+            const showDots = canSendThis || canCancelThis;
+            return (
+              <DesktopTableRow key={r.id} onClick={() => openViewModal(r)}>
+                <td className="py-3 px-4 whitespace-nowrap">
+                  <span className="font-medium text-neutral-900">{r.customers?.full_name || "—"}</span>
+                </td>
+                <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap">{r.service_type}</td>
+                <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap">
+                  {new Date(r.scheduled_at).toLocaleString()}
+                </td>
+                <td className="py-3 px-4 whitespace-nowrap">
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary`}>
+                    {r.delivery_method.toLocaleLowerCase() === "email" ? "Email" : "SMS"}
+                  </span>
+                </td>
+                <td className="py-3 px-4 whitespace-nowrap">
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${sc.className}`}>
+                    {sc.label}
+                  </span>
+                </td>
+                <td className="py-3 px-4 whitespace-nowrap">
+                  <div className="flex items-center justify-center gap-2">
+                    {canEditThis && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openEditModal(r); }}
+                        className="p-2 text-primary-950 hover:text-primary-900 hover:bg-primary-50 rounded-lg transition-colors"
+                        title="Edit"
+                      >
+                        <LuPencil className="w-4 h-4" />
+                      </button>
+                    )}
+                    {canDeleteThis && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openDeleteModal(r); }}
+                        className="p-2 text-negative-950 hover:text-negative-900 hover:bg-negative-50 rounded-lg transition-colors"
+                        title="Delete"
+                      >
+                        <LuTrash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                    {/* More actions dropdown */}
+                    {showDots && (
+                      <div className="relative" ref={openDropdownId === `table-${r.id}` ? dropdownRef : undefined}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `table-${r.id}` ? null : `table-${r.id}`); }}
+                          className="p-2 text-neutral-950 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"
+                          title="More actions"
+                        >
+                          <LuEllipsisVertical className="w-4 h-4" />
+                        </button>
+                        {openDropdownId === `table-${r.id}` && (
+                          <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                            {canSendThis && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); closeDropdown(); openSendModal(r); }}
+                                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                              >
+                                <LuSend className="w-4 h-4" /> Send Reminder
+                              </button>
+                            )}
+                            {canCancelThis && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); closeDropdown(); openCancelModal(r); }}
+                                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
+                              >
+                                <LuBan className="w-4 h-4" /> Cancel Reminder
+                              </button>
                             )}
                           </div>
                         )}
                       </div>
-                    </td>
-                  </DesktopTableRow>
-                );
-              })}
+                    )}
+                  </div>
+                </td>
+              </DesktopTableRow>
+            );
+          })}
         </DesktopTable>
 
         {/* Pagination */}
@@ -765,14 +799,14 @@ export function ServiceReminderManagement() {
               <ModalInput
                 type="text"
                 value={selectedReminder.customers?.full_name || "—"}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Customer"
                 disabled
               />
               <ModalInput
                 type="text"
                 value={`${selectedReminder.vehicles?.plate_number || "—"} – ${selectedReminder.vehicles?.model || ""}`}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Vehicle"
                 disabled
               />
@@ -782,7 +816,7 @@ export function ServiceReminderManagement() {
               <ModalInput
                 type="text"
                 value={selectedReminder.service_type}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Subject"
                 disabled
               />
@@ -798,21 +832,21 @@ export function ServiceReminderManagement() {
                 <ModalInput
                   type="text"
                   value={selectedReminder.delivery_method.toUpperCase()}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   placeholder="Reminder Type"
                   disabled
                 />
                 <ModalInput
                   type="text"
                   value={new Date(selectedReminder.scheduled_at).toLocaleString()}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   placeholder="Scheduled At"
                   disabled
                 />
               </div>
               <ModalSelect
                 value={selectedReminder.status}
-                onChange={() => {}}
+                onChange={() => { }}
                 options={[
                   { value: "draft", label: "Draft" },
                   { value: "scheduled", label: "Scheduled" },
@@ -828,7 +862,7 @@ export function ServiceReminderManagement() {
               <ModalInput
                 type="text"
                 value={selectedReminder.branches?.name || "—"}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Branch"
                 disabled
               />
@@ -836,7 +870,7 @@ export function ServiceReminderManagement() {
                 <ModalInput
                   type="text"
                   value={new Date(selectedReminder.sent_at).toLocaleString()}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   placeholder="Sent At"
                   disabled
                 />
@@ -845,7 +879,7 @@ export function ServiceReminderManagement() {
                 <ModalInput
                   type="text"
                   value={selectedReminder.failure_reason}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   placeholder="Failure Reason"
                   disabled
                 />
@@ -853,7 +887,7 @@ export function ServiceReminderManagement() {
               <ModalInput
                 type="text"
                 value={new Date(selectedReminder.created_at).toLocaleString()}
-                onChange={() => {}}
+                onChange={() => { }}
                 placeholder="Created At"
                 disabled
               />

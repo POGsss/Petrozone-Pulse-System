@@ -424,6 +424,7 @@ export const vehiclesApi = {
     plate_number: string;
     vehicle_type: string;
     vehicle_class?: string;
+    make?: string;
     orcr: string;
     model: string;
     customer_id: string;
@@ -431,7 +432,7 @@ export const vehiclesApi = {
     status?: string;
     color?: string;
     year?: number;
-    engine_number?: string;
+    conduction_sticker?: string;
     chassis_number?: string;
     notes?: string;
   }) => {
@@ -447,13 +448,15 @@ export const vehiclesApi = {
       plate_number?: string;
       vehicle_type?: string;
       vehicle_class?: string;
+      make?: string;
       orcr?: string;
       model?: string;
       customer_id?: string;
+      branch_id?: string;
       status?: string;
       color?: string | null;
       year?: number | null;
-      engine_number?: string | null;
+      conduction_sticker?: string | null;
       chassis_number?: string | null;
       notes?: string | null;
     }
@@ -1539,7 +1542,9 @@ export const serviceRemindersApi = {
     customer_id: string;
     vehicle_id: string;
     service_type: string;
-    scheduled_at: string;
+    scheduled_at?: string;
+    scheduled_date?: string;
+    scheduled_time?: string;
     delivery_method?: string;
     message_template: string;
     branch_id: string;
@@ -1558,6 +1563,8 @@ export const serviceRemindersApi = {
       vehicle_id?: string;
       service_type?: string;
       scheduled_at?: string;
+      scheduled_date?: string;
+      scheduled_time?: string;
       delivery_method?: string;
       message_template?: string;
       status?: string;

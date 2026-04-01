@@ -23,6 +23,7 @@ const VALID_VEHICLE_TYPES = [
 ];
 
 const VALID_VEHICLE_CLASSES = ["light", "heavy", "extra_heavy"];
+const PLATE_NUMBER_PATTERN = /^[A-Z]{3}-\d{3,4}$/;
 const supabaseAny = supabaseAdmin as any;
 
 type VehicleRepairHistoryItem = {
@@ -98,7 +99,7 @@ router.get(
       if (search) {
         const searchTerm = `%${search}%`;
         query = query.or(
-          `plate_number.ilike.${searchTerm},model.ilike.${searchTerm},color.ilike.${searchTerm},orcr.ilike.${searchTerm}`
+          `plate_number.ilike.${searchTerm},make.ilike.${searchTerm},model.ilike.${searchTerm},color.ilike.${searchTerm},orcr.ilike.${searchTerm}`
         );
       }
 
@@ -649,6 +650,7 @@ router.post(
         plate_number,
         vehicle_type,
         vehicle_class,
+        make,
         orcr,
         model,
         customer_id,
@@ -656,7 +658,7 @@ router.post(
         status,
         color,
         year,
-        engine_number,
+        conduction_sticker,
         chassis_number,
         notes,
       } = req.body;
@@ -664,6 +666,12 @@ router.post(
       // Validation: plate_number required
       if (!plate_number || !plate_number.trim()) {
         res.status(400).json({ error: "Plate number is required" });
+        return;
+      }
+
+      const normalizedPlate = plate_number.trim().toUpperCase();
+      if (!PLATE_NUMBER_PATTERN.test(normalizedPlate)) {
+        res.status(400).json({ error: "Plate number must follow AAA-000 or AAA-0000 format" });
         return;
       }
 
@@ -733,7 +741,7 @@ router.post(
       const { data: existingPlate } = await supabaseAdmin
         .from("vehicles")
         .select("id")
-        .eq("plate_number", plate_number.trim().toUpperCase())
+        .eq("plate_number", normalizedPlate)
         .maybeSingle();
 
       if (existingPlate) {
@@ -753,9 +761,10 @@ router.post(
       const { data: vehicle, error } = await supabaseAdmin
         .from("vehicles")
         .insert({
-          plate_number: plate_number.trim().toUpperCase(),
+          plate_number: normalizedPlate,
           vehicle_type,
           vehicle_class: vehicle_class || "light",
+          make: make?.trim() || "Unknown",
           orcr: orcr?.trim() || "",
           model: model.trim(),
           customer_id,
@@ -763,7 +772,7 @@ router.post(
           status: status || "active",
           color: color?.trim() || null,
           year: year ? parseInt(year) : null,
-          engine_number: engine_number?.trim() || null,
+          conduction_sticker: conduction_sticker?.trim() || null,
           chassis_number: chassis_number?.trim() || null,
           notes: notes?.trim() || null,
           created_by: req.user!.id,
@@ -813,13 +822,15 @@ router.put(
         plate_number,
         vehicle_type,
         vehicle_class,
+        make,
         orcr,
         model,
         customer_id,
+        branch_id,
         status,
         color,
         year,
-        engine_number,
+        conduction_sticker,
         chassis_number,
         notes,
       } = req.body;
@@ -858,6 +869,10 @@ router.put(
           return;
         }
         const newPlate = plate_number.trim().toUpperCase();
+        if (!PLATE_NUMBER_PATTERN.test(newPlate)) {
+          res.status(400).json({ error: "Plate number must follow AAA-000 or AAA-0000 format" });
+          return;
+        }
         // Check uniqueness if plate changed
         if (newPlate !== existing.plate_number) {
           const { data: existingPlate } = await supabaseAdmin
@@ -895,6 +910,10 @@ router.put(
         updateData.vehicle_class = vehicle_class;
       }
 
+      if (make !== undefined) {
+        updateData.make = make?.trim() || "Unknown";
+      }
+
       if (orcr !== undefined) {
         updateData.orcr = orcr?.trim() || "";
       }
@@ -920,13 +939,42 @@ router.put(
           return;
         }
 
-        if (customer.branch_id !== existing.branch_id) {
+        const targetBranchId = (branch_id !== undefined ? branch_id : existing.branch_id) as string;
+        if (customer.branch_id !== targetBranchId) {
           res.status(400).json({
             error: "Vehicle must belong to the same branch as the customer",
           });
           return;
         }
         updateData.customer_id = customer_id;
+      }
+
+      if (branch_id !== undefined) {
+        if (!req.user!.roles.includes("HM") && !req.user!.branchIds.includes(branch_id)) {
+          res.status(403).json({ error: "No access to this branch" });
+          return;
+        }
+
+        const targetCustomerId = (customer_id !== undefined ? customer_id : existing.customer_id) as string;
+        const { data: customerForBranch, error: customerForBranchError } = await supabaseAdmin
+          .from("customers")
+          .select("id, branch_id")
+          .eq("id", targetCustomerId)
+          .single();
+
+        if (customerForBranchError || !customerForBranch) {
+          res.status(400).json({ error: "Customer not found" });
+          return;
+        }
+
+        if (customerForBranch.branch_id !== branch_id) {
+          res.status(400).json({
+            error: "Vehicle must belong to the same branch as the customer",
+          });
+          return;
+        }
+
+        updateData.branch_id = branch_id;
       }
 
       if (status !== undefined) {
@@ -954,8 +1002,8 @@ router.put(
         }
       }
 
-      if (engine_number !== undefined) {
-        updateData.engine_number = engine_number?.trim() || null;
+      if (conduction_sticker !== undefined) {
+        updateData.conduction_sticker = conduction_sticker?.trim() || null;
       }
       if (chassis_number !== undefined) {
         updateData.chassis_number = chassis_number?.trim() || null;

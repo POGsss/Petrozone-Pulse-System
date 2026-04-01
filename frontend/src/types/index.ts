@@ -129,6 +129,7 @@ export interface Vehicle {
   plate_number: string;
   vehicle_type: VehicleType;
   vehicle_class: VehicleClass;
+  make: string;
   orcr: string;
   model: string;
   customer_id: string;
@@ -136,7 +137,7 @@ export interface Vehicle {
   status: VehicleStatus;
   color: string | null;
   year: number | null;
-  engine_number: string | null;
+  conduction_sticker: string | null;
   chassis_number: string | null;
   notes: string | null;
   created_by: string | null;
