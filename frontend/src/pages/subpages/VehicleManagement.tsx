@@ -377,6 +377,14 @@ export function VehicleManagement() {
       setAddError("Model is required");
       return;
     }
+    if (!addForm.make.trim()) {
+      setAddError("Make is required");
+      return;
+    }
+    if (!addForm.year.trim()) {
+      setAddError("Year is required");
+      return;
+    }
     if (!addForm.customer_id) {
       setAddError("Customer is required");
       return;
@@ -385,12 +393,10 @@ export function VehicleManagement() {
       setAddError("Branch is required");
       return;
     }
-    if (addForm.year) {
-      const y = parseInt(addForm.year);
-      if (isNaN(y) || y < 1900 || y > new Date().getFullYear() + 1) {
-        setAddError("Invalid year");
-        return;
-      }
+    const addYear = parseInt(addForm.year, 10);
+    if (isNaN(addYear) || addYear < 1900 || addYear > new Date().getFullYear() + 1) {
+      setAddError("Invalid year");
+      return;
     }
 
     try {
@@ -399,13 +405,13 @@ export function VehicleManagement() {
         plate_number: addForm.plate_number.trim(),
         vehicle_type: addForm.vehicle_type,
         vehicle_class: addForm.vehicle_class,
-        make: addForm.make.trim() || undefined,
+        make: addForm.make.trim(),
         orcr: addForm.orcr.trim(),
         model: addForm.model.trim(),
         customer_id: addForm.customer_id,
         branch_id: addForm.branch_id,
         color: addForm.color.trim() || undefined,
-        year: addForm.year ? parseInt(addForm.year) : undefined,
+        year: addYear,
         conduction_sticker: addForm.conduction_sticker.trim() || undefined,
         chassis_number: addForm.chassis_number.trim() || undefined,
         notes: addForm.notes.trim() || undefined,
@@ -653,16 +659,22 @@ export function VehicleManagement() {
       setEditError("Model cannot be empty");
       return;
     }
+    if (!editForm.make.trim()) {
+      setEditError("Make cannot be empty");
+      return;
+    }
+    if (!editForm.year.trim()) {
+      setEditError("Year is required");
+      return;
+    }
     if (!editForm.customer_id) {
       setEditError("Customer is required");
       return;
     }
-    if (editForm.year) {
-      const y = parseInt(editForm.year);
-      if (isNaN(y) || y < 1900 || y > new Date().getFullYear() + 1) {
-        setEditError("Invalid year");
-        return;
-      }
+    const editYear = parseInt(editForm.year, 10);
+    if (isNaN(editYear) || editYear < 1900 || editYear > new Date().getFullYear() + 1) {
+      setEditError("Invalid year");
+      return;
     }
 
     try {
@@ -671,14 +683,14 @@ export function VehicleManagement() {
         plate_number: editForm.plate_number.trim(),
         vehicle_type: editForm.vehicle_type,
         vehicle_class: editForm.vehicle_class,
-        make: editForm.make.trim() || undefined,
+        make: editForm.make.trim(),
         orcr: editForm.orcr.trim(),
         model: editForm.model.trim(),
         customer_id: editForm.customer_id,
         branch_id: editForm.branch_id,
         status: editForm.status,
         color: editForm.color.trim() || null,
-        year: editForm.year ? parseInt(editForm.year) : null,
+        year: editYear,
         conduction_sticker: editForm.conduction_sticker.trim() || null,
         chassis_number: editForm.chassis_number.trim() || null,
         notes: editForm.notes.trim() || null,
@@ -874,7 +886,7 @@ export function VehicleManagement() {
               onChange={(v) =>
                 setAddForm((prev) => ({ ...prev, plate_number: formatPlateNumberInput(v) }))
               }
-              placeholder="Plate Number * (AAA-000 or AAA-0000)"
+              placeholder="Plate Number *"
               required
               className="font-mono uppercase"
               maxLength={8}
@@ -899,7 +911,8 @@ export function VehicleManagement() {
               type="text"
               value={addForm.make}
               onChange={(v) => setAddForm((prev) => ({ ...prev, make: v }))}
-              placeholder="Make"
+              placeholder="Make *"
+              required
             />
             <ModalInput
               type="text"
@@ -912,7 +925,8 @@ export function VehicleManagement() {
               type="number"
               value={addForm.year}
               onChange={(v) => setAddForm((prev) => ({ ...prev, year: v }))}
-              placeholder="Year"
+              placeholder="Year *"
+              required
             />
           </ModalSection>
 
@@ -1343,7 +1357,7 @@ export function VehicleManagement() {
               onChange={(v) =>
                 setEditForm((prev) => ({ ...prev, plate_number: formatPlateNumberInput(v) }))
               }
-              placeholder="Plate Number * (AAA-000 or AAA-0000)"
+              placeholder="Plate Number *"
               required
               className="font-mono uppercase"
               maxLength={8}
@@ -1368,7 +1382,8 @@ export function VehicleManagement() {
               type="text"
               value={editForm.make}
               onChange={(v) => setEditForm((prev) => ({ ...prev, make: v }))}
-              placeholder="Make"
+              placeholder="Make *"
+              required
             />
             <ModalInput
               type="text"
@@ -1383,7 +1398,8 @@ export function VehicleManagement() {
               onChange={(v) =>
                 setEditForm((prev) => ({ ...prev, year: v }))
               }
-              placeholder="Year"
+              placeholder="Year *"
+              required
             />
             <ModalSelect
               value={editForm.status}
