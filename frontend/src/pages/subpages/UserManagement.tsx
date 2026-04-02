@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { LuPencil, LuTrash2, LuUsers, LuUserCheck, LuUserX, LuEye, LuLock, LuLockOpen } from "react-icons/lu";
+import { LuPencil, LuTrash2, LuUsers, LuUserCheck, LuUserX, LuEye, LuEyeOff, LuLock, LuLockOpen } from "react-icons/lu";
 import { showToast } from "../../lib/toast";
 import { rbacApi, branchesApi, authApi } from "../../lib/api";
 import { Modal, ModalSection, ModalInput, ModalSelect, ModalButtons, ModalError, PageHeader, StatsCards, TableSearchFilter, Pagination, ErrorAlert, SkeletonLoader, MobileCardList, MobileCard, DesktopTable, DesktopTableRow } from "../../components";
@@ -55,6 +55,7 @@ export function UserManagement() {
     branch_ids: [] as string[],
   });
   const [addUserError, setAddUserError] = useState<string | null>(null);
+  const [showAddPassword, setShowAddPassword] = useState(false);
 
   // Edit user modal state
   const [showEditModal, setShowEditModal] = useState(false);
@@ -81,6 +82,7 @@ export function UserManagement() {
 
   // Reset password within edit modal
   const [resetTempPassword, setResetTempPassword] = useState("");
+  const [showResetTempPassword, setShowResetTempPassword] = useState(false);
 
   // Current user's role level for permission filtering
   const currentUserRoleLevel = useMemo(() => {
@@ -235,6 +237,7 @@ export function UserManagement() {
         roles: [],
         branch_ids: [],
       });
+      setShowAddPassword(false);
       setShowAddModal(false);
 
       // Refresh users list
@@ -268,6 +271,7 @@ export function UserManagement() {
     });
     setEditUserError(isEditable ? null : "You can only view this user (they have a higher role)");
     setResetTempPassword("");
+    setShowResetTempPassword(false);
     setShowEditModal(true);
   }
 
@@ -339,6 +343,7 @@ export function UserManagement() {
         setResetTempPassword("");
       }
 
+      setShowResetTempPassword(false);
       setShowEditModal(false);
       showToast.success("User updated successfully");
       fetchData();
@@ -434,7 +439,10 @@ export function UserManagement() {
         title="Users"
         subtitle="Summary of users"
         buttonLabel="Add New User"
-        onAdd={() => setShowAddModal(true)}
+        onAdd={() => {
+          setShowAddPassword(false);
+          setShowAddModal(true);
+        }}
       />
 
       {/* Summary Stats Cards */}
@@ -729,7 +737,10 @@ export function UserManagement() {
       {/* Add User Modal */}
       <Modal
         isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
+        onClose={() => {
+          setShowAddPassword(false);
+          setShowAddModal(false);
+        }}
         title="Add New User"
         maxWidth="xl"
       >
@@ -751,14 +762,30 @@ export function UserManagement() {
               required
             />
 
-            <ModalInput
-              type="password"
-              value={addUserForm.password}
-              onChange={(v) => setAddUserForm(prev => ({ ...prev, password: v }))}
-              placeholder="Password"
-              required
-              minLength={8}
-            />
+            <div className="relative">
+              <ModalInput
+                type={showAddPassword ? "text" : "password"}
+                value={addUserForm.password}
+                onChange={(v) => setAddUserForm(prev => ({ ...prev, password: v }))}
+                placeholder="Password"
+                required
+                minLength={8}
+                className="pr-12"
+              />
+              <button
+                type="button"
+                onClick={() => setShowAddPassword(prev => !prev)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-900 hover:text-neutral-950"
+                aria-label={showAddPassword ? "Hide password" : "Show password"}
+                title={showAddPassword ? "Hide password" : "Show password"}
+              >
+                {showAddPassword ? (
+                  <LuEye className="w-5 h-5" />
+                ) : (
+                  <LuEyeOff className="w-5 h-5" />
+                )}
+              </button>
+            </div>
 
             <ModalInput
               type="tel"
@@ -810,7 +837,10 @@ export function UserManagement() {
           <ModalError message={addUserError} />
 
           <ModalButtons
-            onCancel={() => setShowAddModal(false)}
+            onCancel={() => {
+              setShowAddPassword(false);
+              setShowAddModal(false);
+            }}
             submitText={addingUser ? "Creating..." : "Create User"}
             loading={addingUser}
           />
@@ -820,7 +850,10 @@ export function UserManagement() {
       {/* Edit User Modal */}
       <Modal
         isOpen={showEditModal}
-        onClose={() => setShowEditModal(false)}
+        onClose={() => {
+          setShowResetTempPassword(false);
+          setShowEditModal(false);
+        }}
         title={isEditingEditable ? "Edit User" : "View User"}
         maxWidth="xl"
       >
@@ -873,12 +906,28 @@ export function UserManagement() {
           {/* Reset Password Section - right after User Information */}
           {isEditingEditable && editUserForm.id !== currentUser?.id && (
             <ModalSection title="Reset Password">
-              <ModalInput
-                type="password"
-                value={resetTempPassword}
-                onChange={(val) => { setResetTempPassword(val); setEditUserError(null); }}
-                placeholder="Enter temporary password"
-              />
+              <div className="relative">
+                <ModalInput
+                  type={showResetTempPassword ? "text" : "password"}
+                  value={resetTempPassword}
+                  onChange={(val) => { setResetTempPassword(val); setEditUserError(null); }}
+                  placeholder="Enter temporary password"
+                  className="pr-12"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowResetTempPassword(prev => !prev)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-900 hover:text-neutral-950"
+                  aria-label={showResetTempPassword ? "Hide password" : "Show password"}
+                  title={showResetTempPassword ? "Hide password" : "Show password"}
+                >
+                  {showResetTempPassword ? (
+                    <LuEye className="w-5 h-5" />
+                  ) : (
+                    <LuEyeOff className="w-5 h-5" />
+                  )}
+                </button>
+              </div>
               <div className="flex items-center gap-3 mt-2">
                 <button
                   type="button"

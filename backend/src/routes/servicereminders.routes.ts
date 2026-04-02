@@ -11,6 +11,32 @@ const router = Router();
 // All reminder routes require authentication
 router.use(requireAuth);
 
+function normalizeScheduledAtInput(input: {
+  scheduled_at?: string;
+  scheduled_date?: string;
+  scheduled_time?: string;
+}): string | null {
+  if (input.scheduled_at) {
+    const parsed = new Date(input.scheduled_at);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+
+  if (input.scheduled_date) {
+    const time = input.scheduled_time && /^\d{2}:\d{2}$/.test(input.scheduled_time)
+      ? input.scheduled_time
+      : "08:00";
+
+    const parsed = new Date(`${input.scheduled_date}T${time}`);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+
+  return null;
+}
+
 /**
  * GET /api/service-reminders
  * List service reminders with filtering and pagination
@@ -162,11 +188,19 @@ router.post(
         vehicle_id,
         service_type,
         scheduled_at,
+        scheduled_date,
+        scheduled_time,
         delivery_method,
         message_template,
         branch_id,
         status,
       } = req.body;
+
+      const normalizedScheduledAt = normalizeScheduledAtInput({
+        scheduled_at,
+        scheduled_date,
+        scheduled_time,
+      });
 
       // Validation
       if (!customer_id) {
@@ -181,7 +215,7 @@ router.post(
         res.status(400).json({ error: "Service type is required" });
         return;
       }
-      if (!scheduled_at) {
+      if (!normalizedScheduledAt) {
         res.status(400).json({ error: "Scheduled date/time is required" });
         return;
       }
@@ -256,7 +290,7 @@ router.post(
           customer_id,
           vehicle_id,
           service_type: service_type.trim(),
-          scheduled_at,
+          scheduled_at: normalizedScheduledAt,
           delivery_method: method,
           message_template: message_template.trim(),
           status: initialStatus,
@@ -305,10 +339,18 @@ router.put(
         vehicle_id,
         service_type,
         scheduled_at,
+        scheduled_date,
+        scheduled_time,
         delivery_method,
         message_template,
         status,
       } = req.body;
+
+      const normalizedScheduledAt = normalizeScheduledAtInput({
+        scheduled_at,
+        scheduled_date,
+        scheduled_time,
+      });
 
       // Fetch existing
       const { data: existing, error: fetchError } = await supabaseAdmin
@@ -346,7 +388,13 @@ router.put(
       if (customer_id !== undefined) updateData.customer_id = customer_id;
       if (vehicle_id !== undefined) updateData.vehicle_id = vehicle_id;
       if (service_type !== undefined) updateData.service_type = service_type.trim();
-      if (scheduled_at !== undefined) updateData.scheduled_at = scheduled_at;
+      if (scheduled_at !== undefined || scheduled_date !== undefined || scheduled_time !== undefined) {
+        if (!normalizedScheduledAt) {
+          res.status(400).json({ error: "Invalid scheduled date/time" });
+          return;
+        }
+        updateData.scheduled_at = normalizedScheduledAt;
+      }
       if (delivery_method !== undefined) {
         if (!["email", "sms"].includes(delivery_method)) {
           res.status(400).json({ error: "Delivery method must be 'email' or 'sms'" });
@@ -610,7 +658,7 @@ router.post(
         // Audit log
         try {
           await supabaseAdmin.rpc("log_admin_action", {
-            p_action: "SEND",
+            p_action: "UPDATE",
             p_entity_type: "SERVICE_REMINDER",
             p_entity_id: reminderId,
             p_performed_by_user_id: req.user!.id,
@@ -705,7 +753,7 @@ router.post(
       // Audit log
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "CANCEL",
+          p_action: "UPDATE",
           p_entity_type: "SERVICE_REMINDER",
           p_entity_id: reminderId,
           p_performed_by_user_id: req.user!.id,

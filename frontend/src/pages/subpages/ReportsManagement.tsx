@@ -8,8 +8,8 @@ import {
 } from "react-icons/lu";
 import { reportsApi, branchesApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
-import { generateReportPDF } from "../../lib/pdfGenerator";
-import { generateReportExcel } from "../../lib/excelGenerator";
+import { generateReportPDF } from "../../lib/reportsPdfGenerator";
+import { generateReportExcel } from "../../lib/reportsExcelGenerator";
 import { useTheme } from "../../lib/ThemeContext";
 import { useAuth } from "../../auth";
 import type { Report, ReportType, ReportData, Branch } from "../../types";
@@ -390,6 +390,14 @@ export function ReportsManagement() {
     }
   }
 
+  function truncateId(value: unknown): string {
+    const str = String(value);
+    if (str.length > 20 && /^[a-f0-9-]{20,}$|^[a-zA-Z0-9_-]{20,}$/.test(str)) {
+      return str.substring(0, 4) + "-" + str.substring(str.length - 4);
+    }
+    return str;
+  }
+
   if (loading) return <SkeletonLoader showHeader rows={6} variant="grid" />;
   if (error) return <ErrorAlert message={error} onRetry={fetchData} />;
 
@@ -768,7 +776,7 @@ export function ReportsManagement() {
                                 <tr key={i} className="hover:bg-neutral-100">
                                   {keys.map((key) => (
                                     <td key={key} className="px-3 py-2.5 text-neutral-950 truncate max-w-50">
-                                      {flat[key] !== null && flat[key] !== undefined ? String(flat[key]) : "—"}
+                                      {flat[key] !== null && flat[key] !== undefined ? truncateId(flat[key]) : "—"}
                                     </td>
                                   ))}
                                 </tr>

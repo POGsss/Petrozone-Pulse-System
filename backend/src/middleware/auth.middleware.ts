@@ -142,9 +142,9 @@ export const requireSupervisor = requireRoles("HM", "POC", "JS");
 export const requireUserManager = requireRoles("HM", "POC", "JS");
 
 /**
- * Middleware for Branch Management access (HM, POC, JS, R) - US1-4
+ * Middleware for Branch Management write access (HM, POC, JS) - US1-4
  */
-export const requireBranchManager = requireRoles("HM", "POC", "JS", "R");
+export const requireBranchManager = requireRoles("HM", "POC", "JS");
 
 /**
  * Middleware for Audit Log access (HM, POC) - US18

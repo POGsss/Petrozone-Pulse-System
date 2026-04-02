@@ -59,6 +59,90 @@ function getActionColor(action: string): string {
   }
 }
 
+function isPrimitiveValue(value: unknown): value is string | number | boolean {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+}
+
+function firstDisplayableLeaf(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+
+  if (isPrimitiveValue(value)) {
+    return String(value);
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return null;
+    for (const item of value) {
+      const leaf = firstDisplayableLeaf(item);
+      if (leaf !== null) return leaf;
+    }
+    return null;
+  }
+
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const preferredKeys = ["status", "approval_status", "active", "is_active", "state", "type"];
+
+    for (const key of preferredKeys) {
+      const keyValue = record[key];
+      if (isPrimitiveValue(keyValue)) {
+        return String(keyValue);
+      }
+    }
+
+    for (const key of Object.keys(record)) {
+      const leaf = firstDisplayableLeaf(record[key]);
+      if (leaf !== null) return leaf;
+    }
+  }
+
+  return null;
+}
+
+function resolveChangeValues(
+  oldValues: Record<string, unknown> | null,
+  newValues: Record<string, unknown> | null
+): { before: string; after: string } {
+  const fallback = { before: "-", after: "-" };
+
+  if (!oldValues && !newValues) return fallback;
+
+  const oldRecord = oldValues ?? {};
+  const newRecord = newValues ?? {};
+
+  const preferredKeys = ["status", "approval_status", "active", "is_active", "state", "type"];
+  for (const key of preferredKeys) {
+    const oldVal = oldRecord[key];
+    const newVal = newRecord[key];
+    if (oldVal !== undefined || newVal !== undefined) {
+      if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+        return {
+          before: firstDisplayableLeaf(oldVal) ?? "-",
+          after: firstDisplayableLeaf(newVal) ?? "-",
+        };
+      }
+    }
+  }
+
+  const keys = Array.from(new Set([...Object.keys(oldRecord), ...Object.keys(newRecord)]));
+  for (const key of keys) {
+    const oldVal = oldRecord[key];
+    const newVal = newRecord[key];
+
+    if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+      return {
+        before: firstDisplayableLeaf(oldVal) ?? "-",
+        after: firstDisplayableLeaf(newVal) ?? "-",
+      };
+    }
+  }
+
+  return {
+    before: firstDisplayableLeaf(oldValues) ?? "-",
+    after: firstDisplayableLeaf(newValues) ?? "-",
+  };
+}
+
 export function AuditLogs() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,6 +171,10 @@ export function AuditLogs() {
   // View detail modal
   const [showViewModal, setShowViewModal] = useState(false);
   const [viewLog, setViewLog] = useState<AuditLog | null>(null);
+  const changeValues = useMemo(
+    () => resolveChangeValues(viewLog?.old_values ?? null, viewLog?.new_values ?? null),
+    [viewLog]
+  );
 
   function openViewModal(log: AuditLog) {
     setViewLog(log);
@@ -393,22 +481,18 @@ export function AuditLogs() {
 
             {(viewLog.old_values || viewLog.new_values) && (
               <ModalSection title="Changes">
-                {viewLog.old_values && (
-                  <div>
-                    <label className="block text-xs text-neutral-900 mb-1">Old Values</label>
-                    <pre className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 text-sm overflow-auto max-h-40">
-                      {JSON.stringify(viewLog.old_values, null, 2)}
-                    </pre>
-                  </div>
-                )}
-                {viewLog.new_values && (
-                  <div className="mt-3">
-                    <label className="block text-xs text-neutral-900 mb-1">New Values</label>
-                    <pre className="w-full px-4 py-3.5 bg-neutral-100 rounded-xl text-neutral-950 text-sm overflow-auto max-h-40">
-                      {JSON.stringify(viewLog.new_values, null, 2)}
-                    </pre>
-                  </div>
-                )}
+                <ModalInput
+                  type="text"
+                  value={changeValues.before}
+                  onChange={() => {}}
+                  disabled
+                />
+                <ModalInput
+                  type="text"
+                  value={changeValues.after}
+                  onChange={() => {}}
+                  disabled
+                />
               </ModalSection>
             )}
 

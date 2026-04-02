@@ -44,6 +44,14 @@ function formatLabel(key: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function truncateId(value: unknown): string {
+  const str = String(value);
+  if (str.length > 20 && /^[a-f0-9-]{20,}$|^[a-zA-Z0-9_-]{20,}$/.test(str)) {
+    return str.substring(0, 4) + "-" + str.substring(str.length - 4);
+  }
+  return str;
+}
+
 export function generateReportPDF(
   report: Report,
   data: ReportData,
@@ -136,7 +144,7 @@ export function generateReportPDF(
       body: flatRows.map((row) =>
         headers.map((h) => {
           const v = row[h];
-          return v !== null && v !== undefined ? String(v) : "—";
+          return v !== null && v !== undefined ? truncateId(v) : "—";
         })
       ),
       styles: {

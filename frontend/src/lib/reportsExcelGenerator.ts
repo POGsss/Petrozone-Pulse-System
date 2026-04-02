@@ -35,6 +35,14 @@ function formatLabel(key: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function truncateId(value: unknown): string {
+  const str = String(value);
+  if (str.length > 20 && /^[a-f0-9-]{20,}$|^[a-zA-Z0-9_-]{20,}$/.test(str)) {
+    return str.substring(0, 4) + "-" + str.substring(str.length - 4);
+  }
+  return str;
+}
+
 export async function generateReportExcel(
   report: Report,
   data: ReportData,
@@ -157,7 +165,7 @@ export async function generateReportExcel(
       for (let i = 0; i < headers.length; i++) {
         const cell = ws.getCell(rowIndex, i + 1);
         const v = row[headers[i]!];
-        cell.value = v !== null && v !== undefined ? String(v) : "—";
+        cell.value = v !== null && v !== undefined ? truncateId(v) : "—";
         cell.font = { size: 9, color: { argb: "FF0A0A0A" } };
         cell.border = thinBorder;
         if (isAlt) {

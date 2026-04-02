@@ -424,6 +424,7 @@ export const vehiclesApi = {
     plate_number: string;
     vehicle_type: string;
     vehicle_class?: string;
+    make?: string;
     orcr: string;
     model: string;
     customer_id: string;
@@ -431,7 +432,7 @@ export const vehiclesApi = {
     status?: string;
     color?: string;
     year?: number;
-    engine_number?: string;
+    conduction_sticker?: string;
     chassis_number?: string;
     notes?: string;
   }) => {
@@ -447,13 +448,15 @@ export const vehiclesApi = {
       plate_number?: string;
       vehicle_type?: string;
       vehicle_class?: string;
+      make?: string;
       orcr?: string;
       model?: string;
       customer_id?: string;
+      branch_id?: string;
       status?: string;
       color?: string | null;
       year?: number | null;
-      engine_number?: string | null;
+      conduction_sticker?: string | null;
       chassis_number?: string | null;
       notes?: string | null;
     }
@@ -964,6 +967,7 @@ export const settingsApi = {
       sidebar_collapsed: boolean;
       font_size: string;
       table_density: string;
+      login_lockout_enabled?: boolean;
       updated_at: string;
       updated_by: string | null;
     }>("/api/settings");
@@ -975,6 +979,7 @@ export const settingsApi = {
     sidebar_collapsed?: boolean;
     font_size?: string;
     table_density?: string;
+    login_lockout_enabled?: boolean;
   }) => {
     return fetchWithAuth<{
       id: string;
@@ -983,6 +988,7 @@ export const settingsApi = {
       sidebar_collapsed: boolean;
       font_size: string;
       table_density: string;
+      login_lockout_enabled?: boolean;
       updated_at: string;
       updated_by: string | null;
     }>("/api/settings", {
@@ -1036,6 +1042,7 @@ export const inventoryApi = {
     reorder_threshold?: number;
     branch_id: string;
     initial_stock?: number;
+    supplier_id?: string;
   }) => {
     return fetchWithAuth<import("../types").InventoryItem>("/api/inventory", {
       method: "POST",
@@ -1298,6 +1305,7 @@ export const suppliersApi = {
     address: string;
     status?: string;
     branch_id: string;
+    branch_ids?: string[];
     notes?: string;
   }) => {
     return fetchWithAuth<import("../types").Supplier>("/api/suppliers", {
@@ -1322,6 +1330,16 @@ export const suppliersApi = {
       method: "PUT",
       body: JSON.stringify(data),
     });
+  },
+
+  updateBranches: async (id: string, branchIds: string[], primaryBranchId?: string | null) => {
+    return fetchWithAuth<{ message: string; branch_ids: string[]; primary_branch_id: string }>(
+      `/api/suppliers/${id}/branches`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ branch_ids: branchIds, primary_branch_id: primaryBranchId || null }),
+      }
+    );
   },
 
   delete: async (id: string) => {
@@ -1536,7 +1554,9 @@ export const serviceRemindersApi = {
     customer_id: string;
     vehicle_id: string;
     service_type: string;
-    scheduled_at: string;
+    scheduled_at?: string;
+    scheduled_date?: string;
+    scheduled_time?: string;
     delivery_method?: string;
     message_template: string;
     branch_id: string;
@@ -1555,6 +1575,8 @@ export const serviceRemindersApi = {
       vehicle_id?: string;
       service_type?: string;
       scheduled_at?: string;
+      scheduled_date?: string;
+      scheduled_time?: string;
       delivery_method?: string;
       message_template?: string;
       status?: string;
@@ -1619,7 +1641,7 @@ export const dashboardApi = {
     );
   },
 
-  getTopServices: async (params?: { branch_id?: string; date_from?: string; date_to?: string; limit?: number }) => {
+  getTopLabor: async (params?: { branch_id?: string; date_from?: string; date_to?: string; limit?: number }) => {
     const qs = new URLSearchParams();
     if (params?.branch_id) qs.set("branch_id", params.branch_id);
     if (params?.date_from) qs.set("date_from", params.date_from);
@@ -1627,8 +1649,13 @@ export const dashboardApi = {
     if (params?.limit) qs.set("limit", String(params.limit));
     const q = qs.toString();
     return fetchWithAuth<import("../types").TopService[]>(
-      `/api/dashboard/top-services${q ? `?${q}` : ""}`
+      `/api/dashboard/top-labor${q ? `?${q}` : ""}`
     );
+  },
+
+  // Backward compatibility alias
+  getTopServices: async (params?: { branch_id?: string; date_from?: string; date_to?: string; limit?: number }) => {
+    return dashboardApi.getTopLabor(params);
   },
 
   getJobStatusDistribution: async (params?: { branch_id?: string; date_from?: string; date_to?: string }) => {

@@ -336,6 +336,7 @@ router.post(
         reorder_threshold,
         branch_id,
         initial_stock,
+        supplier_id,
       } = req.body;
 
       // Validation
@@ -395,6 +396,29 @@ router.post(
         return;
       }
 
+      if (supplier_id) {
+        const { data: supplier, error: supplierError } = await supabaseAdmin
+          .from("suppliers")
+          .select("id, branch_id, status")
+          .eq("id", supplier_id)
+          .single();
+
+        if (supplierError || !supplier) {
+          res.status(400).json({ error: "Supplier not found" });
+          return;
+        }
+
+        if (supplier.branch_id !== branch_id) {
+          res.status(400).json({ error: "Supplier does not belong to the selected branch" });
+          return;
+        }
+
+        if (supplier.status !== "active") {
+          res.status(400).json({ error: "Only active suppliers can be linked" });
+          return;
+        }
+      }
+
       const { data: item, error } = await supabaseAdmin
         .from("inventory_items")
         .insert({
@@ -419,6 +443,31 @@ router.post(
       if (error) {
         res.status(500).json({ error: error.message });
         return;
+      }
+
+      if (supplier_id) {
+        const { data: linkedProduct, error: linkError } = await supabaseAdmin
+          .from("supplier_products")
+          .insert({
+            supplier_id,
+            inventory_item_id: item.id,
+            product_name: normalizedItemName,
+            unit_cost: parseFloat(cost_price),
+            lead_time_days: null,
+            status: "active",
+            branch_id,
+            created_by: req.user!.id,
+          })
+          .select("id")
+          .maybeSingle();
+
+        if (linkError || !linkedProduct) {
+          await supabaseAdmin.from("inventory_items").delete().eq("id", item.id);
+          res.status(400).json({
+            error: "Failed to link selected supplier. Could not create supplier product for this inventory item.",
+          });
+          return;
+        }
       }
 
       // Initial stock is deferred and only posted as stock movement when approved.
@@ -690,7 +739,7 @@ router.patch(
 
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "APPROVAL_REQUESTED",
+          p_action: "UPDATE",
           p_entity_type: "INVENTORY_ITEM",
           p_entity_id: itemId,
           p_performed_by_user_id: req.user!.id,
@@ -823,7 +872,7 @@ router.patch(
 
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "APPROVAL_RECORDED",
+          p_action: "UPDATE",
           p_entity_type: "INVENTORY_ITEM",
           p_entity_id: itemId,
           p_performed_by_user_id: req.user!.id,
@@ -1106,7 +1155,7 @@ router.post(
       // Audit log
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "ADJUSTMENT",
+          p_action: "UPDATE",
           p_entity_type: "INVENTORY_ITEM",
           p_entity_id: itemId,
           p_performed_by_user_id: req.user!.id,
@@ -1217,7 +1266,7 @@ router.post(
       // Audit log
       try {
         await supabaseAdmin.rpc("log_admin_action", {
-          p_action: "STOCK_IN",
+          p_action: "UPDATE",
           p_entity_type: "INVENTORY_ITEM",
           p_entity_id: itemId,
           p_performed_by_user_id: req.user!.id,

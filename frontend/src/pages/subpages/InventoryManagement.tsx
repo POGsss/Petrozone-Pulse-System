@@ -11,7 +11,7 @@ import {
   LuEllipsisVertical,
   LuSend,
 } from "react-icons/lu";
-import { inventoryApi, branchesApi } from "../../lib/api";
+import { inventoryApi, branchesApi, suppliersApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
 import { useAuth } from "../../auth";
 import {
@@ -33,7 +33,7 @@ import {
   DesktopTableRow,
 } from "../../components";
 import type { StatCard, DesktopTableColumn } from "../../components";
-import type { InventoryItem, Branch, StockMovement } from "../../types";
+import type { InventoryItem, Branch, StockMovement, Supplier } from "../../types";
 
 const ITEMS_PER_PAGE = 20;
 const MAX_ITEM_NAME_LENGTH = 100;
@@ -172,8 +172,11 @@ export function InventoryManagement() {
     reorder_threshold: "5",
     branch_id: "",
     initial_stock: "",
+    supplier_id: "",
   });
   const [addError, setAddError] = useState<string | null>(null);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [loadingSuppliers, setLoadingSuppliers] = useState(false);
 
   // View modal
   const [showViewModal, setShowViewModal] = useState(false);
@@ -273,7 +276,11 @@ export function InventoryManagement() {
         item.category.toLowerCase().includes(q);
 
       const matchStatus =
-        filterStatus === "all" ? item.status !== "inactive" : item.status === filterStatus;
+        filterStatus === "all"
+          ? item.status !== "inactive"
+          : filterStatus === "low_stock"
+            ? item.status === "active" && item.is_low_stock
+            : item.status === filterStatus;
 
       const matchCategory =
         filterCategory === "all" || item.category === filterCategory;
@@ -342,6 +349,34 @@ export function InventoryManagement() {
     return branches.map((b) => ({ value: b.id, label: b.name }));
   }, [branches, user, isHM]);
 
+  const supplierOptions = useMemo(() => {
+    return suppliers.map((supplier) => ({
+      value: supplier.id,
+      label: supplier.supplier_name,
+    }));
+  }, [suppliers]);
+
+  async function loadSuppliers(branchId: string) {
+    if (!branchId) {
+      setSuppliers([]);
+      return;
+    }
+
+    try {
+      setLoadingSuppliers(true);
+      const response = await suppliersApi.getAll({
+        branch_id: branchId,
+        status: "active",
+        limit: 1000,
+      });
+      setSuppliers(response.data || []);
+    } catch {
+      setSuppliers([]);
+    } finally {
+      setLoadingSuppliers(false);
+    }
+  }
+
   // --- Add ---
   function openAddModal() {
     setAddForm({
@@ -353,9 +388,20 @@ export function InventoryManagement() {
       reorder_threshold: "5",
       branch_id: defaultBranchId,
       initial_stock: "",
+      supplier_id: "",
     });
     setAddError(null);
     setShowAddModal(true);
+    if (defaultBranchId) {
+      loadSuppliers(defaultBranchId);
+    } else {
+      setSuppliers([]);
+    }
+  }
+
+  function handleAddBranchChange(branchId: string) {
+    setAddForm((p) => ({ ...p, branch_id: branchId, supplier_id: "" }));
+    loadSuppliers(branchId);
   }
 
   async function handleAddItem(e: React.FormEvent) {
@@ -389,6 +435,7 @@ export function InventoryManagement() {
         reorder_threshold: parseInt(addForm.reorder_threshold) || 0,
         branch_id: addForm.branch_id,
         initial_stock: addForm.initial_stock ? parseInt(addForm.initial_stock) : undefined,
+        supplier_id: addForm.supplier_id || undefined,
       });
       setShowAddModal(false);
       showToast.success("Inventory item created as draft. Submit it for approval to activate.");
@@ -653,6 +700,7 @@ export function InventoryManagement() {
               { value: "all", label: "All Status" },
               { value: "draft", label: "Draft" },
               { value: "active", label: "Active" },
+              { value: "low_stock", label: "Low Stock" },
               { value: "inactive", label: "Inactive" },
             ],
             onChange: setFilterStatus,
@@ -947,8 +995,15 @@ export function InventoryManagement() {
             </div>
           </ModalSection>
           <ModalSection title="Branch & Initial Stock">
-            <ModalSelect value={addForm.branch_id} onChange={(v) => setAddForm(p => ({ ...p, branch_id: v }))} placeholder="Select Branch *" options={branchOptions} />
+            <ModalSelect value={addForm.branch_id} onChange={handleAddBranchChange} placeholder="Select Branch *" options={branchOptions} />
             <ModalInput type="number" value={addForm.initial_stock} onChange={(v) => setAddForm(p => ({ ...p, initial_stock: v }))} placeholder="Initial Stock Quantity (applied after approval)" />
+            <ModalSelect
+              value={addForm.supplier_id}
+              onChange={(v) => setAddForm(p => ({ ...p, supplier_id: v }))}
+              placeholder={loadingSuppliers ? "Loading suppliers..." : "Link Supplier (optional)"}
+              options={supplierOptions}
+              disabled={!addForm.branch_id || loadingSuppliers}
+            />
           </ModalSection>
           <ModalError message={addError} />
           <ModalButtons onCancel={() => setShowAddModal(false)} submitText={addingItem ? "Creating..." : "Create Inventory"} loading={addingItem} />

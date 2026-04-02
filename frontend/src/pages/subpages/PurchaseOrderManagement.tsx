@@ -14,9 +14,11 @@ import {
   LuRefreshCw,
   LuX,
   LuCheck,
+  LuDownload,
 } from "react-icons/lu";
 import { purchaseOrdersApi, branchesApi, suppliersApi, supplierProductsApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
+import { generatePurchaseOrderPDF } from "../../lib/purchaseOrderPdfGenerator";
 import { useAuth } from "../../auth";
 import {
   Modal,
@@ -198,6 +200,7 @@ export function PurchaseOrderManagement() {
   const [showReceiveConfirm, setShowReceiveConfirm] = useState(false);
   const [orderToReceive, setOrderToReceive] = useState<PurchaseOrder | null>(null);
   const [processingReceive, setProcessingReceive] = useState(false);
+  const [exportingPoPdfId, setExportingPoPdfId] = useState<string | null>(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptOrder, setReceiptOrder] = useState<PurchaseOrder | null>(null);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
@@ -875,9 +878,24 @@ export function PurchaseOrderManagement() {
     }
   }
 
+  async function handleExportPurchaseOrderPDF(order: PurchaseOrder) {
+    try {
+      setExportingPoPdfId(order.id);
+      closeDropdown();
+      const fullOrder = await purchaseOrdersApi.getById(order.id);
+      generatePurchaseOrderPDF(fullOrder);
+      showToast.success("Purchase order exported as PDF");
+    } catch (err) {
+      showToast.error(err instanceof Error ? err.message : "Failed to export purchase order PDF");
+    } finally {
+      setExportingPoPdfId(null);
+    }
+  }
+
   // ─── Helpers: count available dropdown actions for a given order ────
   function getDropdownActions(order: PurchaseOrder) {
     const actions: string[] = [];
+    actions.push("export_pdf");
     if (order.status === "draft") actions.push("submit");
     if (order.status === "submitted" && canApprove) actions.push("approve");
     if (order.status === "approved") actions.push("receive");
@@ -1023,6 +1041,13 @@ export function PurchaseOrderManagement() {
                             </button>
                             {openDropdownId === `card-${order.id}` && (
                               <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleExportPurchaseOrderPDF(order); }}
+                                  disabled={exportingPoPdfId === order.id}
+                                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors disabled:opacity-50"
+                                >
+                                  <LuDownload className="w-4 h-4" /> Export to PDF
+                                </button>
                                 {order.status === "draft" && (
                                   <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openSubmitConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuSend className="w-4 h-4" /> Submit PO</button>
                                 )}
@@ -1143,6 +1168,13 @@ export function PurchaseOrderManagement() {
                             </button>
                             {openDropdownId === `table-${order.id}` && (
                               <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg border border-neutral-200 py-2 z-50">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleExportPurchaseOrderPDF(order); }}
+                                  disabled={exportingPoPdfId === order.id}
+                                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors disabled:opacity-50"
+                                >
+                                  <LuDownload className="w-4 h-4" /> Export to PDF
+                                </button>
                                 {order.status === "draft" && (
                                   <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openSubmitConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuSend className="w-4 h-4" /> Submit PO</button>
                                 )}
@@ -1867,11 +1899,8 @@ export function PurchaseOrderManagement() {
               </p>
             </div>
             <p className="text-sm text-neutral-900 mb-2">
-              This will mark the PO as received, create stock-in movements for every line item, and update on-hand quantities. <strong>This action is irreversible.</strong>
+              {orderToReceive.receipt_attachment ? "This will mark the PO as received, create stock-in movements for every line item, and update on-hand quantities." : "Cannot record stock-in without a receipt. Upload a receipt first before receiving purchase order."}
             </p>
-            {!orderToReceive.receipt_attachment && (
-              <p className="text-sm text-negative mb-2">Upload receipt before receiving purchase order.</p>
-            )}
             <div className="flex gap-3 mt-6">
               <button
                 type="button"

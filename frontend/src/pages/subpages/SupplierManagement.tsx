@@ -35,6 +35,7 @@ export function SupplierManagement() {
     phone: "",
     address: "",
     branch_id: "",
+    branch_ids: [] as string[],
     notes: "",
   });
   const [addError, setAddError] = useState<string | null>(null);
@@ -50,6 +51,8 @@ export function SupplierManagement() {
     phone: "",
     address: "",
     status: "active" as "active" | "inactive",
+    branch_ids: [] as string[],
+    primary_branch_id: null as string | null,
     notes: "",
   });
   const [editError, setEditError] = useState<string | null>(null);
@@ -110,9 +113,44 @@ export function SupplierManagement() {
     if (branches.length > 0 && !addForm.branch_id) {
       const primaryBranch = user?.branches?.find(b => b.is_primary);
       const defaultBranchId = primaryBranch?.branch_id || branches[0].id;
-      setAddForm(prev => ({ ...prev, branch_id: defaultBranchId }));
+      setAddForm(prev => ({ ...prev, branch_id: defaultBranchId, branch_ids: [defaultBranchId] }));
     }
   }, [branches, user]);
+
+  function getSupplierBranchIds(supplier: Supplier): string[] {
+    const assignmentBranchIds = (supplier.supplier_branch_assignments || []).map((a) => a.branch_id);
+    return Array.from(new Set([supplier.branch_id, ...assignmentBranchIds].filter(Boolean)));
+  }
+
+  function toggleAddBranch(branchId: string) {
+    setAddForm(prev => {
+      const newBranchIds = prev.branch_ids.includes(branchId)
+        ? prev.branch_ids.filter(id => id !== branchId)
+        : [...prev.branch_ids, branchId];
+
+      const primaryBranchId = newBranchIds[0] || "";
+      return {
+        ...prev,
+        branch_ids: newBranchIds,
+        branch_id: primaryBranchId,
+      };
+    });
+  }
+
+  function toggleEditBranch(branchId: string) {
+    setEditForm(prev => {
+      const newBranchIds = prev.branch_ids.includes(branchId)
+        ? prev.branch_ids.filter(id => id !== branchId)
+        : [...prev.branch_ids, branchId];
+
+      const primaryBranchId = newBranchIds[0] || null;
+      return {
+        ...prev,
+        branch_ids: newBranchIds,
+        primary_branch_id: primaryBranchId,
+      };
+    });
+  }
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -232,8 +270,8 @@ export function SupplierManagement() {
       return;
     }
 
-    if (!addForm.branch_id) {
-      setAddError("Branch is required");
+    if (addForm.branch_ids.length === 0) {
+      setAddError("At least one branch assignment is required");
       return;
     }
 
@@ -246,6 +284,7 @@ export function SupplierManagement() {
         phone: addForm.phone.trim(),
         address: addForm.address.trim(),
         branch_id: addForm.branch_id,
+        branch_ids: addForm.branch_ids,
         notes: addForm.notes.trim() || undefined,
       });
 
@@ -257,6 +296,7 @@ export function SupplierManagement() {
         phone: "",
         address: "",
         branch_id: addForm.branch_id,
+        branch_ids: addForm.branch_ids,
         notes: "",
       });
       setShowAddModal(false);
@@ -273,6 +313,8 @@ export function SupplierManagement() {
 
   // Open edit modal
   function openEditModal(supplier: Supplier) {
+    const branchIds = getSupplierBranchIds(supplier);
+
     setSelectedSupplier(supplier);
     setEditForm({
       supplier_name: supplier.supplier_name,
@@ -281,6 +323,8 @@ export function SupplierManagement() {
       phone: supplier.phone,
       address: supplier.address,
       status: supplier.status,
+      branch_ids: branchIds,
+      primary_branch_id: supplier.branch_id,
       notes: supplier.notes || "",
     });
     setEditError(null);
@@ -300,6 +344,11 @@ export function SupplierManagement() {
       return;
     }
 
+    if (editForm.branch_ids.length === 0) {
+      setEditError("At least one branch assignment is required");
+      return;
+    }
+
     try {
       setEditingSupplier(true);
       await suppliersApi.update(selectedSupplier.id, {
@@ -311,6 +360,12 @@ export function SupplierManagement() {
         status: editForm.status,
         notes: editForm.notes.trim() || null,
       });
+
+      await suppliersApi.updateBranches(
+        selectedSupplier.id,
+        editForm.branch_ids,
+        editForm.primary_branch_id || editForm.branch_ids[0]
+      );
 
       setShowEditModal(false);
       setSelectedSupplier(null);
@@ -666,12 +721,21 @@ export function SupplierManagement() {
           </ModalSection>
 
           <ModalSection title="Assignment">
-            <ModalSelect
-              value={addForm.branch_id}
-              onChange={(v) => setAddForm(prev => ({ ...prev, branch_id: v }))}
-              options={branches.map(b => ({ value: b.id, label: b.name }))}
-              placeholder="Select Branch"
-            />
+            <div className="flex flex-wrap gap-2">
+              {branches.map((branch) => (
+                <button
+                  key={branch.id}
+                  type="button"
+                  onClick={() => toggleAddBranch(branch.id)}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${addForm.branch_ids.includes(branch.id)
+                    ? "bg-primary text-white"
+                    : "bg-neutral-100 text-neutral hover:bg-neutral-200"
+                    }`}
+                >
+                  {branch.name} ({branch.code})
+                </button>
+              ))}
+            </div>
           </ModalSection>
 
           <ModalSection title="Additional">
@@ -772,6 +836,24 @@ export function SupplierManagement() {
                 onChange={(v) => setEditForm(prev => ({ ...prev, notes: v }))}
                 placeholder="Notes (optional)"
               />
+            </ModalSection>
+
+            <ModalSection title="Assignment">
+              <div className="flex flex-wrap gap-2">
+                {branches.map((branch) => (
+                  <button
+                    key={branch.id}
+                    type="button"
+                    onClick={() => toggleEditBranch(branch.id)}
+                    className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${editForm.branch_ids.includes(branch.id)
+                      ? "bg-primary text-white"
+                      : "bg-neutral-100 text-neutral hover:bg-neutral-200"
+                      }`}
+                  >
+                    {branch.name} ({branch.code})
+                  </button>
+                ))}
+              </div>
             </ModalSection>
 
             <ModalError message={editError} />
@@ -896,13 +978,29 @@ export function SupplierManagement() {
             </ModalSection>
 
             <ModalSection title="Assignment">
-              <ModalInput
-                type="text"
-                value={viewSupplier.branches?.name || "-"}
-                onChange={() => { }}
-                placeholder="Branch"
-                disabled
-              />
+              {getSupplierBranchIds(viewSupplier).length === 0 ? (
+                <p className="text-sm text-neutral-400">No branches assigned</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {getSupplierBranchIds(viewSupplier).map((branchId) => {
+                    const assignmentBranch = viewSupplier.supplier_branch_assignments?.find((a) => a.branch_id === branchId)?.branches;
+                    const branch = branches.find((b) => b.id === branchId);
+                    const label = assignmentBranch?.name || branch?.name || (viewSupplier.branch_id === branchId ? viewSupplier.branches?.name : null) || branchId.slice(0, 8);
+                    const code = assignmentBranch?.code || branch?.code || (viewSupplier.branch_id === branchId ? viewSupplier.branches?.code : null);
+
+                    return (
+                      <button
+                        key={branchId}
+                        type="button"
+                        disabled
+                        className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all bg-neutral-100 text-neutral cursor-readonly"
+                      >
+                        {code ? `${label} (${code})` : label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </ModalSection>
 
             {/* Linked Products (read-only) */}

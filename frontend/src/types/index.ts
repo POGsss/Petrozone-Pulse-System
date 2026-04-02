@@ -129,6 +129,7 @@ export interface Vehicle {
   plate_number: string;
   vehicle_type: VehicleType;
   vehicle_class: VehicleClass;
+  make: string;
   orcr: string;
   model: string;
   customer_id: string;
@@ -136,7 +137,7 @@ export interface Vehicle {
   status: VehicleStatus;
   color: string | null;
   year: number | null;
-  engine_number: string | null;
+  conduction_sticker: string | null;
   chassis_number: string | null;
   notes: string | null;
   created_by: string | null;
@@ -454,6 +455,11 @@ export type PurchaseOrderStatus = "draft" | "submitted" | "approved" | "received
 // Supplier types
 export type SupplierStatus = "active" | "inactive";
 
+export interface SupplierBranchAssignment {
+  branch_id: string;
+  branches?: Branch;
+}
+
 export interface Supplier {
   id: string;
   supplier_name: string;
@@ -468,6 +474,7 @@ export interface Supplier {
   created_at: string;
   updated_at: string;
   branches?: Branch;
+  supplier_branch_assignments?: SupplierBranchAssignment[];
 }
 
 // Supplier Product types
