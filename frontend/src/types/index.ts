@@ -538,6 +538,9 @@ export interface PurchaseOrder {
   received_at: string | null;
   received_by: string | null;
   receipt_attachment: string | null;
+  receipt_reference_number: string | null;
+  is_partial_receipt: boolean;
+  amount_received: number | null;
   receipt_uploaded_by: string | null;
   receipt_uploaded_at: string | null;
   is_deleted: boolean;

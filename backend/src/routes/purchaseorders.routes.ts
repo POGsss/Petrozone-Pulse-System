@@ -63,6 +63,29 @@ function getFileExtension(filename: string): string {
   return (ext || "bin").toLowerCase();
 }
 
+function parseBooleanInput(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1") return true;
+    if (normalized === "false" || normalized === "0") return false;
+  }
+  return null;
+}
+
+function parseAmountInput(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 // All purchase-order routes require authentication
 router.use(requireAuth);
 
@@ -724,8 +747,12 @@ router.post(
     try {
       const poId = req.params.id as string;
 
-      if (!req.file) {
-        res.status(400).json({ error: "Receipt file is required" });
+      const hasReferenceInput = Object.prototype.hasOwnProperty.call(req.body, "receipt_reference_number");
+      const hasPartialInput = Object.prototype.hasOwnProperty.call(req.body, "is_partial_receipt");
+      const hasAmountInput = Object.prototype.hasOwnProperty.call(req.body, "amount_received");
+
+      if (!req.file && !hasReferenceInput && !hasPartialInput && !hasAmountInput) {
+        res.status(400).json({ error: "Receipt file or details are required" });
         return;
       }
 
@@ -753,56 +780,105 @@ router.post(
         return;
       }
 
-      const { data: buckets, error: bucketListError } = await supabaseAdmin.storage.listBuckets();
-      if (bucketListError) {
-        res.status(500).json({ error: "Failed to access storage buckets" });
-        return;
-      }
+      const updates: Record<string, unknown> = {};
+      let receiptUrl: string | null = null;
+      let uploadedAt: string | null = null;
 
-      const bucketExists = (buckets || []).some((bucket) => bucket.name === RECEIPT_BUCKET);
-      if (!bucketExists) {
-        const { error: bucketCreateError } = await supabaseAdmin.storage.createBucket(RECEIPT_BUCKET, {
-          public: true,
-          fileSizeLimit: 10 * 1024 * 1024,
-          allowedMimeTypes: ALLOWED_RECEIPT_MIME_TYPES,
-        });
-
-        if (bucketCreateError && !bucketCreateError.message.toLowerCase().includes("already exists")) {
-          res.status(500).json({ error: "Failed to create receipt storage bucket" });
+      if (hasReferenceInput) {
+        const referenceRaw = req.body.receipt_reference_number;
+        if (typeof referenceRaw !== "string") {
+          res.status(400).json({ error: "Receipt reference number must be a string" });
           return;
         }
+        const trimmedReference = referenceRaw.trim();
+        updates.receipt_reference_number = trimmedReference || null;
       }
 
-      const timestamp = Date.now();
-      const extension = getFileExtension(req.file.originalname);
-      const filePath = `purchase-orders/${poId}/receipt-${timestamp}.${extension}`;
+      if (hasPartialInput) {
+        const parsedPartial = parseBooleanInput(req.body.is_partial_receipt);
+        if (parsedPartial === null) {
+          res.status(400).json({ error: "is_partial_receipt must be true or false" });
+          return;
+        }
+        updates.is_partial_receipt = parsedPartial;
+      }
 
-      const { error: uploadError } = await supabaseAdmin.storage
-        .from(RECEIPT_BUCKET)
-        .upload(filePath, req.file.buffer, {
-          contentType: req.file.mimetype,
-          upsert: true,
-        });
+      if (hasAmountInput) {
+        const amountRaw = req.body.amount_received;
+        const parsedAmount = parseAmountInput(amountRaw);
+        if (
+          amountRaw !== null &&
+          amountRaw !== undefined &&
+          !(typeof amountRaw === "string" && amountRaw.trim() === "") &&
+          parsedAmount === null
+        ) {
+          res.status(400).json({ error: "Amount received must be a valid number" });
+          return;
+        }
+        if (parsedAmount !== null && parsedAmount < 0) {
+          res.status(400).json({ error: "Amount received cannot be negative" });
+          return;
+        }
+        updates.amount_received = parsedAmount;
+      }
 
-      if (uploadError) {
-        res.status(500).json({ error: uploadError.message });
+      if (req.file) {
+        const { data: buckets, error: bucketListError } = await supabaseAdmin.storage.listBuckets();
+        if (bucketListError) {
+          res.status(500).json({ error: "Failed to access storage buckets" });
+          return;
+        }
+
+        const bucketExists = (buckets || []).some((bucket) => bucket.name === RECEIPT_BUCKET);
+        if (!bucketExists) {
+          const { error: bucketCreateError } = await supabaseAdmin.storage.createBucket(RECEIPT_BUCKET, {
+            public: true,
+            fileSizeLimit: 10 * 1024 * 1024,
+            allowedMimeTypes: ALLOWED_RECEIPT_MIME_TYPES,
+          });
+
+          if (bucketCreateError && !bucketCreateError.message.toLowerCase().includes("already exists")) {
+            res.status(500).json({ error: "Failed to create receipt storage bucket" });
+            return;
+          }
+        }
+
+        const timestamp = Date.now();
+        const extension = getFileExtension(req.file.originalname);
+        const filePath = `purchase-orders/${poId}/receipt-${timestamp}.${extension}`;
+
+        const { error: uploadError } = await supabaseAdmin.storage
+          .from(RECEIPT_BUCKET)
+          .upload(filePath, req.file.buffer, {
+            contentType: req.file.mimetype,
+            upsert: true,
+          });
+
+        if (uploadError) {
+          res.status(500).json({ error: uploadError.message });
+          return;
+        }
+
+        const { data: publicUrlData } = supabaseAdmin.storage
+          .from(RECEIPT_BUCKET)
+          .getPublicUrl(filePath);
+
+        receiptUrl = publicUrlData?.publicUrl || filePath;
+        uploadedAt = new Date().toISOString();
+
+        updates.receipt_attachment = receiptUrl;
+        updates.receipt_uploaded_by = req.user!.id;
+        updates.receipt_uploaded_at = uploadedAt;
+      }
+
+      if (Object.keys(updates).length === 0) {
+        res.status(400).json({ error: "No receipt updates provided" });
         return;
       }
-
-      const { data: publicUrlData } = supabaseAdmin.storage
-        .from(RECEIPT_BUCKET)
-        .getPublicUrl(filePath);
-
-      const receiptUrl = publicUrlData?.publicUrl || filePath;
-      const uploadedAt = new Date().toISOString();
 
       const { error: updateError } = await supabaseAdmin
         .from("purchase_orders")
-        .update({
-          receipt_attachment: receiptUrl,
-          receipt_uploaded_by: req.user!.id,
-          receipt_uploaded_at: uploadedAt,
-        })
+        .update(updates)
         .eq("id", poId);
 
       if (updateError) {
@@ -811,6 +887,16 @@ router.post(
       }
 
       try {
+        const auditReference = hasReferenceInput
+          ? (typeof updates.receipt_reference_number === "string" ? updates.receipt_reference_number : null)
+          : undefined;
+        const auditPartial = hasPartialInput
+          ? (typeof updates.is_partial_receipt === "boolean" ? updates.is_partial_receipt : null)
+          : undefined;
+        const auditAmount = hasAmountInput
+          ? (typeof updates.amount_received === "number" ? updates.amount_received : null)
+          : undefined;
+
         await supabaseAdmin.rpc("log_admin_action", {
           p_action: "UPDATE",
           p_entity_type: "PURCHASE_ORDER",
@@ -820,9 +906,11 @@ router.post(
           p_new_values: {
             purchase_order_id: poId,
             uploaded_by: req.user!.id,
-            timestamp: uploadedAt,
-            file_path: filePath,
+            timestamp: new Date().toISOString(),
             receipt_attachment: receiptUrl,
+            receipt_reference_number: auditReference,
+            is_partial_receipt: auditPartial,
+            amount_received: auditAmount,
           },
         });
       } catch (auditErr) {
@@ -840,10 +928,7 @@ router.post(
         return;
       }
 
-      res.json({
-        ...updatedPO,
-        receipt_url: receiptUrl,
-      });
+      res.json(receiptUrl ? { ...updatedPO, receipt_url: receiptUrl } : updatedPO);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to upload receipt";
       console.error("Upload receipt error:", error);
@@ -902,10 +987,51 @@ router.patch(
         return;
       }
 
-      if (!po.receipt_attachment) {
-        res.status(400).json({
-          error: "Cannot receive purchase order without receipt attachment",
-        });
+      const bodyReference = typeof req.body?.receipt_reference_number === "string"
+        ? req.body.receipt_reference_number.trim()
+        : "";
+      const resolvedReference = bodyReference || (typeof po.receipt_reference_number === "string" ? po.receipt_reference_number.trim() : "");
+
+      const bodyPartialRaw = req.body?.is_partial_receipt;
+      const bodyPartialParsed = bodyPartialRaw === undefined ? null : parseBooleanInput(bodyPartialRaw);
+      if (bodyPartialRaw !== undefined && bodyPartialParsed === null) {
+        res.status(400).json({ error: "is_partial_receipt must be true or false" });
+        return;
+      }
+      const resolvedPartial = bodyPartialParsed ?? Boolean(po.is_partial_receipt);
+
+      const bodyAmountRaw = req.body?.amount_received;
+      const bodyAmountParsed = bodyAmountRaw === undefined ? null : parseAmountInput(bodyAmountRaw);
+      if (
+        bodyAmountRaw !== undefined &&
+        bodyAmountRaw !== null &&
+        !(typeof bodyAmountRaw === "string" && bodyAmountRaw.trim() === "") &&
+        bodyAmountParsed === null
+      ) {
+        res.status(400).json({ error: "Amount received must be a valid number" });
+        return;
+      }
+
+      let resolvedAmount: number | null = bodyAmountRaw === undefined
+        ? parseAmountInput(po.amount_received)
+        : bodyAmountParsed;
+
+      if (!resolvedPartial && resolvedAmount === null) {
+        resolvedAmount = Number(po.total_amount);
+      }
+
+      if (!resolvedReference) {
+        res.status(400).json({ error: "Receipt reference number is required before receiving purchase order" });
+        return;
+      }
+
+      if (resolvedAmount === null || !Number.isFinite(resolvedAmount) || resolvedAmount <= 0) {
+        res.status(400).json({ error: "Amount received is required before receiving purchase order" });
+        return;
+      }
+
+      if (resolvedAmount > Number(po.total_amount)) {
+        res.status(400).json({ error: "Amount received cannot exceed the purchase order total" });
         return;
       }
 
@@ -924,6 +1050,9 @@ router.patch(
           status: "received",
           received_at: receiveNow,
           received_by: req.user!.id,
+          receipt_reference_number: resolvedReference,
+          is_partial_receipt: resolvedPartial,
+          amount_received: resolvedAmount,
         })
         .eq("id", poId)
         .eq("status", "approved") // CAS: only update if still approved
@@ -957,7 +1086,7 @@ router.patch(
             quantity: qtyToReceive,
             reference_type: "purchase_order",
             reference_id: poId,
-            reason: `Received from PO ${po.po_number}`,
+            reason: `Received from PO ${po.po_number} (Ref: ${resolvedReference})`,
             branch_id: po.branch_id,
             created_by: req.user!.id,
           });
@@ -1002,6 +1131,9 @@ router.patch(
             po_number: po.po_number,
             status: "received",
             items_received: poItems.length,
+            receipt_reference_number: resolvedReference,
+            is_partial_receipt: resolvedPartial,
+            amount_received: resolvedAmount,
           },
         });
       } catch (auditErr) {

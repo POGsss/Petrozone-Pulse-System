@@ -1787,6 +1787,9 @@ CREATE TABLE IF NOT EXISTS "public"."purchase_orders" (
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "supplier_id" "uuid",
     "receipt_attachment" "text",
+    "receipt_reference_number" "text",
+    "is_partial_receipt" boolean DEFAULT false NOT NULL,
+    "amount_received" numeric(12,2),
     "receipt_uploaded_by" "uuid",
     "receipt_uploaded_at" timestamp with time zone
 );
