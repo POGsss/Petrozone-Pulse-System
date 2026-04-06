@@ -961,17 +961,16 @@ export type Database = {
       }
       purchase_orders: {
         Row: {
-          amount_received: number | null
           branch_id: string
           created_at: string
           created_by: string | null
           expected_delivery_date: string | null
           id: string
           is_deleted: boolean
-          is_partial_receipt: boolean
           notes: string | null
           order_date: string
           po_number: string
+          quantity_received: number
           receipt_attachment: string | null
           receipt_reference_number: string | null
           receipt_uploaded_at: string | null
@@ -985,17 +984,16 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          amount_received?: number | null
           branch_id: string
           created_at?: string
           created_by?: string | null
           expected_delivery_date?: string | null
           id?: string
           is_deleted?: boolean
-          is_partial_receipt?: boolean
           notes?: string | null
           order_date?: string
           po_number: string
+          quantity_received?: number
           receipt_attachment?: string | null
           receipt_reference_number?: string | null
           receipt_uploaded_at?: string | null
@@ -1009,17 +1007,16 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          amount_received?: number | null
           branch_id?: string
           created_at?: string
           created_by?: string | null
           expected_delivery_date?: string | null
           id?: string
           is_deleted?: boolean
-          is_partial_receipt?: boolean
           notes?: string | null
           order_date?: string
           po_number?: string
+          quantity_received?: number
           receipt_attachment?: string | null
           receipt_reference_number?: string | null
           receipt_uploaded_at?: string | null
@@ -1912,6 +1909,7 @@ export type Database = {
         | "draft"
         | "submitted"
         | "approved"
+        | "partially_received"
         | "received"
         | "cancelled"
         | "deactivated"
@@ -2087,6 +2085,7 @@ export const Constants = {
         "draft",
         "submitted",
         "approved",
+        "partially_received",
         "received",
         "cancelled",
         "deactivated",

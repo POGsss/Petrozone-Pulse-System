@@ -8,7 +8,7 @@ import { logFailedAction, fixAuditLogUser, filterUnchangedFields } from "../lib/
 const router = Router();
 const PO_NUMBER_PATTERN = /^PO-[A-Z0-9]+-[0-9]{1,6}$/;
 const RECEIPT_BUCKET = "purchase-order-receipts";
-const RESTORABLE_PO_STATUSES = ["draft", "submitted", "approved", "received", "cancelled"] as const;
+const RESTORABLE_PO_STATUSES = ["draft", "submitted", "approved", "partially_received", "received", "cancelled"] as const;
 const ALLOWED_RECEIPT_MIME_TYPES = [
   "image/jpeg",
   "image/jpg",
@@ -63,25 +63,18 @@ function getFileExtension(filename: string): string {
   return (ext || "bin").toLowerCase();
 }
 
-function parseBooleanInput(value: unknown): boolean | null {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === "true" || normalized === "1") return true;
-    if (normalized === "false" || normalized === "0") return false;
-  }
-  return null;
-}
-
-function parseAmountInput(value: unknown): number | null {
+function parseQuantityInput(value: unknown): number | null {
   if (typeof value === "number") {
-    return Number.isFinite(value) ? value : null;
+    if (!Number.isFinite(value) || !Number.isInteger(value)) return null;
+    return value;
   }
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (!trimmed) return null;
+    if (!/^\d+$/.test(trimmed)) return null;
     const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : null;
+    if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) return null;
+    return parsed;
   }
   return null;
 }
@@ -119,7 +112,7 @@ router.get(
       if (status) {
         query = query.eq(
           "status",
-          status as "draft" | "submitted" | "approved" | "received" | "cancelled" | "deactivated"
+          status as "draft" | "submitted" | "approved" | "partially_received" | "received" | "cancelled" | "deactivated"
         );
       } else {
         query = query.neq("status", "deactivated");
@@ -748,10 +741,8 @@ router.post(
       const poId = req.params.id as string;
 
       const hasReferenceInput = Object.prototype.hasOwnProperty.call(req.body, "receipt_reference_number");
-      const hasPartialInput = Object.prototype.hasOwnProperty.call(req.body, "is_partial_receipt");
-      const hasAmountInput = Object.prototype.hasOwnProperty.call(req.body, "amount_received");
 
-      if (!req.file && !hasReferenceInput && !hasPartialInput && !hasAmountInput) {
+      if (!req.file && !hasReferenceInput) {
         res.status(400).json({ error: "Receipt file or details are required" });
         return;
       }
@@ -792,34 +783,6 @@ router.post(
         }
         const trimmedReference = referenceRaw.trim();
         updates.receipt_reference_number = trimmedReference || null;
-      }
-
-      if (hasPartialInput) {
-        const parsedPartial = parseBooleanInput(req.body.is_partial_receipt);
-        if (parsedPartial === null) {
-          res.status(400).json({ error: "is_partial_receipt must be true or false" });
-          return;
-        }
-        updates.is_partial_receipt = parsedPartial;
-      }
-
-      if (hasAmountInput) {
-        const amountRaw = req.body.amount_received;
-        const parsedAmount = parseAmountInput(amountRaw);
-        if (
-          amountRaw !== null &&
-          amountRaw !== undefined &&
-          !(typeof amountRaw === "string" && amountRaw.trim() === "") &&
-          parsedAmount === null
-        ) {
-          res.status(400).json({ error: "Amount received must be a valid number" });
-          return;
-        }
-        if (parsedAmount !== null && parsedAmount < 0) {
-          res.status(400).json({ error: "Amount received cannot be negative" });
-          return;
-        }
-        updates.amount_received = parsedAmount;
       }
 
       if (req.file) {
@@ -890,12 +853,6 @@ router.post(
         const auditReference = hasReferenceInput
           ? (typeof updates.receipt_reference_number === "string" ? updates.receipt_reference_number : null)
           : undefined;
-        const auditPartial = hasPartialInput
-          ? (typeof updates.is_partial_receipt === "boolean" ? updates.is_partial_receipt : null)
-          : undefined;
-        const auditAmount = hasAmountInput
-          ? (typeof updates.amount_received === "number" ? updates.amount_received : null)
-          : undefined;
 
         await supabaseAdmin.rpc("log_admin_action", {
           p_action: "UPDATE",
@@ -909,8 +866,6 @@ router.post(
             timestamp: new Date().toISOString(),
             receipt_attachment: receiptUrl,
             receipt_reference_number: auditReference,
-            is_partial_receipt: auditPartial,
-            amount_received: auditAmount,
           },
         });
       } catch (auditErr) {
@@ -980,9 +935,9 @@ router.patch(
         return;
       }
 
-      if (po.status !== "approved") {
+      if (!["approved", "partially_received"].includes(po.status)) {
         res.status(400).json({
-          error: "Only approved purchase orders can be received",
+          error: "Only approved or partially received purchase orders can be received",
         });
         return;
       }
@@ -992,46 +947,8 @@ router.patch(
         : "";
       const resolvedReference = bodyReference || (typeof po.receipt_reference_number === "string" ? po.receipt_reference_number.trim() : "");
 
-      const bodyPartialRaw = req.body?.is_partial_receipt;
-      const bodyPartialParsed = bodyPartialRaw === undefined ? null : parseBooleanInput(bodyPartialRaw);
-      if (bodyPartialRaw !== undefined && bodyPartialParsed === null) {
-        res.status(400).json({ error: "is_partial_receipt must be true or false" });
-        return;
-      }
-      const resolvedPartial = bodyPartialParsed ?? Boolean(po.is_partial_receipt);
-
-      const bodyAmountRaw = req.body?.amount_received;
-      const bodyAmountParsed = bodyAmountRaw === undefined ? null : parseAmountInput(bodyAmountRaw);
-      if (
-        bodyAmountRaw !== undefined &&
-        bodyAmountRaw !== null &&
-        !(typeof bodyAmountRaw === "string" && bodyAmountRaw.trim() === "") &&
-        bodyAmountParsed === null
-      ) {
-        res.status(400).json({ error: "Amount received must be a valid number" });
-        return;
-      }
-
-      let resolvedAmount: number | null = bodyAmountRaw === undefined
-        ? parseAmountInput(po.amount_received)
-        : bodyAmountParsed;
-
-      if (!resolvedPartial && resolvedAmount === null) {
-        resolvedAmount = Number(po.total_amount);
-      }
-
       if (!resolvedReference) {
         res.status(400).json({ error: "Receipt reference number is required before receiving purchase order" });
-        return;
-      }
-
-      if (resolvedAmount === null || !Number.isFinite(resolvedAmount) || resolvedAmount <= 0) {
-        res.status(400).json({ error: "Amount received is required before receiving purchase order" });
-        return;
-      }
-
-      if (resolvedAmount > Number(po.total_amount)) {
-        res.status(400).json({ error: "Amount received cannot exceed the purchase order total" });
         return;
       }
 
@@ -1041,21 +958,74 @@ router.patch(
         return;
       }
 
-      // Atomic status lock: approved -> received (CAS)
+      const itemStates = poItems.map((item) => {
+        const ordered = Number(item.quantity_ordered) || 0;
+        const alreadyReceived = Number(item.quantity_received) || 0;
+        const outstanding = Math.max(ordered - alreadyReceived, 0);
+        return {
+          ...item,
+          ordered,
+          alreadyReceived,
+          outstanding,
+        };
+      });
+
+      const totalOrderedQty = itemStates.reduce((sum, item) => sum + item.ordered, 0);
+      const currentReceivedQty = itemStates.reduce((sum, item) => sum + item.alreadyReceived, 0);
+      const totalOutstandingQty = itemStates.reduce((sum, item) => sum + item.outstanding, 0);
+
+      if (totalOrderedQty <= 0) {
+        res.status(400).json({ error: "Purchase order has invalid item quantities" });
+        return;
+      }
+
+      if (totalOutstandingQty <= 0) {
+        res.status(400).json({ error: "Purchase order is already fully received" });
+        return;
+      }
+
+      const bodyQuantityRaw = req.body?.quantity_received;
+      const bodyQuantityParsed = bodyQuantityRaw === undefined ? null : parseQuantityInput(bodyQuantityRaw);
+      if (
+        bodyQuantityRaw !== undefined &&
+        bodyQuantityRaw !== null &&
+        !(typeof bodyQuantityRaw === "string" && bodyQuantityRaw.trim() === "") &&
+        bodyQuantityParsed === null
+      ) {
+        res.status(400).json({ error: "Quantity received must be a valid whole number" });
+        return;
+      }
+
+      const quantityToReceive = bodyQuantityParsed === null ? totalOutstandingQty : bodyQuantityParsed;
+
+      if (!Number.isInteger(quantityToReceive) || quantityToReceive <= 0) {
+        res.status(400).json({ error: "Quantity received must be greater than 0" });
+        return;
+      }
+
+      if (quantityToReceive > totalOutstandingQty) {
+        res.status(400).json({ error: "Quantity received cannot exceed outstanding quantity" });
+        return;
+      }
+
+      const newTotalReceivedQty = currentReceivedQty + quantityToReceive;
+      const nextStatus: "partially_received" | "received" =
+        newTotalReceivedQty >= totalOrderedQty ? "received" : "partially_received";
+
+      // Atomic status lock: current state -> partially_received/received (CAS)
       // Prevents race conditions from double-click or concurrent requests
       const receiveNow = new Date().toISOString();
       const { data: locked, error: lockError } = await supabaseAdmin
         .from("purchase_orders")
         .update({
-          status: "received",
-          received_at: receiveNow,
-          received_by: req.user!.id,
+          status: nextStatus,
+          received_at: nextStatus === "received" ? receiveNow : null,
+          received_by: nextStatus === "received" ? req.user!.id : null,
           receipt_reference_number: resolvedReference,
-          is_partial_receipt: resolvedPartial,
-          amount_received: resolvedAmount,
+          quantity_received: newTotalReceivedQty,
         })
         .eq("id", poId)
-        .eq("status", "approved") // CAS: only update if still approved
+        .eq("status", po.status) // CAS: only update if still in fetched status
         .select("id")
         .maybeSingle();
 
@@ -1066,16 +1036,20 @@ router.patch(
 
       if (!locked) {
         // Another request already transitioned this PO
-        res.status(409).json({ error: "Purchase order is already being received or has been received" });
+        res.status(409).json({ error: "Purchase order was updated by another request. Please refresh and try again." });
         return;
       }
 
-      // Stock-in for each PO item
-      // Status is already "received" so retries will be rejected by CAS above
+      // Stock-in for each PO item based on requested quantity
       let failedItem: string | null = null;
-      for (const item of poItems) {
-        const qtyToReceive = item.quantity_ordered - item.quantity_received;
-        if (qtyToReceive <= 0) continue; // already fully received
+      let remainingQty = quantityToReceive;
+      let affectedItemCount = 0;
+
+      for (const item of itemStates) {
+        if (remainingQty <= 0) break;
+        if (item.outstanding <= 0) continue;
+
+        const qtyForThisItem = Math.min(item.outstanding, remainingQty);
 
         // Create stock_movement record
         const { error: moveError } = await supabaseAdmin
@@ -1083,7 +1057,7 @@ router.patch(
           .insert({
             inventory_item_id: item.inventory_item_id,
             movement_type: "stock_in",
-            quantity: qtyToReceive,
+            quantity: qtyForThisItem,
             reference_type: "purchase_order",
             reference_id: poId,
             reason: `Received from PO ${po.po_number} (Ref: ${resolvedReference})`,
@@ -1100,7 +1074,7 @@ router.patch(
         // Update quantity_received on the PO item
         const { error: updateItemError } = await supabaseAdmin
           .from("purchase_order_items")
-          .update({ quantity_received: item.quantity_ordered })
+          .update({ quantity_received: item.alreadyReceived + qtyForThisItem })
           .eq("id", item.id);
 
         if (updateItemError) {
@@ -1108,6 +1082,13 @@ router.patch(
           console.error(`quantity_received update failed for item ${item.id}:`, updateItemError.message);
           break;
         }
+
+        remainingQty -= qtyForThisItem;
+        affectedItemCount += 1;
+      }
+
+      if (!failedItem && remainingQty > 0) {
+        failedItem = "unallocated_quantity";
       }
 
       if (failedItem) {
@@ -1129,11 +1110,11 @@ router.patch(
           p_performed_by_branch_id: req.user!.branchIds[0] || null,
           p_new_values: {
             po_number: po.po_number,
-            status: "received",
-            items_received: poItems.length,
+            status: nextStatus,
+            items_received: affectedItemCount,
             receipt_reference_number: resolvedReference,
-            is_partial_receipt: resolvedPartial,
-            amount_received: resolvedAmount,
+            quantity_received: newTotalReceivedQty,
+            quantity_received_increment: quantityToReceive,
           },
         });
       } catch (auditErr) {

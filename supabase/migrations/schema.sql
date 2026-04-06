@@ -97,6 +97,7 @@ CREATE TYPE "public"."purchase_order_status" AS ENUM (
     'draft',
     'submitted',
     'approved',
+    'partially_received',
     'received',
     'cancelled',
     'deactivated'
@@ -1788,10 +1789,10 @@ CREATE TABLE IF NOT EXISTS "public"."purchase_orders" (
     "supplier_id" "uuid",
     "receipt_attachment" "text",
     "receipt_reference_number" "text",
-    "is_partial_receipt" boolean DEFAULT false NOT NULL,
-    "amount_received" numeric(12,2),
+    "quantity_received" integer DEFAULT 0 NOT NULL,
     "receipt_uploaded_by" "uuid",
-    "receipt_uploaded_at" timestamp with time zone
+    "receipt_uploaded_at" timestamp with time zone,
+    CONSTRAINT "purchase_orders_quantity_received_check" CHECK (("quantity_received" >= 0))
 );
 
 

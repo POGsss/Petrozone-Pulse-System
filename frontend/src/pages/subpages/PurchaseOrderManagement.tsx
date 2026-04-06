@@ -77,6 +77,8 @@ function statusBadge(status: string) {
       return "bg-primary-100 text-primary-950";
     case "approved":
       return "bg-positive-100 text-positive-950";
+    case "partially_received":
+      return "bg-warning-100 text-warning-950";
     case "received":
       return "bg-positive-100 text-positive-950";
     case "cancelled":
@@ -89,19 +91,31 @@ function statusBadge(status: string) {
 }
 
 function statusLabel(status: string): string {
-  return status.charAt(0).toUpperCase() + status.slice(1);
+  return status
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 function canModifyReceipt(order: PurchaseOrder): boolean {
-  return order.status === "approved" || order.status === "received" || !!order.receipt_attachment;
+  return order.status === "approved" || order.status === "partially_received" || !!order.receipt_attachment;
 }
 
-function parseReceiptAmount(value: string): number | null {
+function parseReceiptQuantity(value: string): number | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
+  if (!/^\d+$/.test(trimmed)) return null;
   const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed)) return null;
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) return null;
   return parsed;
+}
+
+function getOutstandingQuantity(order: PurchaseOrder): number {
+  return (order.purchase_order_items || []).reduce((sum, item) => {
+    const ordered = Number(item.quantity_ordered) || 0;
+    const received = Number(item.quantity_received) || 0;
+    return sum + Math.max(ordered - received, 0);
+  }, 0);
 }
 
 // Draft item for the plus-button pattern
@@ -117,7 +131,7 @@ interface DraftPOItem {
 interface ReceiptDraftState {
   reference: string;
   isPartial: boolean;
-  amount: string;
+  quantity: string;
 }
 
 export function PurchaseOrderManagement() {
@@ -218,10 +232,11 @@ export function PurchaseOrderManagement() {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptOrder, setReceiptOrder] = useState<PurchaseOrder | null>(null);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  const [savingReceiptDetails, setSavingReceiptDetails] = useState(false);
   const [receiptTargetOrderId, setReceiptTargetOrderId] = useState<string | null>(null);
   const [receiptReferenceNumber, setReceiptReferenceNumber] = useState("");
   const [receiptIsPartial, setReceiptIsPartial] = useState(false);
-  const [receiptAmountReceived, setReceiptAmountReceived] = useState("");
+  const [receiptQuantityReceived, setReceiptQuantityReceived] = useState("");
   const [receiptDraftByOrder, setReceiptDraftByOrder] = useState<Record<string, ReceiptDraftState>>({});
   const [receiptError, setReceiptError] = useState<string | null>(null);
   const receiptInputRef = useRef<HTMLInputElement | null>(null);
@@ -853,7 +868,7 @@ export function PurchaseOrderManagement() {
       const base = prev[orderId] || {
         reference: "",
         isPartial: false,
-        amount: "",
+        quantity: "",
       };
       return {
         ...prev,
@@ -868,26 +883,33 @@ export function PurchaseOrderManagement() {
   function resolveReceiptDetails(order: PurchaseOrder): {
     reference: string;
     isPartial: boolean;
-    amount: number | null;
+    quantity: number | null;
+    outstandingQuantity: number;
   } {
     const draft = receiptDraftByOrder[order.id];
+    const outstandingQuantity = getOutstandingQuantity(order);
     const reference = (draft?.reference ?? order.receipt_reference_number ?? "").trim();
-    const isPartial = draft?.isPartial ?? Boolean(order.is_partial_receipt);
+    const isPartial = draft?.isPartial ?? order.status === "partially_received";
 
-    let amount = draft
-      ? parseReceiptAmount(draft.amount)
-      : (typeof order.amount_received === "number" ? order.amount_received : null);
+    let quantity = draft ? parseReceiptQuantity(draft.quantity) : null;
 
-    if (!isPartial && amount === null) {
-      amount = Number(order.total_amount);
+    if (!isPartial && quantity === null) {
+      quantity = outstandingQuantity > 0 ? outstandingQuantity : null;
     }
 
-    return { reference, isPartial, amount };
+    return { reference, isPartial, quantity, outstandingQuantity };
   }
 
   function canReceiveOrder(order: PurchaseOrder): boolean {
     const details = resolveReceiptDetails(order);
-    return Boolean(details.reference) && details.amount !== null && details.amount > 0;
+    if (order.status === "received") return false;
+    return (
+      details.outstandingQuantity > 0 &&
+      Boolean(details.reference) &&
+      details.quantity !== null &&
+      details.quantity > 0 &&
+      details.quantity <= details.outstandingQuantity
+    );
   }
 
   function closeReceiptModal() {
@@ -895,21 +917,22 @@ export function PurchaseOrderManagement() {
     setReceiptOrder(null);
     setReceiptReferenceNumber("");
     setReceiptIsPartial(false);
-    setReceiptAmountReceived("");
+    setReceiptQuantityReceived("");
     setReceiptError(null);
   }
 
   function openReceiptModal(order: PurchaseOrder) {
     const draft = receiptDraftByOrder[order.id];
+    const outstandingQuantity = getOutstandingQuantity(order);
     setReceiptOrder(order);
     setReceiptReferenceNumber(draft?.reference ?? order.receipt_reference_number ?? "");
-    setReceiptIsPartial(draft?.isPartial ?? Boolean(order.is_partial_receipt));
-    if (typeof draft?.amount === "string") {
-      setReceiptAmountReceived(draft.amount);
-    } else if (typeof order.amount_received === "number" && Number.isFinite(order.amount_received)) {
-      setReceiptAmountReceived(order.amount_received.toString());
+    setReceiptIsPartial(draft?.isPartial ?? order.status === "partially_received");
+    if (typeof draft?.quantity === "string") {
+      setReceiptQuantityReceived(draft.quantity);
+    } else if (outstandingQuantity > 0) {
+      setReceiptQuantityReceived(String(outstandingQuantity));
     } else {
-      setReceiptAmountReceived(order.total_amount.toString());
+      setReceiptQuantityReceived("");
     }
     setReceiptError(null);
     setShowReceiptModal(true);
@@ -920,6 +943,49 @@ export function PurchaseOrderManagement() {
     if (receiptInputRef.current) {
       receiptInputRef.current.value = "";
       receiptInputRef.current.click();
+    }
+  }
+
+  async function handleSaveReceiptDetails() {
+    if (!receiptOrder || savingReceiptDetails || !canModifyReceipt(receiptOrder)) return;
+
+    const trimmedReference = receiptReferenceNumber.trim();
+    const outstandingQty = getOutstandingQuantity(receiptOrder);
+    const parsedQuantity = parseReceiptQuantity(receiptQuantityReceived);
+
+    if (receiptIsPartial) {
+      if (parsedQuantity === null || parsedQuantity <= 0) {
+        setReceiptError("Amount is required for partial receipt");
+        return;
+      }
+      if (parsedQuantity > outstandingQty) {
+        setReceiptError(`Outstanding quantity is only ${outstandingQty}`);
+        return;
+      }
+    }
+
+    const nextQuantityDraft = receiptIsPartial ? receiptQuantityReceived : "";
+
+    setSavingReceiptDetails(true);
+    try {
+      updateReceiptDraft(receiptOrder.id, {
+        reference: trimmedReference,
+        isPartial: receiptIsPartial,
+        quantity: nextQuantityDraft,
+      });
+
+      const updated = await purchaseOrdersApi.uploadPurchaseOrderReceipt(receiptOrder.id, {
+        receipt_reference_number: trimmedReference || null,
+      });
+
+      syncOrderInLocalState(updated);
+      setReceiptError(null);
+      showToast.success("Receipt details saved");
+      closeReceiptModal();
+    } catch (err) {
+      setReceiptError(err instanceof Error ? err.message : "Failed to save receipt details");
+    } finally {
+      setSavingReceiptDetails(false);
     }
   }
 
@@ -942,8 +1008,6 @@ export function PurchaseOrderManagement() {
       const payload: {
         file: File;
         receipt_reference_number?: string;
-        is_partial_receipt?: boolean;
-        amount_received?: number;
       } = {
         file,
       };
@@ -952,10 +1016,6 @@ export function PurchaseOrderManagement() {
         const details = resolveReceiptDetails(targetOrder);
         if (details.reference) {
           payload.receipt_reference_number = details.reference;
-        }
-        payload.is_partial_receipt = details.isPartial;
-        if (details.amount !== null && details.amount > 0) {
-          payload.amount_received = details.amount;
         }
       }
 
@@ -977,24 +1037,31 @@ export function PurchaseOrderManagement() {
     if (!orderToReceive || processingReceive) return;
 
     const details = resolveReceiptDetails(orderToReceive);
-    if (!details.reference || details.amount === null || details.amount <= 0) {
-      showToast.error("Reference number and amount received are required before stock-in");
+    if (!details.reference || details.quantity === null || details.quantity <= 0) {
+      showToast.error("Reference number and quantity received are required before stock-in");
       return;
     }
 
-    if (details.amount > Number(orderToReceive.total_amount)) {
-      showToast.error("Amount received cannot exceed the purchase order total");
+    if (details.quantity > details.outstandingQuantity) {
+      showToast.error("Quantity received cannot exceed outstanding quantity");
       return;
     }
 
     setProcessingReceive(true);
     try {
-      await purchaseOrdersApi.receive(orderToReceive.id, {
+      const updated = await purchaseOrdersApi.receive(orderToReceive.id, {
         receipt_reference_number: details.reference,
-        is_partial_receipt: details.isPartial,
-        amount_received: details.amount,
+        quantity_received: details.quantity,
       });
-      showToast.success(`PO ${orderToReceive.po_number} received — stock has been updated`);
+
+      syncOrderInLocalState(updated);
+
+      if (updated.status === "partially_received") {
+        showToast.success(`PO ${orderToReceive.po_number} partially received — stock has been updated`);
+      } else {
+        showToast.success(`PO ${orderToReceive.po_number} fully received — stock has been updated`);
+      }
+
       setReceiptDraftByOrder((prev) => {
         if (!prev[orderToReceive.id]) return prev;
         const next = { ...prev };
@@ -1031,7 +1098,7 @@ export function PurchaseOrderManagement() {
     actions.push("export_pdf");
     if (order.status === "draft") actions.push("submit");
     if (order.status === "submitted" && canApprove) actions.push("approve");
-    if (order.status === "approved") actions.push("receive");
+    if (["approved", "partially_received"].includes(order.status)) actions.push("receive");
     actions.push("receipt");
     if (["draft", "submitted"].includes(order.status)) actions.push("cancel");
     return actions;
@@ -1090,6 +1157,7 @@ export function PurchaseOrderManagement() {
               { value: "draft", label: "Draft" },
               { value: "submitted", label: "Submitted" },
               { value: "approved", label: "Approved" },
+              { value: "partially_received", label: "Partially Received" },
               { value: "received", label: "Received" },
               { value: "cancelled", label: "Cancelled" },
               { value: "deactivated", label: "Deactivated" },
@@ -1125,7 +1193,7 @@ export function PurchaseOrderManagement() {
               const dropdownActions = getDropdownActions(order);
               const showDots = dropdownActions.length > 0;
               const canEditThis = canUpdate && ["draft", "submitted"].includes(order.status);
-              const canDeleteThis = canDelete && order.status !== "received" && order.status !== "deactivated";
+              const canDeleteThis = canDelete && !["partially_received", "received", "deactivated"].includes(order.status);
               const canRestoreThis = canDelete && order.status === "deactivated";
               const hasActions = canEditThis || canDeleteThis || canRestoreThis || showDots;
 
@@ -1187,7 +1255,7 @@ export function PurchaseOrderManagement() {
                                 {order.status === "submitted" && canApprove && (
                                   <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openApproveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBadgeCheck className="w-4 h-4" /> Approve PO</button>
                                 )}
-                                {order.status === "approved" && (
+                                {["approved", "partially_received"].includes(order.status) && (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); closeDropdown(); openReceiveConfirm(order); }}
                                     className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
@@ -1236,7 +1304,7 @@ export function PurchaseOrderManagement() {
               {paginatedItems.map((order) => {
                 const dropdownActions = getDropdownActions(order);
                 const showDots = dropdownActions.length > 0;
-                const canDeleteThis = canDelete && order.status !== "received" && order.status !== "deactivated";
+                const canDeleteThis = canDelete && !["partially_received", "received", "deactivated"].includes(order.status);
                 const canRestoreThis = canDelete && order.status === "deactivated";
 
                 return (
@@ -1314,7 +1382,7 @@ export function PurchaseOrderManagement() {
                                 {order.status === "submitted" && canApprove && (
                                   <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openApproveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBadgeCheck className="w-4 h-4" /> Approve PO</button>
                                 )}
-                                {order.status === "approved" && (
+                                {["approved", "partially_received"].includes(order.status) && (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); closeDropdown(); openReceiveConfirm(order); }}
                                     className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
@@ -1514,8 +1582,20 @@ export function PurchaseOrderManagement() {
                 <ModalInput type="text" value={formatPrice(viewOrder.total_amount)} onChange={() => { }} placeholder="Total Amount" disabled />
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <ModalInput type="text" value={viewOrder.is_partial_receipt ? "Partial" : "Full"} onChange={() => { }} placeholder="Partial" disabled />
-                <ModalInput type="text" value={typeof viewOrder.amount_received === "number" ? formatPrice(viewOrder.amount_received) : "—"} onChange={() => { }} placeholder="Amount Received" disabled />
+                <ModalInput
+                  type="text"
+                  value={viewOrder.status === "partially_received" ? "Partial" : viewOrder.status === "received" ? "Full" : "—"}
+                  onChange={() => { }}
+                  placeholder="Receipt Type"
+                  disabled
+                />
+                <ModalInput
+                  type="text"
+                  value={Number.isFinite(viewOrder.quantity_received) ? String(viewOrder.quantity_received) : "0"}
+                  onChange={() => { }}
+                  placeholder="Quantity Received"
+                  disabled
+                />
               </div>
             </ModalSection>
 
@@ -1935,6 +2015,7 @@ export function PurchaseOrderManagement() {
         {receiptOrder && (() => {
           const receiptUrl = receiptOrder.receipt_attachment || "";
           const isPdf = /\.pdf($|\?)/i.test(receiptUrl);
+          const outstandingQty = getOutstandingQuantity(receiptOrder);
 
           return (
             <div>
@@ -1962,16 +2043,12 @@ export function PurchaseOrderManagement() {
                     onClick={() => {
                       if (!canModifyReceipt(receiptOrder)) return;
                       const next = !receiptIsPartial;
-                      let nextAmount = receiptAmountReceived;
-                      if (next && !receiptIsPartial) {
-                        nextAmount = "";
-                      }
-                      if (!next && !nextAmount.trim()) {
-                        nextAmount = receiptOrder.total_amount.toString();
+                      let nextQuantity = receiptQuantityReceived;
+                      if (!next) {
+                        nextQuantity = outstandingQty > 0 ? String(outstandingQty) : "";
                       }
                       setReceiptIsPartial(next);
-                      setReceiptAmountReceived(nextAmount);
-                      updateReceiptDraft(receiptOrder.id, { isPartial: next, amount: nextAmount });
+                      setReceiptQuantityReceived(nextQuantity);
                       setReceiptError(null);
                     }}
                     disabled={!canModifyReceipt(receiptOrder)}
@@ -1989,7 +2066,6 @@ export function PurchaseOrderManagement() {
                   value={receiptReferenceNumber}
                   onChange={(value) => {
                     setReceiptReferenceNumber(value);
-                    updateReceiptDraft(receiptOrder.id, { reference: value });
                     setReceiptError(null);
                   }}
                   placeholder="Reference Number"
@@ -1999,15 +2075,14 @@ export function PurchaseOrderManagement() {
                 {receiptIsPartial && (
                   <ModalInput
                     type="number"
-                    value={receiptAmountReceived}
+                    value={receiptQuantityReceived}
                     onChange={(value) => {
-                      setReceiptAmountReceived(value);
-                      updateReceiptDraft(receiptOrder.id, { amount: value });
+                      setReceiptQuantityReceived(value);
                       setReceiptError(null);
                     }}
-                    placeholder="Amount Received"
-                    min={0.01}
-                    step={0.01}
+                    placeholder="Quantity Received"
+                    min={1}
+                    step={1}
                     disabled={!canModifyReceipt(receiptOrder)}
                   />
                 )}
@@ -2051,6 +2126,19 @@ export function PurchaseOrderManagement() {
 
                   <button
                     type="button"
+                    onClick={handleSaveReceiptDetails}
+                    disabled={savingReceiptDetails || !canModifyReceipt(receiptOrder)}
+                    className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                      savingReceiptDetails || !canModifyReceipt(receiptOrder)
+                        ? "bg-neutral-100 text-neutral-950 opacity-50 cursor-not-allowed"
+                        : "bg-neutral-100 text-neutral-950 hover:bg-neutral-200"
+                    }`}
+                  >
+                    {savingReceiptDetails ? "Saving..." : "Save"}
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => openReceiptPicker(receiptOrder.id)}
                     disabled={uploadingReceipt || !canModifyReceipt(receiptOrder)}
                     className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
@@ -2081,13 +2169,13 @@ export function PurchaseOrderManagement() {
               <div className="bg-neutral-100 rounded-xl p-4 my-4">
                 <p className="text-neutral-900">
                   Receive purchase order{" "}
-                  <strong className="text-neutral-950">{orderToReceive.po_number}</strong> and stock in all items?
+                  <strong className="text-neutral-950">{orderToReceive.po_number}</strong> and apply stock-in now?
                 </p>
               </div>
               <p className="text-sm text-neutral-900 mb-2">
                 {canReceiveThisOrder
-                  ? "This will mark the PO as received, create stock-in movements for every line item, and update on-hand quantities."
-                  : "Reference number and amount received are required before stock-in."}
+                  ? "This will apply stock-in for the selected quantity and set status to Partially Received or Received based on remaining balance."
+                  : "Reference number and a valid quantity received are required before stock-in."}
               </p>
               <div className="flex gap-3 mt-6">
                 <button
