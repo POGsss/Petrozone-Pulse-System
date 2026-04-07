@@ -326,3 +326,4 @@ Use the **"Add a New User"** button. Create each user below:
 | Pagination (10 per page)                    | ⬜     |
 | Audit Logging                               | ⬜     |
 | RBAC Enforcement                            | ⬜     |
+

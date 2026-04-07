@@ -21,7 +21,8 @@ import {
 } from "react-icons/lu";
 import { jobOrdersApi, branchesApi, customersApi, vehiclesApi, packagesApi, laborItemsApi, thirdPartyRepairsApi, inventoryApi, suppliersApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
-import { generateJobOrderPDF } from "../../lib/jobOrderPdfGenerator";
+import { generateJobOrderPDF, generateJobOrderPDFBlob } from "../../lib/jobOrderPdfGenerator";
+import { generateJobOrderPDFNew, generateJobOrderPDFNewBlob } from "../../lib/jobOrderPdfGenerateNew";
 import { useAuth } from "../../auth";
 import {
   Modal,
@@ -347,6 +348,12 @@ export function JobOrderManagement() {
   const [paymentOrder, setPaymentOrder] = useState<JobOrder | null>(null);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [exportingOrderPdfId, setExportingOrderPdfId] = useState<string | null>(null);
+  const [showOrderPdfPreviewModal, setShowOrderPdfPreviewModal] = useState(false);
+  const [orderPdfPreviewOrder, setOrderPdfPreviewOrder] = useState<JobOrder | null>(null);
+  const [orderPdfPreviewLayout, setOrderPdfPreviewLayout] = useState<"system" | "default">("default");
+  const [orderPdfPreviewUrl, setOrderPdfPreviewUrl] = useState<string | null>(null);
+  const [generatingOrderPdfPreview, setGeneratingOrderPdfPreview] = useState(false);
+  const [downloadingOrderPdf, setDownloadingOrderPdf] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [completeOrder, setCompleteOrder] = useState<JobOrder | null>(null);
   const [completePickedUpBy, setCompletePickedUpBy] = useState("");
@@ -1878,12 +1885,83 @@ export function JobOrderManagement() {
       setExportingOrderPdfId(order.id);
       closeDropdown();
       const fullOrder = await jobOrdersApi.getById(order.id);
-      generateJobOrderPDF(fullOrder);
+      setOrderPdfPreviewOrder(fullOrder);
+      setOrderPdfPreviewLayout("default");
+      setShowOrderPdfPreviewModal(true);
+    } catch (err) {
+      showToast.error(err instanceof Error ? err.message : "Failed to prepare PDF preview");
+    } finally {
+      setExportingOrderPdfId(null);
+    }
+  }
+
+  const createOrderPdfPreviewUrl = useCallback(async (order: JobOrder, layout: "system" | "default") => {
+    const blob = layout === "system"
+      ? generateJobOrderPDFBlob(order)
+      : await generateJobOrderPDFNewBlob(order);
+    return URL.createObjectURL(blob);
+  }, []);
+
+  function closeOrderPdfPreviewModal() {
+    setShowOrderPdfPreviewModal(false);
+    setOrderPdfPreviewOrder(null);
+    setOrderPdfPreviewLayout("default");
+    setGeneratingOrderPdfPreview(false);
+    setDownloadingOrderPdf(false);
+    setOrderPdfPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+  }
+
+  useEffect(() => {
+    if (!showOrderPdfPreviewModal || !orderPdfPreviewOrder) return;
+
+    let cancelled = false;
+    setGeneratingOrderPdfPreview(true);
+
+    (async () => {
+      try {
+        const nextUrl = await createOrderPdfPreviewUrl(orderPdfPreviewOrder, orderPdfPreviewLayout);
+        if (cancelled) {
+          URL.revokeObjectURL(nextUrl);
+          return;
+        }
+
+        setOrderPdfPreviewUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return nextUrl;
+        });
+      } catch (err) {
+        showToast.error(err instanceof Error ? err.message : "Failed to generate PDF preview");
+      } finally {
+        if (!cancelled) setGeneratingOrderPdfPreview(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showOrderPdfPreviewModal, orderPdfPreviewOrder, orderPdfPreviewLayout, createOrderPdfPreviewUrl]);
+
+  async function handleDownloadOrderPdfFromPreview() {
+    if (!orderPdfPreviewOrder) return;
+
+    try {
+      setDownloadingOrderPdf(true);
+
+      if (orderPdfPreviewLayout === "system") {
+        generateJobOrderPDF(orderPdfPreviewOrder);
+      } else {
+        await generateJobOrderPDFNew(orderPdfPreviewOrder);
+      }
+
       showToast.success("Job order exported as PDF");
+      closeOrderPdfPreviewModal();
     } catch (err) {
       showToast.error(err instanceof Error ? err.message : "Failed to export job order PDF");
     } finally {
-      setExportingOrderPdfId(null);
+      setDownloadingOrderPdf(false);
     }
   }
 
@@ -4375,6 +4453,81 @@ export function JobOrderManagement() {
               onSubmit={handleCreateRework}
               disabled={!reworkReason.trim()}
             />
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={showOrderPdfPreviewModal && !!orderPdfPreviewOrder}
+        onClose={closeOrderPdfPreviewModal}
+        title="Job Order PDF Preview"
+        maxWidth="xl"
+      >
+        {orderPdfPreviewOrder && (
+          <div>
+            <ModalSection title="Preview Customization">
+              <div className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOrderPdfPreviewLayout("system")}
+                    className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                      orderPdfPreviewLayout === "system"
+                        ? "bg-primary text-white"
+                        : "bg-neutral-100 text-neutral-950 hover:bg-neutral-200"
+                    }`}
+                  >
+                    System
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderPdfPreviewLayout("default")}
+                    className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                      orderPdfPreviewLayout === "default"
+                        ? "bg-primary text-white"
+                        : "bg-neutral-100 text-neutral-950 hover:bg-neutral-200"
+                    }`}
+                  >
+                    Default
+                  </button>
+                </div>
+
+                <div className="bg-neutral-100 rounded-xl p-3">
+                  {generatingOrderPdfPreview ? (
+                    <div className="w-full h-130 rounded-lg border border-neutral-200 bg-white flex items-center justify-center text-sm text-neutral-900">
+                      Generating preview...
+                    </div>
+                  ) : orderPdfPreviewUrl ? (
+                    <iframe
+                      src={orderPdfPreviewUrl}
+                      title="Job Order PDF Preview"
+                      className="w-full h-130 rounded-lg border border-neutral-200"
+                    />
+                  ) : (
+                    <div className="w-full h-130 rounded-lg border border-neutral-200 bg-white flex items-center justify-center text-sm text-neutral-900">
+                      Preview unavailable
+                    </div>
+                  )}
+                </div>
+              </div>
+            </ModalSection>
+
+            <ModalSection title="Actions">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleDownloadOrderPdfFromPreview}
+                  disabled={generatingOrderPdfPreview || downloadingOrderPdf || !orderPdfPreviewUrl}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    generatingOrderPdfPreview || downloadingOrderPdf || !orderPdfPreviewUrl
+                      ? "bg-neutral-100 text-neutral-950 opacity-50 cursor-not-allowed"
+                      : "bg-neutral-100 text-neutral-950 hover:bg-neutral-200"
+                  }`}
+                >
+                  {downloadingOrderPdf ? "Downloading..." : "Download PDF"}
+                </button>
+              </div>
+            </ModalSection>
           </div>
         )}
       </Modal>

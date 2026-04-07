@@ -11,30 +11,33 @@ The Purchase Order (PO) module manages inventory procurement. It allows authoriz
 ### Lifecycle / Status Flow
 
 ```
-Draft  ──→  Submitted  ──→  Received
-  │              │
-  │              ├──→  Cancelled
+Draft  ──→  Submitted  ──→  Approved  ──→  Partially Received  ──→  Received
+   │              │               │                    │
+   │              ├──→  Cancelled │                    │
+   │                              └──────→ Deactivated (conditional delete)
   │
-  └──→  Cancelled
-  │
-  └──→  Deleted (soft delete: is_deleted = true, status = cancelled)
+   └──→  Cancelled
 ```
 
 | Status      | Description                                                                  |
 | ----------- | ---------------------------------------------------------------------------- |
 | `draft`     | Newly created PO. Can be edited, submitted, cancelled, or deleted.           |
-| `submitted` | PO sent for processing. Can be received, edited, cancelled, or deleted.      |
-| `received`  | PO items have been received and stocked in. **Cannot be edited or deleted.** |
+| `submitted` | PO sent for processing. Can be edited, cancelled, or approved.                |
+| `approved`  | PO approved and ready for receive flow.                                       |
+| `partially_received` | PO has partial stock-in; additional receive actions are still allowed. |
+| `received`  | PO fully received and stocked in. **Cannot be edited or deleted.** |
 | `cancelled` | PO was manually cancelled. **Cannot be edited or re-submitted.**             |
+| `deactivated` | PO was deactivated by conditional delete after progression beyond draft. |
 
 ### Key Business Rules
 
-1. **Auto-generated PO Number:** If `po_number` is left blank during creation, the database trigger auto-generates one (e.g., `PO-2024-0001`).
+1. **PO Number Behavior:** If `po_number` is left blank during creation, the backend generates one. Manual PO number entry is still allowed when valid and unique by branch.
 2. **Branch Scoping:** Each PO belongs to a branch. Non-HM users can only see/manage POs for their assigned branches.
 3. **Soft Delete Only:** Deleting a PO sets `is_deleted = true` and `status = "cancelled"`. The record remains in the database for audit purposes.
-4. **Received POs are immutable:** Once a PO is received, it cannot be edited, cancelled, or deleted because stock movements have already been recorded.
+4. **Edit Restrictions:** Only `draft` and `submitted` purchase orders are editable.
 5. **Stock-In on Receive:** When a PO transitions to `received`, each PO item creates a `stock_movement` record with `movement_type = "stock_in"` and `reference_type = "purchase_order"`, atomically increasing the inventory item's on-hand quantity.
-6. **Total Amount:** Automatically calculated as the sum of `quantity_ordered × unit_cost` for all items.
+6. **Receive Restrictions:** Receive endpoint allows only `approved` or `partially_received` statuses.
+7. **Total Amount:** Automatically calculated as the sum of `quantity_ordered × unit_cost` for all items.
 
 ### RBAC (Roles & Permissions)
 
@@ -57,7 +60,8 @@ Draft  ──→  Submitted  ──→  Received
 | `POST`   | `/api/purchase-orders`             | Create new PO with items             |
 | `PUT`    | `/api/purchase-orders/:id`         | Update PO (draft/submitted only)     |
 | `PATCH`  | `/api/purchase-orders/:id/submit`  | Submit PO (draft → submitted)        |
-| `PATCH`  | `/api/purchase-orders/:id/receive` | Receive PO (submitted → received)    |
+| `PATCH`  | `/api/purchase-orders/:id/approve` | Approve PO (submitted → approved)    |
+| `PATCH`  | `/api/purchase-orders/:id/receive` | Receive PO (approved/partially_received → partially_received/received) |
 | `PATCH`  | `/api/purchase-orders/:id/cancel`  | Cancel PO (draft/submitted only)     |
 | `DELETE` | `/api/purchase-orders/:id`         | Soft-delete PO (not received)        |
 
@@ -179,7 +183,7 @@ Use the **Create Purchase Order** button on the Purchase Orders page. Create eac
 
 ---
 
-### Test 4 — Submit Purchase Order (Draft → Submitted)
+### Test 4 — Submit and Approve Purchase Order (Draft → Submitted → Approved)
 
 **Goal:** Verify PO can be submitted for processing.
 
@@ -190,16 +194,21 @@ Use the **Create Purchase Order** button on the Purchase Orders page. Create eac
    - ✅ Success toast: `"PO PO-XXXX submitted"`
    - ✅ Status changes from `Draft` to `Submitted` in the table
    - ✅ Stats card: Submitted count increases by 1
-5. Submit PO #2 as well (for testing receive later)
+5. From the same PO, click `More` -> `Approve PO`.
+6. Verify:
+   - ✅ Success toast appears for approval
+   - ✅ Status changes from `Submitted` to `Approved`
+7. Repeat submit + approve for PO #2 (for testing receive later)
 
 **Edge cases to test:**
 
-- Only `draft` POs can be submitted → `submitted`/`received`/`cancelled` POs should not show "Submit PO" option
-- After submission, the PO should still be editable (draft + submitted are both editable)
+- Only `draft` POs can be submitted
+- Only `submitted` POs can be approved
+- After approval, PO should no longer be editable
 
 ---
 
-### Test 5 — Receive Purchase Order (Submitted → Received / Stock-In)
+### Test 5 — Receive Purchase Order (Approved/Partially Received → Received / Stock-In)
 
 **Goal:** Verify receiving a PO creates stock movements and updates inventory.
 
@@ -209,26 +218,26 @@ Use the **Create Purchase Order** button on the Purchase Orders page. Create eac
    - Shell Helix Ultra 5W-40: note the current quantity (e.g., 25)
    - NGK Spark Plug: note the current quantity (e.g., 20)
 
-**Receive the PO:** 2. Navigate back to **Purchase Orders** 3. On PO #1 (Submitted), click the **three-dots menu** → **Receive & Stock In** 4. Verify:
+**Receive the PO:** 2. Navigate back to **Purchase Orders** 3. On PO #1 (Approved), click the **three-dots menu** → **Receive & Stock In** 4. Enter a quantity to receive (partial or full), then confirm. 5. Verify:
 
 - ✅ Success toast: `"PO PO-XXXX received — stock has been updated"`
-- ✅ Status changes to `Received`
+- ✅ Status changes to `Partially Received` or `Received` depending on quantity
 - ✅ Stats card: Received count increases by 1
 
-**Verify stock-in:** 5. Navigate to **Inventory** 6. Check stock levels:
+**Verify stock-in:** 6. Navigate to **Inventory** 7. Check stock levels:
 
 - ✅ Shell Helix Ultra: increased by 20 (e.g., 25 → 45)
 - ✅ NGK Spark Plug: increased by 5 (e.g., 20 → 25)
 
-7. Click the **Movement History** icon on Shell Helix Ultra
-8. Verify:
+8. Click the **Movement History** icon on Shell Helix Ultra
+9. Verify:
    - ✅ A new `Stock In` entry exists with quantity `20`
    - ✅ Reference type shows `Purchase Order`
    - ✅ Reason shows `"Received from PO PO-XXXX"`
 
 **Edge cases to test:**
 
-- Only `submitted` POs can be received → `draft`/`cancelled`/`received` POs should not show "Receive" option
+- Only `approved` or `partially_received` POs can be received
 - A received PO should have no edit/delete actions available
 - The PO view modal should show `quantity_received` values after receiving
 
@@ -259,24 +268,27 @@ Use the **Create Purchase Order** button on the Purchase Orders page. Create eac
 
 ---
 
-### Test 7 — Delete Purchase Order (Soft Delete — UC52)
+### Test 7 — Delete Purchase Order (Conditional Delete/Deactivate — UC52)
 
-**Goal:** Verify soft delete removes PO from active records.
+**Goal:** Verify delete behavior matches status-aware rules.
 
 1. On PO #5 (CleanAuto Distributors — Draft), click the **trash icon**
 2. A delete confirmation modal should appear
 3. Click **Delete** to confirm
 4. Verify:
    - ✅ Success toast: `"Purchase order PO-XXXX has been deleted"`
-   - ✅ PO disappears from the list (is_deleted = true, status set to cancelled)
+   - ✅ For `draft` PO: record is removed from active list
    - ✅ Stats cards update (Total count decreases)
-5. Filter by "Cancelled" status → the deleted PO should NOT appear (it's soft-deleted, not just cancelled)
+5. Repeat delete on an `approved` or `partially_received` PO.
+6. Verify:
+   - ✅ PO is set to `deactivated` instead of hard-removed
+   - ✅ PO is hidden from default list but can be found using status filter `deactivated`
 
 **Edge cases to test:**
 
 - `received` POs cannot be deleted → trash icon should not appear for received POs
 - Error message: `"Cannot delete a received purchase order. Cancel it instead if needed."`
-- The Delete action still works on `cancelled` POs (to fully soft-delete them)
+- Deactivation path applies to progressed-but-not-received POs
 
 ---
 
@@ -364,10 +376,14 @@ After completing all tests above:
 2. Compare with stats cards:
    - ✅ **Total:** matches the count of all non-deleted POs
    - ✅ **Submitted:** matches the count of POs with status `submitted`
+   - ✅ **Approved:** matches the count of POs with status `approved`
+   - ✅ **Partially Received:** matches the count of POs with status `partially_received`
    - ✅ **Received:** matches the count of POs with status `received`
 3. Create a new PO → Total should increment
 4. Submit it → Submitted should increment
-5. Receive it → Submitted should decrement, Received should increment
+5. Approve it → Submitted should decrement, Approved should increment
+6. Receive partially → Approved should decrement, Partially Received should increment
+7. Receive remaining quantity → Partially Received should decrement, Received should increment
 
 ---
 
@@ -382,26 +398,30 @@ After completing all tests above:
 
 2. SUBMIT Purchase Order
    ├── Draft → Submitted
-   ├── PO is now ready for receiving
+   ├── PO is now ready for approval
    └── Audit log: UPDATE (status: submitted)
 
-3. RECEIVE Purchase Order (Stock-In)
-   ├── Submitted → Received
+3. APPROVE Purchase Order
+   ├── Submitted → Approved
+   └── Audit log: UPDATE (status: approved)
+
+4. RECEIVE Purchase Order (Stock-In)
+   ├── Approved/Partially Received → Partially Received/Received
    ├── For each PO item:
    │   ├── Create stock_movement (type: stock_in, ref: purchase_order)
    │   ├── Update quantity_received on PO item
    │   └── Inventory on-hand quantity increases
-   ├── Set received_at timestamp
+   ├── Set received_at timestamp when fully received
    └── Audit log: RECEIVE
 
-4. CANCEL Purchase Order
+5. CANCEL Purchase Order
    ├── Draft/Submitted → Cancelled
    ├── No stock movements created/reversed
    └── Audit log: CANCEL
 
-5. DELETE Purchase Order (Soft)
-   ├── Sets is_deleted = true, status = "cancelled"
-   ├── PO hidden from all queries (filtered by is_deleted = false)
+6. DELETE Purchase Order (Conditional)
+   ├── Draft may be removed from active listing
+   ├── Progressed PO may be marked as status = "deactivated"
    ├── Cannot delete received POs
    └── Audit log: DELETE
 ```
@@ -416,12 +436,15 @@ After completing all tests above:
 | UC50 — View Purchase Orders               | ⬜     |
 | UC51 — Update Purchase Order              | ⬜     |
 | UC52 — Delete (Soft) Purchase Order       | ⬜     |
-| PO Status Flow (Draft→Submitted→Received) | ⬜     |
+| PO Status Flow (Draft→Submitted→Approved→Partially Received→Received) | ⬜     |
 | Stock-In on PO Receive                    | ⬜     |
 | Stock Movement Records Created            | ⬜     |
 | Cancel PO (Draft/Submitted only)          | ⬜     |
 | Received POs Immutable                    | ⬜     |
-| Auto-Generated PO Number                  | ⬜     |
+| PO Number Auto/Manual Valid Behavior      | ⬜     |
+| Approval Step Before Receive              | ⬜     |
+| Partial Receive Lifecycle                 | ⬜     |
+| Deactivated Status via Conditional Delete | ⬜     |
 | Branch Isolation (RLS)                    | ⬜     |
 | RBAC Enforcement                          | ⬜     |
 | Audit Logging (FR-17)                     | ⬜     |
@@ -432,3 +455,4 @@ After completing all tests above:
 | Validation — Mandatory Fields             | ⬜     |
 | Validation — No Negative Quantities       | ⬜     |
 | Validation — No Duplicate Items in PO     | ⬜     |
+

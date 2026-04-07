@@ -324,3 +324,4 @@ Use the **Add New Item** button on the Inventory page. Enter each item below int
 | Audit Logging                               | ⬜     |
 | Branch Isolation (RLS)                      | ⬜     |
 | RBAC Enforcement                            | ⬜     |
+

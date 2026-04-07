@@ -163,3 +163,4 @@ Service reminders that are scheduled and due will be automatically processed whe
 - **Gmail SMTP Limits:** Gmail allows ~500 emails/day for regular accounts, ~2,000/day for Google Workspace. For higher volumes, consider a dedicated email service (SendGrid, Mailgun, etc.)
 - **Semaphore Credits:** Monitor your credit balance in the Semaphore dashboard. Purchase additional credits as needed.
 - **Error Handling:** Failed deliveries are logged and tracked in the service reminder's `delivery_status` field. Check the `delivery_error` column for details.
+

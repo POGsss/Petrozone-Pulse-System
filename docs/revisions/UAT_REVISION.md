@@ -27,10 +27,10 @@ The system lacks the ability to quickly identify inventory items that are below 
 ---
 
 ### Purchase Order
-- Current Implementation = PO Number is editable  
-- Required Implementation = Make PO Number system-generated and non-editable  
+- Current Implementation = PO Number can be auto-generated when blank, and can still be manually entered when valid and unique per branch  
+- Required Implementation = Keep current behavior unless business policy decides to enforce strict read-only numbering  
 
-Purchase Order (PO) numbers are currently user-editable, which introduces risks of duplication, inconsistency, and broken audit trails. The revision requires enforcing system-generated PO numbers using a deterministic or sequential format (e.g., prefix + timestamp or incremental ID). Once generated, the PO number must be immutable. Backend validation should reject any attempt to override this field, and the frontend should render it as read-only.
+Purchase Order (PO) numbers currently support both modes: auto-generation when blank and manual entry when provided. Uniqueness checks are still enforced. This should be treated as working behavior for operations that require manual PO references.
 
 ---
 
