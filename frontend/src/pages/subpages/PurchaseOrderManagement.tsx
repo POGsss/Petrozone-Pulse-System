@@ -1591,7 +1591,7 @@ export function PurchaseOrderManagement() {
                 />
                 <ModalInput
                   type="text"
-                  value={Number.isFinite(viewOrder.quantity_received) ? String(viewOrder.quantity_received) : "0"}
+                  value={Number.isFinite(viewOrder.quantity_received) ? String(viewOrder.quantity_received + " Items") : "0 Items"}
                   onChange={() => { }}
                   placeholder="Quantity Received"
                   disabled
