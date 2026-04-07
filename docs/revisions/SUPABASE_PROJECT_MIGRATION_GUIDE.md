@@ -248,3 +248,4 @@ If new project fails critical checks:
 - Schema-only migration is suitable for your request.
 - Existing auth users and storage files are not migrated in this flow.
 - You can recreate users and begin with empty storage in the new project.
+

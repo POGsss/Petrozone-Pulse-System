@@ -245,3 +245,4 @@ The Authentication module handles user login, logout, password recovery, and acc
 | Forced Password Change Modal          | ⬜     |
 | Logout Clears Session                 | ⬜     |
 | Session Persistence on Refresh        | ⬜     |
+

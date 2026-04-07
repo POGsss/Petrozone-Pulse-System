@@ -262,3 +262,4 @@ Use the **"Add New Customer"** button. Create each customer below:
 | Pagination (10 per page)               | ⬜     |
 | Audit Logging                          | ⬜     |
 | RBAC Enforcement                       | ⬜     |
+

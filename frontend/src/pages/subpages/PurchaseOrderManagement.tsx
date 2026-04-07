@@ -77,6 +77,8 @@ function statusBadge(status: string) {
       return "bg-primary-100 text-primary-950";
     case "approved":
       return "bg-positive-100 text-positive-950";
+    case "partially_received":
+      return "bg-warning-100 text-warning-950";
     case "received":
       return "bg-positive-100 text-positive-950";
     case "cancelled":
@@ -89,11 +91,31 @@ function statusBadge(status: string) {
 }
 
 function statusLabel(status: string): string {
-  return status.charAt(0).toUpperCase() + status.slice(1);
+  return status
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 function canModifyReceipt(order: PurchaseOrder): boolean {
-  return order.status === "approved" || order.status === "received" || !!order.receipt_attachment;
+  return order.status === "approved" || order.status === "partially_received" || !!order.receipt_attachment;
+}
+
+function parseReceiptQuantity(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) return null;
+  return parsed;
+}
+
+function getOutstandingQuantity(order: PurchaseOrder): number {
+  return (order.purchase_order_items || []).reduce((sum, item) => {
+    const ordered = Number(item.quantity_ordered) || 0;
+    const received = Number(item.quantity_received) || 0;
+    return sum + Math.max(ordered - received, 0);
+  }, 0);
 }
 
 // Draft item for the plus-button pattern
@@ -104,6 +126,12 @@ interface DraftPOItem {
   quantity_ordered: number;
   unit_cost: number;
   line_total: number;
+}
+
+interface ReceiptDraftState {
+  reference: string;
+  isPartial: boolean;
+  quantity: string;
 }
 
 export function PurchaseOrderManagement() {
@@ -204,7 +232,13 @@ export function PurchaseOrderManagement() {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptOrder, setReceiptOrder] = useState<PurchaseOrder | null>(null);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  const [savingReceiptDetails, setSavingReceiptDetails] = useState(false);
   const [receiptTargetOrderId, setReceiptTargetOrderId] = useState<string | null>(null);
+  const [receiptReferenceNumber, setReceiptReferenceNumber] = useState("");
+  const [receiptIsPartial, setReceiptIsPartial] = useState(false);
+  const [receiptQuantityReceived, setReceiptQuantityReceived] = useState("");
+  const [receiptDraftByOrder, setReceiptDraftByOrder] = useState<Record<string, ReceiptDraftState>>({});
+  const [receiptError, setReceiptError] = useState<string | null>(null);
   const receiptInputRef = useRef<HTMLInputElement | null>(null);
 
   // Actions overflow dropdown
@@ -816,8 +850,91 @@ export function PurchaseOrderManagement() {
     setShowReceiveConfirm(true);
   }
 
+  function syncOrderInLocalState(updated: PurchaseOrder) {
+    setAllOrders((prev) => prev.map((order) => (order.id === updated.id ? updated : order)));
+    if (viewOrder?.id === updated.id) {
+      setViewOrder(updated);
+    }
+    if (orderToReceive?.id === updated.id) {
+      setOrderToReceive(updated);
+    }
+    if (receiptOrder?.id === updated.id) {
+      setReceiptOrder(updated);
+    }
+  }
+
+  function updateReceiptDraft(orderId: string, updates: Partial<ReceiptDraftState>) {
+    setReceiptDraftByOrder((prev) => {
+      const base = prev[orderId] || {
+        reference: "",
+        isPartial: false,
+        quantity: "",
+      };
+      return {
+        ...prev,
+        [orderId]: {
+          ...base,
+          ...updates,
+        },
+      };
+    });
+  }
+
+  function resolveReceiptDetails(order: PurchaseOrder): {
+    reference: string;
+    isPartial: boolean;
+    quantity: number | null;
+    outstandingQuantity: number;
+  } {
+    const draft = receiptDraftByOrder[order.id];
+    const outstandingQuantity = getOutstandingQuantity(order);
+    const reference = (draft?.reference ?? order.receipt_reference_number ?? "").trim();
+    const isPartial = draft?.isPartial ?? order.status === "partially_received";
+
+    let quantity = draft ? parseReceiptQuantity(draft.quantity) : null;
+
+    if (!isPartial && quantity === null) {
+      quantity = outstandingQuantity > 0 ? outstandingQuantity : null;
+    }
+
+    return { reference, isPartial, quantity, outstandingQuantity };
+  }
+
+  function canReceiveOrder(order: PurchaseOrder): boolean {
+    const details = resolveReceiptDetails(order);
+    if (order.status === "received") return false;
+    return (
+      details.outstandingQuantity > 0 &&
+      Boolean(details.reference) &&
+      details.quantity !== null &&
+      details.quantity > 0 &&
+      details.quantity <= details.outstandingQuantity
+    );
+  }
+
+  function closeReceiptModal() {
+    setShowReceiptModal(false);
+    setReceiptOrder(null);
+    setReceiptReferenceNumber("");
+    setReceiptIsPartial(false);
+    setReceiptQuantityReceived("");
+    setReceiptError(null);
+  }
+
   function openReceiptModal(order: PurchaseOrder) {
+    const draft = receiptDraftByOrder[order.id];
+    const outstandingQuantity = getOutstandingQuantity(order);
     setReceiptOrder(order);
+    setReceiptReferenceNumber(draft?.reference ?? order.receipt_reference_number ?? "");
+    setReceiptIsPartial(draft?.isPartial ?? order.status === "partially_received");
+    if (typeof draft?.quantity === "string") {
+      setReceiptQuantityReceived(draft.quantity);
+    } else if (outstandingQuantity > 0) {
+      setReceiptQuantityReceived(String(outstandingQuantity));
+    } else {
+      setReceiptQuantityReceived("");
+    }
+    setReceiptError(null);
     setShowReceiptModal(true);
   }
 
@@ -826,6 +943,49 @@ export function PurchaseOrderManagement() {
     if (receiptInputRef.current) {
       receiptInputRef.current.value = "";
       receiptInputRef.current.click();
+    }
+  }
+
+  async function handleSaveReceiptDetails() {
+    if (!receiptOrder || savingReceiptDetails || !canModifyReceipt(receiptOrder)) return;
+
+    const trimmedReference = receiptReferenceNumber.trim();
+    const outstandingQty = getOutstandingQuantity(receiptOrder);
+    const parsedQuantity = parseReceiptQuantity(receiptQuantityReceived);
+
+    if (receiptIsPartial) {
+      if (parsedQuantity === null || parsedQuantity <= 0) {
+        setReceiptError("Amount is required for partial receipt");
+        return;
+      }
+      if (parsedQuantity > outstandingQty) {
+        setReceiptError(`Outstanding quantity is only ${outstandingQty}`);
+        return;
+      }
+    }
+
+    const nextQuantityDraft = receiptIsPartial ? receiptQuantityReceived : "";
+
+    setSavingReceiptDetails(true);
+    try {
+      updateReceiptDraft(receiptOrder.id, {
+        reference: trimmedReference,
+        isPartial: receiptIsPartial,
+        quantity: nextQuantityDraft,
+      });
+
+      const updated = await purchaseOrdersApi.uploadPurchaseOrderReceipt(receiptOrder.id, {
+        receipt_reference_number: trimmedReference || null,
+      });
+
+      syncOrderInLocalState(updated);
+      setReceiptError(null);
+      showToast.success("Receipt details saved");
+      closeReceiptModal();
+    } catch (err) {
+      setReceiptError(err instanceof Error ? err.message : "Failed to save receipt details");
+    } finally {
+      setSavingReceiptDetails(false);
     }
   }
 
@@ -841,17 +1001,27 @@ export function PurchaseOrderManagement() {
 
     try {
       setUploadingReceipt(true);
-      const updated = await purchaseOrdersApi.uploadPurchaseOrderReceipt(receiptTargetOrderId, file);
+      const targetOrder =
+        allOrders.find((order) => order.id === receiptTargetOrderId) ||
+        (receiptOrder?.id === receiptTargetOrderId ? receiptOrder : null);
 
-      if (viewOrder?.id === updated.id) {
-        setViewOrder(updated);
+      const payload: {
+        file: File;
+        receipt_reference_number?: string;
+      } = {
+        file,
+      };
+
+      if (targetOrder) {
+        const details = resolveReceiptDetails(targetOrder);
+        if (details.reference) {
+          payload.receipt_reference_number = details.reference;
+        }
       }
-      if (orderToReceive?.id === updated.id) {
-        setOrderToReceive(updated);
-      }
-      if (receiptOrder?.id === updated.id) {
-        setReceiptOrder(updated);
-      }
+
+      const updated = await purchaseOrdersApi.uploadPurchaseOrderReceipt(receiptTargetOrderId, payload);
+
+      syncOrderInLocalState(updated);
 
       showToast.success("Receipt uploaded successfully");
       fetchData();
@@ -862,12 +1032,42 @@ export function PurchaseOrderManagement() {
       setReceiptTargetOrderId(null);
     }
   }
+
   async function handleConfirmReceive() {
     if (!orderToReceive || processingReceive) return;
+
+    const details = resolveReceiptDetails(orderToReceive);
+    if (!details.reference || details.quantity === null || details.quantity <= 0) {
+      showToast.error("Reference number and quantity received are required before stock-in");
+      return;
+    }
+
+    if (details.quantity > details.outstandingQuantity) {
+      showToast.error("Quantity received cannot exceed outstanding quantity");
+      return;
+    }
+
     setProcessingReceive(true);
     try {
-      await purchaseOrdersApi.receive(orderToReceive.id);
-      showToast.success(`PO ${orderToReceive.po_number} received — stock has been updated`);
+      const updated = await purchaseOrdersApi.receive(orderToReceive.id, {
+        receipt_reference_number: details.reference,
+        quantity_received: details.quantity,
+      });
+
+      syncOrderInLocalState(updated);
+
+      if (updated.status === "partially_received") {
+        showToast.success(`PO ${orderToReceive.po_number} partially received — stock has been updated`);
+      } else {
+        showToast.success(`PO ${orderToReceive.po_number} fully received — stock has been updated`);
+      }
+
+      setReceiptDraftByOrder((prev) => {
+        if (!prev[orderToReceive.id]) return prev;
+        const next = { ...prev };
+        delete next[orderToReceive.id];
+        return next;
+      });
       setShowReceiveConfirm(false);
       setOrderToReceive(null);
       fetchData();
@@ -898,7 +1098,7 @@ export function PurchaseOrderManagement() {
     actions.push("export_pdf");
     if (order.status === "draft") actions.push("submit");
     if (order.status === "submitted" && canApprove) actions.push("approve");
-    if (order.status === "approved") actions.push("receive");
+    if (["approved", "partially_received"].includes(order.status)) actions.push("receive");
     actions.push("receipt");
     if (["draft", "submitted"].includes(order.status)) actions.push("cancel");
     return actions;
@@ -957,6 +1157,7 @@ export function PurchaseOrderManagement() {
               { value: "draft", label: "Draft" },
               { value: "submitted", label: "Submitted" },
               { value: "approved", label: "Approved" },
+              { value: "partially_received", label: "Partially Received" },
               { value: "received", label: "Received" },
               { value: "cancelled", label: "Cancelled" },
               { value: "deactivated", label: "Deactivated" },
@@ -992,7 +1193,7 @@ export function PurchaseOrderManagement() {
               const dropdownActions = getDropdownActions(order);
               const showDots = dropdownActions.length > 0;
               const canEditThis = canUpdate && ["draft", "submitted"].includes(order.status);
-              const canDeleteThis = canDelete && order.status !== "received" && order.status !== "deactivated";
+              const canDeleteThis = canDelete && !["partially_received", "received", "deactivated"].includes(order.status);
               const canRestoreThis = canDelete && order.status === "deactivated";
               const hasActions = canEditThis || canDeleteThis || canRestoreThis || showDots;
 
@@ -1054,7 +1255,7 @@ export function PurchaseOrderManagement() {
                                 {order.status === "submitted" && canApprove && (
                                   <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openApproveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBadgeCheck className="w-4 h-4" /> Approve PO</button>
                                 )}
-                                {order.status === "approved" && (
+                                {["approved", "partially_received"].includes(order.status) && (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); closeDropdown(); openReceiveConfirm(order); }}
                                     className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
@@ -1103,7 +1304,7 @@ export function PurchaseOrderManagement() {
               {paginatedItems.map((order) => {
                 const dropdownActions = getDropdownActions(order);
                 const showDots = dropdownActions.length > 0;
-                const canDeleteThis = canDelete && order.status !== "received" && order.status !== "deactivated";
+                const canDeleteThis = canDelete && !["partially_received", "received", "deactivated"].includes(order.status);
                 const canRestoreThis = canDelete && order.status === "deactivated";
 
                 return (
@@ -1181,7 +1382,7 @@ export function PurchaseOrderManagement() {
                                 {order.status === "submitted" && canApprove && (
                                   <button onClick={(e) => { e.stopPropagation(); closeDropdown(); openApproveConfirm(order); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"><LuBadgeCheck className="w-4 h-4" /> Approve PO</button>
                                 )}
-                                {order.status === "approved" && (
+                                {["approved", "partially_received"].includes(order.status) && (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); closeDropdown(); openReceiveConfirm(order); }}
                                     className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-950 hover:bg-neutral-100 transition-colors"
@@ -1379,6 +1580,22 @@ export function PurchaseOrderManagement() {
               <div className="grid grid-cols-2 gap-4">
                 <ModalInput type="text" value={statusLabel(viewOrder.status)} onChange={() => { }} placeholder="Status" disabled />
                 <ModalInput type="text" value={formatPrice(viewOrder.total_amount)} onChange={() => { }} placeholder="Total Amount" disabled />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <ModalInput
+                  type="text"
+                  value={viewOrder.status === "partially_received" ? "Partial" : viewOrder.status === "received" ? "Full" : "—"}
+                  onChange={() => { }}
+                  placeholder="Receipt Type"
+                  disabled
+                />
+                <ModalInput
+                  type="text"
+                  value={Number.isFinite(viewOrder.quantity_received) ? String(viewOrder.quantity_received + " Items") : "0 Items"}
+                  onChange={() => { }}
+                  placeholder="Quantity Received"
+                  disabled
+                />
               </div>
             </ModalSection>
 
@@ -1794,10 +2011,11 @@ export function PurchaseOrderManagement() {
       </Modal>
 
       {/* ═══════════════════ RECEIPT MODAL ═══════════════════ */}
-      <Modal isOpen={showReceiptModal && !!receiptOrder} onClose={() => { setShowReceiptModal(false); setReceiptOrder(null); }} title="Receipt" maxWidth="xl">
+      <Modal isOpen={showReceiptModal && !!receiptOrder} onClose={closeReceiptModal} title="Receipt" maxWidth="xl">
         {receiptOrder && (() => {
           const receiptUrl = receiptOrder.receipt_attachment || "";
           const isPdf = /\.pdf($|\?)/i.test(receiptUrl);
+          const outstandingQty = getOutstandingQuantity(receiptOrder);
 
           return (
             <div>
@@ -1816,6 +2034,58 @@ export function PurchaseOrderManagement() {
                   placeholder="Status"
                   disabled
                 />
+              </ModalSection>
+
+              <ModalSection title="Payment Information">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!canModifyReceipt(receiptOrder)) return;
+                      const next = !receiptIsPartial;
+                      let nextQuantity = receiptQuantityReceived;
+                      if (!next) {
+                        nextQuantity = outstandingQty > 0 ? String(outstandingQty) : "";
+                      }
+                      setReceiptIsPartial(next);
+                      setReceiptQuantityReceived(nextQuantity);
+                      setReceiptError(null);
+                    }}
+                    disabled={!canModifyReceipt(receiptOrder)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${receiptIsPartial ? "bg-primary" : "bg-neutral-200"} ${!canModifyReceipt(receiptOrder) ? "opacity-50 cursor-not-allowed" : ""}`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${receiptIsPartial ? "translate-x-6" : "translate-x-1"}`}
+                    />
+                  </button>
+                  <span className="text-sm text-neutral-900">Partial</span>
+                </div>
+
+                <ModalInput
+                  type="text"
+                  value={receiptReferenceNumber}
+                  onChange={(value) => {
+                    setReceiptReferenceNumber(value);
+                    setReceiptError(null);
+                  }}
+                  placeholder="Reference Number"
+                  disabled={!canModifyReceipt(receiptOrder)}
+                />
+
+                {receiptIsPartial && (
+                  <ModalInput
+                    type="number"
+                    value={receiptQuantityReceived}
+                    onChange={(value) => {
+                      setReceiptQuantityReceived(value);
+                      setReceiptError(null);
+                    }}
+                    placeholder="Quantity Received"
+                    min={1}
+                    step={1}
+                    disabled={!canModifyReceipt(receiptOrder)}
+                  />
+                )}
               </ModalSection>
 
               {receiptOrder.receipt_attachment && (
@@ -1842,46 +2112,47 @@ export function PurchaseOrderManagement() {
 
               <ModalSection title="Actions">
                 <div className="flex flex-wrap gap-2">
-                  {!receiptOrder.receipt_attachment ? (
+                  {receiptOrder.receipt_attachment && (
                     <button
                       type="button"
-                      onClick={() => openReceiptPicker(receiptOrder.id)}
-                      disabled={uploadingReceipt || !canModifyReceipt(receiptOrder)}
-                      className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                        uploadingReceipt || !canModifyReceipt(receiptOrder)
-                          ? "bg-primary text-white opacity-50 cursor-not-allowed"
-                          : "bg-primary text-white"
-                      }`}
+                      onClick={() => {
+                        window.open(receiptOrder.receipt_attachment!, "_blank", "noopener,noreferrer");
+                      }}
+                      className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all bg-neutral-100 text-neutral hover:bg-neutral-200"
                     >
-                      {uploadingReceipt && receiptTargetOrderId === receiptOrder.id ? "Uploading..." : "Upload Receipt"}
+                      Download Receipt
                     </button>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          window.open(receiptOrder.receipt_attachment!, "_blank", "noopener,noreferrer");
-                        }}
-                        className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all bg-neutral-100 text-neutral hover:bg-neutral-200"
-                      >
-                        Download Receipt
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => openReceiptPicker(receiptOrder.id)}
-                        disabled={uploadingReceipt}
-                        className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                          uploadingReceipt
-                            ? "bg-primary text-white opacity-50 cursor-not-allowed"
-                            : "bg-primary text-white"
-                        }`}
-                      >
-                        {uploadingReceipt && receiptTargetOrderId === receiptOrder.id ? "Replacing..." : "Replace Receipt"}
-                      </button>
-                    </>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={handleSaveReceiptDetails}
+                    disabled={savingReceiptDetails || !canModifyReceipt(receiptOrder)}
+                    className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                      savingReceiptDetails || !canModifyReceipt(receiptOrder)
+                        ? "bg-neutral-100 text-neutral-950 opacity-50 cursor-not-allowed"
+                        : "bg-neutral-100 text-neutral-950 hover:bg-neutral-200"
+                    }`}
+                  >
+                    {savingReceiptDetails ? "Saving..." : "Save"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => openReceiptPicker(receiptOrder.id)}
+                    disabled={uploadingReceipt || !canModifyReceipt(receiptOrder)}
+                    className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                      uploadingReceipt || !canModifyReceipt(receiptOrder)
+                        ? "bg-primary text-white opacity-50 cursor-not-allowed"
+                        : "bg-primary text-white"
+                    }`}
+                  >
+                    {uploadingReceipt && receiptTargetOrderId === receiptOrder.id
+                      ? receiptOrder.receipt_attachment ? "Replacing..." : "Uploading..."
+                      : receiptOrder.receipt_attachment ? "Replace Receipt" : "Upload Receipt"}
+                  </button>
                 </div>
+                <ModalError message={receiptError} />
               </ModalSection>
             </div>
           );
@@ -1890,36 +2161,42 @@ export function PurchaseOrderManagement() {
 
       {/* ═══════════════════ RECEIVE PO CONFIRM MODAL ═══════════════════ */}
       <Modal isOpen={showReceiveConfirm && !!orderToReceive} onClose={() => setShowReceiveConfirm(false)} title="Receive Purchase Order" maxWidth="sm">
-        {orderToReceive && (
-          <div>
-            <div className="bg-neutral-100 rounded-xl p-4 my-4">
-              <p className="text-neutral-900">
-                Receive purchase order{" "}
-                <strong className="text-neutral-950">{orderToReceive.po_number}</strong> and stock in all items?
+        {orderToReceive && (() => {
+          const canReceiveThisOrder = canReceiveOrder(orderToReceive);
+
+          return (
+            <div>
+              <div className="bg-neutral-100 rounded-xl p-4 my-4">
+                <p className="text-neutral-900">
+                  Receive purchase order{" "}
+                  <strong className="text-neutral-950">{orderToReceive.po_number}</strong> and apply stock-in now?
+                </p>
+              </div>
+              <p className="text-sm text-neutral-900 mb-2">
+                {canReceiveThisOrder
+                  ? "This will apply stock-in for the selected quantity and set status to Partially Received or Received based on remaining balance."
+                  : "Reference number and a valid quantity received are required before stock-in."}
               </p>
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowReceiveConfirm(false)}
+                  className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmReceive}
+                  disabled={processingReceive || !canReceiveThisOrder}
+                  className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {processingReceive ? "Receiving..." : "Receive"}
+                </button>
+              </div>
             </div>
-            <p className="text-sm text-neutral-900 mb-2">
-              {orderToReceive.receipt_attachment ? "This will mark the PO as received, create stock-in movements for every line item, and update on-hand quantities." : "Cannot record stock-in without a receipt. Upload a receipt first before receiving purchase order."}
-            </p>
-            <div className="flex gap-3 mt-6">
-              <button
-                type="button"
-                onClick={() => setShowReceiveConfirm(false)}
-                className="flex-1 px-4 py-3.5 border-2 border-primary text-primary rounded-xl font-semibold hover:bg-primary-100 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmReceive}
-                disabled={processingReceive || !orderToReceive.receipt_attachment}
-                className="flex-1 px-4 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {processingReceive ? "Receiving..." : "Receive"}
-              </button>
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </Modal>
     </div>
   );

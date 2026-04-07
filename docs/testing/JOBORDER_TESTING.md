@@ -20,21 +20,29 @@ Third-party repairs are managed separately but are still included in the display
 7. Deleting a job order is soft-delete (deactivated state), not physical removal.
 8. Grand Total includes line totals plus third-party repairs.
 9. Search/filter bar is shown only when job orders exist in the grid.
+10. Export to PDF opens a preview modal first, with layout switch options (`System` and `Default`) before download.
 
 ### RBAC (Role-Based Access Control)
 
 | Action | HM | POC | JS | R | T |
 | ------ | -- | --- | -- | - | - |
 | View Job Orders | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Create Draft Job Order | ❌ | ✅ | ✅ | ✅ | ❌ |
-| Edit Draft Job Order | ❌ | ✅ | ✅ | ✅ | ❌ |
-| Request Approval | ❌ | ✅ | ✅ | ✅ | ❌ |
+| Create Draft Job Order | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Edit Draft Job Order | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Request Approval | ❌ | ❌ | ❌ | ✅ | ✅ |
 | Record Approval | ❌ | ❌ | ❌ | ✅ | ✅ |
 | Start Work | ❌ | ❌ | ❌ | ❌ | ✅ |
 | Mark Ready | ❌ | ✅ | ❌ | ❌ | ✅ |
 | Record Payment | ❌ | ❌ | ❌ | ✅ | ✅ |
 | Complete Job Order | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Cancel Job Order | ❌ | ✅ | ✅ | ✅ | ❌ |
+
+### Rework-Specific RBAC
+
+| Action | HM | POC | JS | R | T |
+| ------ | -- | --- | -- | - | - |
+| Create Rework from Completed JO | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Approve/Reject Rework (`approve-rework`) | ✅ | ❌ | ❌ | ❌ | ❌ |
 
 ### API Endpoints
 
@@ -358,6 +366,26 @@ Verify:
 - ✅ Rework card shows `BACKORDER` badge
 - ✅ Rework card shows `Rework of JO-XXXX`
 - ✅ Original card shows `Reworks: X` when children exist
+
+---
+
+### Test 18 — PDF Preview Before Download
+
+Goal: Verify PDF export now uses preview-first behavior with layout switching.
+
+1. Open an existing job order card.
+2. Click `More` -> `Export to PDF`.
+3. In `Job Order PDF Preview`, confirm the `Preview Customization` section appears.
+4. Switch between `System` and `Default` layout options.
+5. Confirm the iframe preview reloads when the layout changes.
+6. Click `Download PDF`.
+
+Verify:
+- ✅ Export action opens preview modal first (no immediate download)
+- ✅ `System` layout preview renders successfully
+- ✅ `Default` layout preview renders successfully
+- ✅ Download only starts after clicking `Download PDF`
+- ✅ Downloaded file name follows `{order_number}_estimate.pdf`
 - ✅ Rework details show approval status, rework reason, free redo flag
 - ✅ Original details show related rework JO numbers/statuses
 
@@ -393,3 +421,4 @@ Verify:
 | Search/filter hidden on empty state | ⬜ |
 | Search/filter shown when records exist | ⬜ |
 | Branch-scoped access and RBAC | ⬜ |
+

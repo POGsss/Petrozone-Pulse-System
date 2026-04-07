@@ -192,3 +192,4 @@ The System Settings page provides system-wide UI/theme configuration. It control
 | Save Success Toast                  | ⬜     |
 | Reset to Defaults                   | ⬜     |
 | Settings Apply on Login Page        | ⬜     |
+

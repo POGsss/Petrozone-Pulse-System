@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { LuX } from "react-icons/lu";
+import { LuCircleAlert, LuX } from "react-icons/lu";
 
 interface ModalProps {
   isOpen: boolean;
@@ -254,9 +254,7 @@ export function ModalError({ message }: ModalErrorProps) {
   
   return (
     <div className="bg-negative-200 border border-negative-950 rounded-xl p-4 flex items-center gap-3 mt-4">
-      <div className="w-5 h-5 rounded-full bg-negative flex items-center justify-center shrink-0">
-        <span className="text-white text-xs font-bold">!</span>
-      </div>
+      <LuCircleAlert className="w-5 h-5 text-negative-950 shrink-0" />
       <p className="text-sm text-negative-950">{message}</p>
     </div>
   );

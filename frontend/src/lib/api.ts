@@ -1247,9 +1247,16 @@ export const purchaseOrdersApi = {
     });
   },
 
-  receive: async (id: string) => {
+  receive: async (
+    id: string,
+    data?: {
+      receipt_reference_number?: string;
+      quantity_received?: number;
+    }
+  ) => {
     return fetchWithAuth<import("../types").PurchaseOrder>(`/api/purchase-orders/${id}/receive`, {
       method: "PATCH",
+      body: data ? JSON.stringify(data) : undefined,
     });
   },
 
@@ -1259,9 +1266,27 @@ export const purchaseOrdersApi = {
     });
   },
 
-  uploadPurchaseOrderReceipt: async (id: string, file: File) => {
+  uploadPurchaseOrderReceipt: async (
+    id: string,
+    payload:
+      | File
+      | {
+          file?: File;
+          receipt_reference_number?: string | null;
+        }
+  ) => {
     const formData = new FormData();
-    formData.append("receipt", file);
+
+    if (payload instanceof File) {
+      formData.append("receipt", payload);
+    } else {
+      if (payload.file) {
+        formData.append("receipt", payload.file);
+      }
+      if (payload.receipt_reference_number !== undefined) {
+        formData.append("receipt_reference_number", payload.receipt_reference_number ?? "");
+      }
+    }
 
     return fetchWithAuth<import("../types").PurchaseOrder>(`/api/purchase-orders/${id}/upload-receipt`, {
       method: "POST",

@@ -314,8 +314,7 @@ ELSE:
 
 Rework Job Order flow:
 
-draft  
-→ pending_approval (REQUIRED)  
+pending_approval (created directly on rework creation)  
 → approved / rejected  
 → in_progress  
 → ready_for_release  

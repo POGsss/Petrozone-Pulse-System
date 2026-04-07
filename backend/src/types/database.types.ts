@@ -970,7 +970,9 @@ export type Database = {
           notes: string | null
           order_date: string
           po_number: string
+          quantity_received: number
           receipt_attachment: string | null
+          receipt_reference_number: string | null
           receipt_uploaded_at: string | null
           receipt_uploaded_by: string | null
           received_at: string | null
@@ -991,7 +993,9 @@ export type Database = {
           notes?: string | null
           order_date?: string
           po_number: string
+          quantity_received?: number
           receipt_attachment?: string | null
+          receipt_reference_number?: string | null
           receipt_uploaded_at?: string | null
           receipt_uploaded_by?: string | null
           received_at?: string | null
@@ -1012,7 +1016,9 @@ export type Database = {
           notes?: string | null
           order_date?: string
           po_number?: string
+          quantity_received?: number
           receipt_attachment?: string | null
+          receipt_reference_number?: string | null
           receipt_uploaded_at?: string | null
           receipt_uploaded_by?: string | null
           received_at?: string | null
@@ -1903,6 +1909,7 @@ export type Database = {
         | "draft"
         | "submitted"
         | "approved"
+        | "partially_received"
         | "received"
         | "cancelled"
         | "deactivated"
@@ -2078,6 +2085,7 @@ export const Constants = {
         "draft",
         "submitted",
         "approved",
+        "partially_received",
         "received",
         "cancelled",
         "deactivated",

@@ -627,3 +627,4 @@ Use the **"Add New Supplier"** button. Create each supplier below:
 | Audit Logging                              | ⬜     |
 | RBAC Enforcement (HM, POC, JS only)        | ⬜     |
 
+

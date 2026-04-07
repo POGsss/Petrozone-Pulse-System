@@ -110,3 +110,4 @@ Audit logs are append-only. They cannot be deleted or rewritten. Approval record
 | **JO\_CANCELLED** | cancel transition | reason, actor, cancelled\_at |
 | **JO\_SOFT\_DELETED** | UC34 | deleted\_by, deleted\_at |
 
+

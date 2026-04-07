@@ -23,7 +23,7 @@ function formatPrice(value: number): string {
   }).format(value || 0)}`;
 }
 
-export function generateJobOrderPDF(order: JobOrder): void {
+function createJobOrderPDFDocument(order: JobOrder): jsPDF {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 16;
@@ -166,5 +166,15 @@ export function generateJobOrderPDF(order: JobOrder): void {
   const notesLines = doc.splitTextToSize(`Notes: ${order.notes || "-"}`, pageWidth - margin * 2);
   doc.text(notesLines, margin, y);
 
+  return doc;
+}
+
+export function generateJobOrderPDF(order: JobOrder): void {
+  const doc = createJobOrderPDFDocument(order);
   doc.save(`${order.order_number}_estimate.pdf`);
+}
+
+export function generateJobOrderPDFBlob(order: JobOrder): Blob {
+  const doc = createJobOrderPDFDocument(order);
+  return doc.output("blob") as Blob;
 }

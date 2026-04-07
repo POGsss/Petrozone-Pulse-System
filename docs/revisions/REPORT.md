@@ -540,3 +540,4 @@ Frontend core:
 - `frontend/src/types/index.ts`
 
 This report is analysis-only, with no implementation changes applied.
+

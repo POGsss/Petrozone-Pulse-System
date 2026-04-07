@@ -232,3 +232,4 @@ The Audit Logs page provides a centralized view of all system activity — login
 | Branch Scoping (HM vs POC)            | ⬜     |
 | Audit Entries Created for All Modules | ⬜     |
 | Empty State                           | ⬜     |
+

@@ -450,7 +450,7 @@ export interface StockMovement {
 }
 
 // Purchase Order types
-export type PurchaseOrderStatus = "draft" | "submitted" | "approved" | "received" | "cancelled" | "deactivated";
+export type PurchaseOrderStatus = "draft" | "submitted" | "approved" | "partially_received" | "received" | "cancelled" | "deactivated";
 
 // Supplier types
 export type SupplierStatus = "active" | "inactive";
@@ -538,6 +538,8 @@ export interface PurchaseOrder {
   received_at: string | null;
   received_by: string | null;
   receipt_attachment: string | null;
+  receipt_reference_number: string | null;
+  quantity_received: number;
   receipt_uploaded_by: string | null;
   receipt_uploaded_at: string | null;
   is_deleted: boolean;

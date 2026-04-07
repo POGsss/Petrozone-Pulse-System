@@ -291,3 +291,4 @@ Use the **"Add New Vehicle"** button. Create each vehicle below:
 | Pagination (12 per page)                      | ⬜     |
 | Audit Logging                                 | ⬜     |
 | RBAC Enforcement (T Cannot Access)            | ⬜     |
+
