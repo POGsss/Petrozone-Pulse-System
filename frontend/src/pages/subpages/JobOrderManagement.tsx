@@ -4016,12 +4016,8 @@ export function JobOrderManagement() {
       >
         {completeOrder && (
           <div>
-            <div className="bg-neutral-100 rounded-xl p-4 my-4">
-              <p className="text-neutral-900">
-                Complete <strong className="text-neutral-950">{completeOrder.order_number}</strong>.
-              </p>
-            </div>
             <ModalInput
+              className="my-4"
               type="text"
               value={completePickedUpBy}
               onChange={(value) => {
@@ -4031,6 +4027,9 @@ export function JobOrderManagement() {
               placeholder="Picked Up By *"
               required
             />
+            <p className="text-sm text-neutral-900 mb-2">
+              Before marking the job order as complete, enter the name of the person who picked up the job order.
+            </p>
             <ModalError message={completeError} />
             <div className="flex gap-3 mt-6">
               <button
