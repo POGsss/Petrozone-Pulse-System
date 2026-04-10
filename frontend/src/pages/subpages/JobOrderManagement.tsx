@@ -76,6 +76,16 @@ function getLaborPriceByVehicleClass(laborItem: LaborItem, vehicleClass: Vehicle
   return laborItem.extra_heavy_price || 0;
 }
 
+const VEHICLE_CLASS_OPTIONS: { value: VehicleClass; label: string }[] = [
+  { value: "light", label: "Light Vehicle" },
+  { value: "heavy", label: "Heavy Vehicle" },
+  { value: "extra_heavy", label: "Extra Heavy Vehicle" },
+];
+
+function getVehicleClassLabel(vehicleClass: VehicleClass): string {
+  return VEHICLE_CLASS_OPTIONS.find((opt) => opt.value === vehicleClass)?.label || "Light Vehicle";
+}
+
 function computeOrderItemsTotal(order: JobOrder): number {
   if (order.job_order_lines && order.job_order_lines.length > 0) {
     return order.job_order_lines.reduce((sum, line) => sum + (line.total || 0), 0);
@@ -236,6 +246,8 @@ export function JobOrderManagement() {
   const [addCustomerId, setAddCustomerId] = useState("");
   const [addVehicleId, setAddVehicleId] = useState("");
   const [addVehicleClass, setAddVehicleClass] = useState<VehicleClass>("light");
+  const [addLaborVehicleOverrideEnabled, setAddLaborVehicleOverrideEnabled] = useState(false);
+  const [addLaborVehicleOverrideClass, setAddLaborVehicleOverrideClass] = useState<VehicleClass>("light");
   const [addSameAsCustomer, setAddSameAsCustomer] = useState(true);
   const [addDeliveredBy, setAddDeliveredBy] = useState("");
   const [addNotes, setAddNotes] = useState("");
@@ -298,6 +310,8 @@ export function JobOrderManagement() {
   const [editLineSelectedPackageQty, setEditLineSelectedPackageQty] = useState("1");
   const [editLineSelectedLaborQty, setEditLineSelectedLaborQty] = useState("1");
   const [editLineSelectedInventoryQty, setEditLineSelectedInventoryQty] = useState("1");
+  const [editLaborVehicleOverrideEnabled, setEditLaborVehicleOverrideEnabled] = useState(false);
+  const [editLaborVehicleOverrideClass, setEditLaborVehicleOverrideClass] = useState<VehicleClass>("light");
   const [editVehicleSpecificItemByPackage, setEditVehicleSpecificItemByPackage] = useState<Record<string, string>>({});
 
   // Delete modal
@@ -562,6 +576,11 @@ export function JobOrderManagement() {
       }));
   }, [suppliers]);
 
+  const effectiveAddLaborVehicleClass = addLaborVehicleOverrideEnabled ? addLaborVehicleOverrideClass : addVehicleClass;
+  const effectiveEditLaborVehicleClass = editLaborVehicleOverrideEnabled
+    ? editLaborVehicleOverrideClass
+    : ((editOrder?.vehicle_class || "light") as VehicleClass);
+
   // Package item options (active items visible to user)
   const packageItemOptions = useMemo(() => {
     return packageItems
@@ -572,8 +591,8 @@ export function JobOrderManagement() {
   const laborItemOptions = useMemo(() => {
     return laborItems
       .filter((i) => i.status === "active")
-      .map((i) => ({ value: i.id, label: `${i.name} (${formatPrice(getLaborPriceByVehicleClass(i, addVehicleClass))})` }));
-  }, [laborItems, addVehicleClass]);
+      .map((i) => ({ value: i.id, label: `${i.name} (${formatPrice(getLaborPriceByVehicleClass(i, effectiveAddLaborVehicleClass))})` }));
+  }, [laborItems, effectiveAddLaborVehicleClass]);
 
   const inventoryItemOptions = useMemo(() => {
     return inventoryItems
@@ -603,11 +622,10 @@ export function JobOrderManagement() {
   }, [editPackageItems]);
 
   const editLaborItemOptions = useMemo(() => {
-    const vehicleClass = editOrder?.vehicle_class || "light";
     return editLaborItems
       .filter((i) => i.status === "active")
-      .map((i) => ({ value: i.id, label: `${i.name} (${formatPrice(getLaborPriceByVehicleClass(i, vehicleClass))})` }));
-  }, [editLaborItems, editOrder]);
+      .map((i) => ({ value: i.id, label: `${i.name} (${formatPrice(getLaborPriceByVehicleClass(i, effectiveEditLaborVehicleClass))})` }));
+  }, [editLaborItems, effectiveEditLaborVehicleClass]);
 
   const editInventoryItemOptions = useMemo(() => {
     return editInventoryItems
@@ -701,6 +719,8 @@ export function JobOrderManagement() {
     setAddCustomerId("");
     setAddVehicleId("");
     setAddVehicleClass("light");
+    setAddLaborVehicleOverrideEnabled(false);
+    setAddLaborVehicleOverrideClass("light");
     setAddSameAsCustomer(true);
     setAddDeliveredBy("");
     setAddNotes("");
@@ -744,6 +764,18 @@ export function JobOrderManagement() {
     if (!addSameAsCustomer) return;
     setAddDeliveredBy(selectedAddCustomer?.full_name || "");
   }, [addSameAsCustomer, selectedAddCustomer]);
+
+  useEffect(() => {
+    if (!addLaborVehicleOverrideEnabled) {
+      setAddLaborVehicleOverrideClass(addVehicleClass);
+    }
+  }, [addVehicleClass, addLaborVehicleOverrideEnabled]);
+
+  useEffect(() => {
+    if (!editLaborVehicleOverrideEnabled) {
+      setEditLaborVehicleOverrideClass((editOrder?.vehicle_class || "light") as VehicleClass);
+    }
+  }, [editOrder, editLaborVehicleOverrideEnabled]);
 
   // When vehicle changes, auto-set vehicle class from selected vehicle
   function handleVehicleChange(newVehicleId: string) {
@@ -983,14 +1015,15 @@ export function JobOrderManagement() {
     const qty = parseInt(selectedLaborQty, 10) || 1;
     const laborItem = laborItems.find((l) => l.id === selectedLaborItemId);
     if (!laborItem) return;
+    const laborPrice = getLaborPriceByVehicleClass(laborItem, effectiveAddLaborVehicleClass);
     setDraftLaborLines((prev) => [
       ...prev,
       {
         labor_item_id: laborItem.id,
         labor_item_name: laborItem.name,
         quantity: qty,
-        unit_price: getLaborPriceByVehicleClass(laborItem, addVehicleClass),
-        total: getLaborPriceByVehicleClass(laborItem, addVehicleClass) * qty,
+        unit_price: laborPrice,
+        total: laborPrice * qty,
       },
     ]);
     setSelectedLaborItemId("");
@@ -1236,6 +1269,8 @@ export function JobOrderManagement() {
     setEditLineSelectedPackageQty("1");
     setEditLineSelectedLaborQty("1");
     setEditLineSelectedInventoryQty("1");
+    setEditLaborVehicleOverrideEnabled(false);
+    setEditLaborVehicleOverrideClass((order.vehicle_class || "light") as VehicleClass);
     setEditVehicleSpecificItemByPackage({});
     setShowEditModal(true);
 
@@ -1418,8 +1453,7 @@ export function JobOrderManagement() {
         return;
       }
 
-      const vehicleClass = editOrder.vehicle_class || "light";
-      const laborPrice = getLaborPriceByVehicleClass(laborItem, vehicleClass);
+      const laborPrice = getLaborPriceByVehicleClass(laborItem, effectiveEditLaborVehicleClass);
 
       let editInvQuantities: Array<{
         inventory_item_id: string;
@@ -1680,6 +1714,7 @@ export function JobOrderManagement() {
     if (qty < 1) return;
     const laborItem = editLaborItems.find((l) => l.id === editLineSelectedLaborId);
     if (!laborItem) return;
+    const laborPrice = getLaborPriceByVehicleClass(laborItem, effectiveEditLaborVehicleClass);
 
     setEditLineLaborLines((prev) => [
       ...prev,
@@ -1687,8 +1722,8 @@ export function JobOrderManagement() {
         labor_item_id: laborItem.id,
         labor_item_name: laborItem.name,
         quantity: qty,
-        unit_price: getLaborPriceByVehicleClass(laborItem, (editOrder.vehicle_class || "light") as VehicleClass),
-        total: getLaborPriceByVehicleClass(laborItem, (editOrder.vehicle_class || "light") as VehicleClass) * qty,
+        unit_price: laborPrice,
+        total: laborPrice * qty,
       },
     ]);
     setEditLineSelectedLaborId("");
@@ -2431,7 +2466,7 @@ export function JobOrderManagement() {
             />
             <ModalInput
               type="text"
-              value={addVehicleClass === "light" ? "Light Vehicle" : addVehicleClass === "heavy" ? "Heavy Vehicle" : addVehicleClass === "extra_heavy" ? "Extra Heavy Vehicle" : "Light Vehicle"}
+              value={getVehicleClassLabel(addVehicleClass)}
               onChange={() => {}}
               placeholder="Vehicle Class"
               disabled
@@ -2607,6 +2642,38 @@ export function JobOrderManagement() {
           </ModalSection>
 
           <ModalSection title="Labor">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setAddLaborVehicleOverrideEnabled((prev) => {
+                    const next = !prev;
+                    setSelectedLaborItemId("");
+                    return next;
+                  });
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${addLaborVehicleOverrideEnabled ? "bg-primary" : "bg-neutral-200"}`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${addLaborVehicleOverrideEnabled ? "translate-x-6" : "translate-x-1"}`}
+                />
+              </button>
+              <span className="text-sm text-neutral-900">
+                Override Type
+              </span>
+            </div>
+
+            {addLaborVehicleOverrideEnabled && (
+              <ModalSelect
+                value={addLaborVehicleOverrideClass}
+                onChange={(value) => {
+                  setAddLaborVehicleOverrideClass(value as VehicleClass);
+                  setSelectedLaborItemId("");
+                }}
+                options={VEHICLE_CLASS_OPTIONS}
+              />
+            )}
+
             <div className="flex gap-2 items-end">
               <div className="flex-1">
                 <SearchableSelect
@@ -3571,6 +3638,40 @@ export function JobOrderManagement() {
               </ModalSection>
 
               <ModalSection title="Labor">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditLaborVehicleOverrideEnabled((prev) => {
+                        const next = !prev;
+                        setEditLineSelectedLaborId("");
+                        setEditSelectedLaborId("");
+                        return next;
+                      });
+                    }}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${editLaborVehicleOverrideEnabled ? "bg-primary" : "bg-neutral-200"}`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editLaborVehicleOverrideEnabled ? "translate-x-6" : "translate-x-1"}`}
+                    />
+                  </button>
+                  <span className="text-sm text-neutral-900">
+                    Labor Vehicle Type Override {editLaborVehicleOverrideEnabled ? "Active" : "Inactive"}
+                  </span>
+                </div>
+
+                {editLaborVehicleOverrideEnabled && (
+                  <ModalSelect
+                    value={editLaborVehicleOverrideClass}
+                    onChange={(value) => {
+                      setEditLaborVehicleOverrideClass(value as VehicleClass);
+                      setEditLineSelectedLaborId("");
+                      setEditSelectedLaborId("");
+                    }}
+                    options={VEHICLE_CLASS_OPTIONS}
+                  />
+                )}
+
                 <div className="flex gap-2 items-end">
                   <div className="flex-1">
                     <SearchableSelect

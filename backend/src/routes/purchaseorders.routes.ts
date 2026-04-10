@@ -243,15 +243,11 @@ router.post(
       if (supplier_id) {
         const { data: supplier } = await supabaseAdmin
           .from("suppliers")
-          .select("supplier_name, branch_id")
+          .select("supplier_name")
           .eq("id", supplier_id)
           .single();
         if (!supplier) {
           res.status(400).json({ error: "Supplier not found" });
-          return;
-        }
-        if (supplier.branch_id !== branch_id) {
-          res.status(400).json({ error: "Supplier does not belong to the selected branch" });
           return;
         }
         resolvedSupplierName = supplier.supplier_name;
@@ -741,9 +737,10 @@ router.post(
       const poId = req.params.id as string;
 
       const hasReferenceInput = Object.prototype.hasOwnProperty.call(req.body, "receipt_reference_number");
+      const hasTotalAmountInput = Object.prototype.hasOwnProperty.call(req.body, "total_amount");
 
-      if (!req.file && !hasReferenceInput) {
-        res.status(400).json({ error: "Receipt file or details are required" });
+      if (!req.file && !hasReferenceInput && !hasTotalAmountInput) {
+        res.status(400).json({ error: "Receipt file, reference number, or total amount is required" });
         return;
       }
 
@@ -783,6 +780,23 @@ router.post(
         }
         const trimmedReference = referenceRaw.trim();
         updates.receipt_reference_number = trimmedReference || null;
+      }
+
+      if (hasTotalAmountInput) {
+        const totalRaw = req.body.total_amount;
+        const totalString = typeof totalRaw === "string" ? totalRaw.trim() : String(totalRaw ?? "").trim();
+        if (!totalString) {
+          res.status(400).json({ error: "Total amount is required" });
+          return;
+        }
+
+        const parsedTotal = Number(totalString);
+        if (!Number.isFinite(parsedTotal) || parsedTotal <= 0) {
+          res.status(400).json({ error: "Total amount must be greater than 0" });
+          return;
+        }
+
+        updates.total_amount = parsedTotal;
       }
 
       if (req.file) {
@@ -853,6 +867,9 @@ router.post(
         const auditReference = hasReferenceInput
           ? (typeof updates.receipt_reference_number === "string" ? updates.receipt_reference_number : null)
           : undefined;
+        const auditTotalAmount = hasTotalAmountInput
+          ? (typeof updates.total_amount === "number" ? updates.total_amount : null)
+          : undefined;
 
         await supabaseAdmin.rpc("log_admin_action", {
           p_action: "UPDATE",
@@ -866,6 +883,7 @@ router.post(
             timestamp: new Date().toISOString(),
             receipt_attachment: receiptUrl,
             receipt_reference_number: auditReference,
+            total_amount: auditTotalAmount,
           },
         });
       } catch (auditErr) {
@@ -1003,12 +1021,8 @@ router.patch(
         return;
       }
 
-      if (quantityToReceive > totalOutstandingQty) {
-        res.status(400).json({ error: "Quantity received cannot exceed outstanding quantity" });
-        return;
-      }
-
       const newTotalReceivedQty = currentReceivedQty + quantityToReceive;
+      const excessQuantity = Math.max(quantityToReceive - totalOutstandingQty, 0);
       const nextStatus: "partially_received" | "received" =
         newTotalReceivedQty >= totalOrderedQty ? "received" : "partially_received";
 
@@ -1044,6 +1058,7 @@ router.patch(
       let failedItem: string | null = null;
       let remainingQty = quantityToReceive;
       let affectedItemCount = 0;
+      const updatedReceivedByItem: Record<string, number> = {};
 
       for (const item of itemStates) {
         if (remainingQty <= 0) break;
@@ -1083,12 +1098,46 @@ router.patch(
           break;
         }
 
+        updatedReceivedByItem[item.id] = item.alreadyReceived + qtyForThisItem;
         remainingQty -= qtyForThisItem;
         affectedItemCount += 1;
       }
 
       if (!failedItem && remainingQty > 0) {
-        failedItem = "unallocated_quantity";
+        const anchorItem = itemStates[0];
+
+        const { error: excessMoveError } = await supabaseAdmin
+          .from("stock_movements")
+          .insert({
+            inventory_item_id: anchorItem.inventory_item_id,
+            movement_type: "stock_in",
+            quantity: remainingQty,
+            reference_type: "purchase_order",
+            reference_id: poId,
+            reason: `Excess received from PO ${po.po_number} (Ref: ${resolvedReference})`,
+            branch_id: po.branch_id,
+            created_by: req.user!.id,
+          });
+
+        if (excessMoveError) {
+          failedItem = `${anchorItem.inventory_item_id}_excess`;
+        } else {
+          const anchorCurrentQty = updatedReceivedByItem[anchorItem.id] ?? anchorItem.alreadyReceived;
+          const anchorNextQty = anchorCurrentQty + remainingQty;
+
+          const { error: excessUpdateError } = await supabaseAdmin
+            .from("purchase_order_items")
+            .update({ quantity_received: anchorNextQty })
+            .eq("id", anchorItem.id);
+
+          if (excessUpdateError) {
+            failedItem = `${anchorItem.inventory_item_id}_excess_update`;
+          } else {
+            updatedReceivedByItem[anchorItem.id] = anchorNextQty;
+            affectedItemCount += 1;
+            remainingQty = 0;
+          }
+        }
       }
 
       if (failedItem) {
@@ -1115,6 +1164,7 @@ router.patch(
             receipt_reference_number: resolvedReference,
             quantity_received: newTotalReceivedQty,
             quantity_received_increment: quantityToReceive,
+            excess_quantity: excessQuantity,
           },
         });
       } catch (auditErr) {

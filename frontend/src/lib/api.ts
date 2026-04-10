@@ -1036,6 +1036,7 @@ export const inventoryApi = {
   create: async (data: {
     item_name: string;
     sku_code: string;
+    brand: string;
     category: string;
     unit_of_measure: string;
     cost_price: number;
@@ -1055,6 +1056,7 @@ export const inventoryApi = {
     data: {
       item_name?: string;
       sku_code?: string;
+      brand?: string;
       category?: string;
       unit_of_measure?: string;
       cost_price?: number;
@@ -1273,6 +1275,7 @@ export const purchaseOrdersApi = {
       | {
           file?: File;
           receipt_reference_number?: string | null;
+          total_amount?: number;
         }
   ) => {
     const formData = new FormData();
@@ -1285,6 +1288,9 @@ export const purchaseOrdersApi = {
       }
       if (payload.receipt_reference_number !== undefined) {
         formData.append("receipt_reference_number", payload.receipt_reference_number ?? "");
+      }
+      if (payload.total_amount !== undefined) {
+        formData.append("total_amount", String(payload.total_amount));
       }
     }
 

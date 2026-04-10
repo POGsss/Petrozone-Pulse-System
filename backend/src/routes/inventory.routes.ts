@@ -330,6 +330,7 @@ router.post(
       const {
         item_name,
         sku_code,
+        brand,
         category,
         unit_of_measure,
         cost_price,
@@ -348,6 +349,10 @@ router.post(
       const normalizedItemName = validatedName.value as string;
       if (!sku_code?.trim()) {
         res.status(400).json({ error: "SKU code is required" });
+        return;
+      }
+      if (!brand?.trim()) {
+        res.status(400).json({ error: "Brand is required" });
         return;
       }
       if (!category?.trim()) {
@@ -424,6 +429,7 @@ router.post(
         .insert({
           item_name: normalizedItemName,
           sku_code: sku_code.trim().toUpperCase(),
+          brand: brand.trim(),
           category: category.trim(),
           unit_of_measure: unit_of_measure.trim(),
           cost_price: parseFloat(cost_price),
@@ -507,6 +513,7 @@ router.put(
       const {
         item_name,
         sku_code,
+        brand,
         category,
         unit_of_measure,
         cost_price,
@@ -569,6 +576,14 @@ router.put(
           return;
         }
         updateData.sku_code = sku_code.trim().toUpperCase();
+      }
+
+      if (brand !== undefined) {
+        if (!brand.trim()) {
+          res.status(400).json({ error: "Brand cannot be empty" });
+          return;
+        }
+        updateData.brand = brand.trim();
       }
 
       if (category !== undefined) {

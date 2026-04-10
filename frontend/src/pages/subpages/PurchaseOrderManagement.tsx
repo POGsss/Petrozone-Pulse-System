@@ -16,7 +16,7 @@ import {
   LuCheck,
   LuDownload,
 } from "react-icons/lu";
-import { purchaseOrdersApi, branchesApi, suppliersApi, supplierProductsApi } from "../../lib/api";
+import { purchaseOrdersApi, branchesApi, suppliersApi, inventoryApi } from "../../lib/api";
 import { showToast } from "../../lib/toast";
 import { generatePurchaseOrderPDF } from "../../lib/purchaseOrderPdfGenerator";
 import { useAuth } from "../../auth";
@@ -39,7 +39,7 @@ import {
   DesktopTableRow,
 } from "../../components";
 import type { StatCard, DesktopTableColumn } from "../../components";
-import type { PurchaseOrder, Branch, Supplier, SupplierProduct } from "../../types";
+import type { PurchaseOrder, Branch, Supplier, InventoryItem } from "../../types";
 
 const ITEMS_PER_PAGE = 20;
 const MANUAL_PO_SUFFIX_PATTERN = /^\d{1,6}$/;
@@ -67,6 +67,13 @@ function formatPrice(price: number): string {
     style: "currency",
     currency: "PHP",
   }).format(price);
+}
+
+function formatOrderTotal(order: PurchaseOrder): string {
+  if ((order.status === "draft" || order.status === "submitted") && (!order.total_amount || order.total_amount <= 0)) {
+    return "—";
+  }
+  return formatPrice(order.total_amount || 0);
 }
 
 function statusBadge(status: string) {
@@ -118,6 +125,22 @@ function getOutstandingQuantity(order: PurchaseOrder): number {
   }, 0);
 }
 
+function getTotalOrderedQuantity(order: PurchaseOrder): number {
+  return (order.purchase_order_items || []).reduce((sum, item) => {
+    return sum + (Number(item.quantity_ordered) || 0);
+  }, 0);
+}
+
+function getReceiptTypeLabel(order: PurchaseOrder): string {
+  const totalOrdered = getTotalOrderedQuantity(order);
+  const totalReceived = Number(order.quantity_received) || 0;
+
+  if (totalOrdered > 0 && totalReceived > totalOrdered) return "Excess";
+  if (order.status === "partially_received") return "Partial";
+  if (order.status === "received") return "Full";
+  return "—";
+}
+
 // Draft item for the plus-button pattern
 interface DraftPOItem {
   inventory_item_id: string;
@@ -125,13 +148,13 @@ interface DraftPOItem {
   sku_code: string;
   quantity_ordered: number;
   unit_cost: number;
-  line_total: number;
 }
 
 interface ReceiptDraftState {
   reference: string;
   isPartial: boolean;
   quantity: string;
+  totalAmount: string;
 }
 
 export function PurchaseOrderManagement() {
@@ -149,7 +172,7 @@ export function PurchaseOrderManagement() {
   const [allOrders, setAllOrders] = useState<PurchaseOrder[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [supplierProducts, setSupplierProducts] = useState<SupplierProduct[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -175,7 +198,6 @@ export function PurchaseOrderManagement() {
   // Add modal — plus-button item pattern
   const [selectedInventoryId, setSelectedInventoryId] = useState("");
   const [selectedQty, setSelectedQty] = useState("1");
-  const [selectedUnitCost, setSelectedUnitCost] = useState("");
   const [draftItems, setDraftItems] = useState<DraftPOItem[]>([]);
 
   // View modal
@@ -197,7 +219,6 @@ export function PurchaseOrderManagement() {
   // Edit modal — plus-button item pattern
   const [editSelectedInventoryId, setEditSelectedInventoryId] = useState("");
   const [editSelectedQty, setEditSelectedQty] = useState("1");
-  const [editSelectedUnitCost, setEditSelectedUnitCost] = useState("");
   const [editDraftItems, setEditDraftItems] = useState<DraftPOItem[]>([]);
   const [editingDraftItemId, setEditingDraftItemId] = useState<string | null>(null);
   const [showEditUnsavedConfirm, setShowEditUnsavedConfirm] = useState(false);
@@ -235,6 +256,7 @@ export function PurchaseOrderManagement() {
   const [savingReceiptDetails, setSavingReceiptDetails] = useState(false);
   const [receiptTargetOrderId, setReceiptTargetOrderId] = useState<string | null>(null);
   const [receiptReferenceNumber, setReceiptReferenceNumber] = useState("");
+  const [receiptTotalAmount, setReceiptTotalAmount] = useState("");
   const [receiptIsPartial, setReceiptIsPartial] = useState(false);
   const [receiptQuantityReceived, setReceiptQuantityReceived] = useState("");
   const [receiptDraftByOrder, setReceiptDraftByOrder] = useState<Record<string, ReceiptDraftState>>({});
@@ -315,12 +337,12 @@ export function PurchaseOrderManagement() {
         purchaseOrdersApi.getAll({ limit: 1000, status: statusFilter === "all" ? undefined : statusFilter }),
         branchesApi.getAll(),
         suppliersApi.getAll({ limit: 1000, status: "active" }),
-        supplierProductsApi.getAll({ limit: 1000, status: "active" }),
+        inventoryApi.getAll({ limit: 1000, status: "active" }),
       ]);
       setAllOrders(poRes.data);
       setBranches(branchesData);
       setSuppliers(suppliersRes.data);
-      setSupplierProducts(spRes.data);
+      setInventoryItems(spRes.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch data");
     } finally {
@@ -348,15 +370,9 @@ export function PurchaseOrderManagement() {
     return branches.map((b) => ({ value: b.id, label: b.name }));
   }, [branches, user, isHM]);
 
-  // Suppliers filtered by selected branch
-  function getSuppliersForBranch(branchId: string) {
-    if (!branchId) return suppliers;
-    return suppliers.filter((s) => s.branch_id === branchId);
-  }
-
   // Supplier options for selects
-  function getSupplierOptions(branchId: string) {
-    return getSuppliersForBranch(branchId).map((s) => ({
+  function getSupplierOptions() {
+    return suppliers.map((s) => ({
       value: s.id,
       label: s.supplier_name,
     }));
@@ -371,23 +387,18 @@ export function PurchaseOrderManagement() {
     return branches.find((b) => b.id === branchId)?.code || "";
   }
 
-  // Supplier products filtered by supplier (and optionally branch)
-  function getProductsForSupplier(supplierId: string, branchId?: string) {
-    if (!supplierId) return [];
-    let products = supplierProducts.filter((sp) => sp.supplier_id === supplierId && sp.inventory_item_id);
+  function getInventoryItemsForBranch(branchId?: string) {
+    let items = inventoryItems;
     if (branchId) {
-      products = products.filter((sp) => sp.branch_id === branchId);
+      items = items.filter((inv) => inv.branch_id === branchId);
     }
-    return products;
+    return items;
   }
 
-  // Inventory item options from supplier products
-  function getSupplierItemOptions(supplierId: string, branchId?: string) {
-    return getProductsForSupplier(supplierId, branchId).map((sp) => ({
-      value: sp.inventory_item_id!,
-      label: sp.inventory_items
-        ? `${sp.inventory_items.item_name} (${sp.inventory_items.sku_code})`
-        : sp.product_name,
+  function getInventoryItemOptions(branchId?: string) {
+    return getInventoryItemsForBranch(branchId).map((inv) => ({
+      value: inv.id,
+      label: `${inv.item_name} (${inv.sku_code})`,
     }));
   }
 
@@ -397,7 +408,7 @@ export function PurchaseOrderManagement() {
     return Math.max(1, parseInt(digits, 10)).toString();
   }
 
-  function normalizeUnitCostInput(value: string): string {
+  function normalizeMoneyInput(value: string): string {
     const sanitized = value.replace(/[^\d.]/g, "");
     const firstDot = sanitized.indexOf(".");
     if (firstDot === -1) return sanitized;
@@ -406,11 +417,18 @@ export function PurchaseOrderManagement() {
     return `${beforeDot}${afterDot}`;
   }
 
+  function parseMoneyInput(value: string): number | null {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed < 0) return null;
+    return parsed;
+  }
+
   function beginEditDraftItem(item: DraftPOItem) {
     setEditingDraftItemId(item.inventory_item_id);
     setEditSelectedInventoryId(item.inventory_item_id);
     setEditSelectedQty(item.quantity_ordered.toString());
-    setEditSelectedUnitCost(item.unit_cost.toString());
     setEditError(null);
   }
 
@@ -418,7 +436,6 @@ export function PurchaseOrderManagement() {
     setEditingDraftItemId(null);
     setEditSelectedInventoryId("");
     setEditSelectedQty("1");
-    setEditSelectedUnitCost("");
   }
 
   function saveEditDraftItem(): boolean {
@@ -430,14 +447,7 @@ export function PurchaseOrderManagement() {
       return false;
     }
 
-    const parsedCost = parseFloat(editSelectedUnitCost);
-    if (!Number.isNaN(parsedCost) && parsedCost < 0) {
-      setEditError("Unit cost must be a non-negative number");
-      return false;
-    }
-
     const qty = Math.max(1, parsedQty);
-    const cost = Number.isNaN(parsedCost) ? 0 : Math.max(0, parsedCost);
 
     setEditDraftItems((prev) =>
       prev.map((item) =>
@@ -445,8 +455,6 @@ export function PurchaseOrderManagement() {
           ? {
               ...item,
               quantity_ordered: qty,
-              unit_cost: cost,
-              line_total: qty * cost,
             }
           : item
       )
@@ -490,7 +498,6 @@ export function PurchaseOrderManagement() {
     setDraftItems([]);
     setSelectedInventoryId("");
     setSelectedQty("1");
-    setSelectedUnitCost("");
     setAddError(null);
     setShowAddModal(true);
   }
@@ -499,16 +506,12 @@ export function PurchaseOrderManagement() {
     if (!selectedInventoryId) return;
     const parsedQty = parseInt(selectedQty, 10);
     const qty = Number.isNaN(parsedQty) ? 1 : Math.max(1, parsedQty);
-    const parsedCost = parseFloat(selectedUnitCost);
-    const cost = Number.isNaN(parsedCost) ? 0 : Math.max(0, parsedCost);
+    const selectedInventoryItem = getInventoryItemsForBranch(addForm.branch_id)
+      .find((inv) => inv.id === selectedInventoryId);
+    if (!selectedInventoryItem) return;
 
-    // Find the supplier product that links to this inventory item
-    const sp = getProductsForSupplier(addForm.supplier_id, addForm.branch_id)
-      .find((p) => p.inventory_item_id === selectedInventoryId);
-    if (!sp) return;
-
-    const itemName = sp.inventory_items?.item_name || sp.product_name;
-    const skuCode = sp.inventory_items?.sku_code || "";
+    const itemName = selectedInventoryItem.item_name;
+    const skuCode = selectedInventoryItem.sku_code;
 
     // Check for duplicate
     if (draftItems.some((d) => d.inventory_item_id === selectedInventoryId)) {
@@ -523,13 +526,11 @@ export function PurchaseOrderManagement() {
         item_name: itemName,
         sku_code: skuCode,
         quantity_ordered: qty,
-        unit_cost: cost,
-        line_total: qty * cost,
+        unit_cost: 0,
       },
     ]);
     setSelectedInventoryId("");
     setSelectedQty("1");
-    setSelectedUnitCost("");
     setAddError(null);
   }
 
@@ -537,32 +538,12 @@ export function PurchaseOrderManagement() {
     setDraftItems(draftItems.filter((d) => d.inventory_item_id !== itemId));
   }
 
-  const draftTotal = useMemo(
-    () => draftItems.reduce((sum, i) => sum + i.line_total, 0),
-    [draftItems]
-  );
-
-  // Auto-fill unit cost from supplier product when item selected
   function handleInventorySelect(itemId: string) {
     setSelectedInventoryId(itemId);
-    if (itemId) {
-      const sp = getProductsForSupplier(addForm.supplier_id, addForm.branch_id)
-        .find((p) => p.inventory_item_id === itemId);
-      if (sp) {
-        setSelectedUnitCost(sp.unit_cost.toString());
-      }
-    }
   }
 
   function handleEditInventorySelect(itemId: string) {
     setEditSelectedInventoryId(itemId);
-    if (itemId) {
-      const sp = getProductsForSupplier(editForm.supplier_id, selectedOrder?.branch_id)
-        .find((p) => p.inventory_item_id === itemId);
-      if (sp) {
-        setEditSelectedUnitCost(sp.unit_cost.toString());
-      }
-    }
   }
 
   async function handleAdd(e: React.FormEvent) {
@@ -588,7 +569,6 @@ export function PurchaseOrderManagement() {
     for (let i = 0; i < draftItems.length; i++) {
       const item = draftItems[i];
       if (item.quantity_ordered < 1) { setAddError(`Item #${i + 1}: Quantity must be at least 1`); return; }
-      if (item.unit_cost < 0) { setAddError(`Item #${i + 1}: Unit cost must be a non-negative number`); return; }
     }
 
     try {
@@ -638,13 +618,11 @@ export function PurchaseOrderManagement() {
         item_name: item.inventory_items?.item_name || "Unknown",
         sku_code: item.inventory_items?.sku_code || "",
         quantity_ordered: item.quantity_ordered,
-        unit_cost: item.unit_cost,
-        line_total: item.quantity_ordered * item.unit_cost,
+        unit_cost: 0,
       }))
     );
     setEditSelectedInventoryId("");
     setEditSelectedQty("1");
-    setEditSelectedUnitCost("");
     cancelEditDraftItem();
     setEditError(null);
     setShowEditModal(true);
@@ -659,15 +637,12 @@ export function PurchaseOrderManagement() {
     if (!editSelectedInventoryId) return;
     const parsedQty = parseInt(editSelectedQty, 10);
     const qty = Number.isNaN(parsedQty) ? 1 : Math.max(1, parsedQty);
-    const parsedCost = parseFloat(editSelectedUnitCost);
-    const cost = Number.isNaN(parsedCost) ? 0 : Math.max(0, parsedCost);
+    const selectedInventoryItem = getInventoryItemsForBranch(selectedOrder?.branch_id)
+      .find((inv) => inv.id === editSelectedInventoryId);
+    if (!selectedInventoryItem) return;
 
-    const sp = getProductsForSupplier(editForm.supplier_id, selectedOrder?.branch_id)
-      .find((p) => p.inventory_item_id === editSelectedInventoryId);
-    if (!sp) return;
-
-    const itemName = sp.inventory_items?.item_name || sp.product_name;
-    const skuCode = sp.inventory_items?.sku_code || "";
+    const itemName = selectedInventoryItem.item_name;
+    const skuCode = selectedInventoryItem.sku_code;
 
     if (editDraftItems.some((d) => d.inventory_item_id === editSelectedInventoryId)) {
       setEditError("This item is already added.");
@@ -681,13 +656,11 @@ export function PurchaseOrderManagement() {
         item_name: itemName,
         sku_code: skuCode,
         quantity_ordered: qty,
-        unit_cost: cost,
-        line_total: qty * cost,
+        unit_cost: 0,
       },
     ]);
     setEditSelectedInventoryId("");
     setEditSelectedQty("1");
-    setEditSelectedUnitCost("");
     setEditError(null);
   }
 
@@ -697,11 +670,6 @@ export function PurchaseOrderManagement() {
       cancelEditDraftItem();
     }
   }
-
-  const editDraftTotal = useMemo(
-    () => editDraftItems.reduce((sum, i) => sum + i.line_total, 0),
-    [editDraftItems]
-  );
 
   async function handleEdit(e: React.FormEvent) {
     e.preventDefault();
@@ -714,7 +682,6 @@ export function PurchaseOrderManagement() {
     for (let i = 0; i < editDraftItems.length; i++) {
       const item = editDraftItems[i];
       if (item.quantity_ordered < 1) { setEditError(`Item #${i + 1}: Quantity must be at least 1`); return; }
-      if (item.unit_cost < 0) { setEditError(`Item #${i + 1}: Unit cost must be a non-negative number`); return; }
     }
 
     try {
@@ -869,6 +836,7 @@ export function PurchaseOrderManagement() {
         reference: "",
         isPartial: false,
         quantity: "",
+        totalAmount: "",
       };
       return {
         ...prev,
@@ -884,12 +852,14 @@ export function PurchaseOrderManagement() {
     reference: string;
     isPartial: boolean;
     quantity: number | null;
+    totalAmount: number | null;
     outstandingQuantity: number;
   } {
     const draft = receiptDraftByOrder[order.id];
     const outstandingQuantity = getOutstandingQuantity(order);
     const reference = (draft?.reference ?? order.receipt_reference_number ?? "").trim();
     const isPartial = draft?.isPartial ?? order.status === "partially_received";
+    const totalAmount = parseMoneyInput(draft?.totalAmount ?? String(order.total_amount ?? ""));
 
     let quantity = draft ? parseReceiptQuantity(draft.quantity) : null;
 
@@ -897,7 +867,7 @@ export function PurchaseOrderManagement() {
       quantity = outstandingQuantity > 0 ? outstandingQuantity : null;
     }
 
-    return { reference, isPartial, quantity, outstandingQuantity };
+    return { reference, isPartial, quantity, totalAmount, outstandingQuantity };
   }
 
   function canReceiveOrder(order: PurchaseOrder): boolean {
@@ -907,8 +877,10 @@ export function PurchaseOrderManagement() {
       details.outstandingQuantity > 0 &&
       Boolean(details.reference) &&
       details.quantity !== null &&
+      details.totalAmount !== null &&
+      details.totalAmount > 0 &&
       details.quantity > 0 &&
-      details.quantity <= details.outstandingQuantity
+      (details.isPartial || details.quantity <= details.outstandingQuantity)
     );
   }
 
@@ -916,6 +888,7 @@ export function PurchaseOrderManagement() {
     setShowReceiptModal(false);
     setReceiptOrder(null);
     setReceiptReferenceNumber("");
+    setReceiptTotalAmount("");
     setReceiptIsPartial(false);
     setReceiptQuantityReceived("");
     setReceiptError(null);
@@ -926,6 +899,7 @@ export function PurchaseOrderManagement() {
     const outstandingQuantity = getOutstandingQuantity(order);
     setReceiptOrder(order);
     setReceiptReferenceNumber(draft?.reference ?? order.receipt_reference_number ?? "");
+    setReceiptTotalAmount(draft?.totalAmount ?? String(order.total_amount || ""));
     setReceiptIsPartial(draft?.isPartial ?? order.status === "partially_received");
     if (typeof draft?.quantity === "string") {
       setReceiptQuantityReceived(draft.quantity);
@@ -950,16 +924,17 @@ export function PurchaseOrderManagement() {
     if (!receiptOrder || savingReceiptDetails || !canModifyReceipt(receiptOrder)) return;
 
     const trimmedReference = receiptReferenceNumber.trim();
-    const outstandingQty = getOutstandingQuantity(receiptOrder);
+    const parsedTotalAmount = parseMoneyInput(receiptTotalAmount);
     const parsedQuantity = parseReceiptQuantity(receiptQuantityReceived);
+
+    if (parsedTotalAmount === null || parsedTotalAmount <= 0) {
+      setReceiptError("Total amount must be greater than 0");
+      return;
+    }
 
     if (receiptIsPartial) {
       if (parsedQuantity === null || parsedQuantity <= 0) {
         setReceiptError("Amount is required for partial receipt");
-        return;
-      }
-      if (parsedQuantity > outstandingQty) {
-        setReceiptError(`Outstanding quantity is only ${outstandingQty}`);
         return;
       }
     }
@@ -970,12 +945,14 @@ export function PurchaseOrderManagement() {
     try {
       updateReceiptDraft(receiptOrder.id, {
         reference: trimmedReference,
+        totalAmount: receiptTotalAmount,
         isPartial: receiptIsPartial,
         quantity: nextQuantityDraft,
       });
 
       const updated = await purchaseOrdersApi.uploadPurchaseOrderReceipt(receiptOrder.id, {
         receipt_reference_number: trimmedReference || null,
+        total_amount: parsedTotalAmount,
       });
 
       syncOrderInLocalState(updated);
@@ -1008,6 +985,7 @@ export function PurchaseOrderManagement() {
       const payload: {
         file: File;
         receipt_reference_number?: string;
+        total_amount?: number;
       } = {
         file,
       };
@@ -1016,6 +994,9 @@ export function PurchaseOrderManagement() {
         const details = resolveReceiptDetails(targetOrder);
         if (details.reference) {
           payload.receipt_reference_number = details.reference;
+        }
+        if (details.totalAmount !== null) {
+          payload.total_amount = details.totalAmount;
         }
       }
 
@@ -1037,12 +1018,12 @@ export function PurchaseOrderManagement() {
     if (!orderToReceive || processingReceive) return;
 
     const details = resolveReceiptDetails(orderToReceive);
-    if (!details.reference || details.quantity === null || details.quantity <= 0) {
-      showToast.error("Reference number and quantity received are required before stock-in");
+    if (!details.reference || details.quantity === null || details.quantity <= 0 || details.totalAmount === null || details.totalAmount <= 0) {
+      showToast.error("Reference number, total amount, and quantity received are required before stock-in");
       return;
     }
 
-    if (details.quantity > details.outstandingQuantity) {
+    if (!details.isPartial && details.quantity > details.outstandingQuantity) {
       showToast.error("Quantity received cannot exceed outstanding quantity");
       return;
     }
@@ -1207,7 +1188,7 @@ export function PurchaseOrderManagement() {
                   statusBadge={{ label: statusLabel(order.status), className: statusBadge(order.status) }}
                   details={
                     <>
-                      <p className="text-neutral-900">{formatPrice(order.total_amount)}</p>
+                      <p className="text-neutral-900">{formatOrderTotal(order)}</p>
                       {order.supplier_name && <p className="text-neutral-900">{order.supplier_name}</p>}
                       <p className="text-neutral-900">{formatDate(order.created_at)}</p>
                     </>
@@ -1316,7 +1297,7 @@ export function PurchaseOrderManagement() {
                       {order.supplier_name || <span className="text-neutral-500 italic">—</span>}
                     </td>
                     <td className="py-3 px-4 text-sm text-neutral-900 whitespace-nowrap font-medium">
-                      {formatPrice(order.total_amount)}
+                      {formatOrderTotal(order)}
                     </td>
                     <td className="py-3 px-4">
                       <span className="text-xs font-mono bg-positive-100 text-positive-950 px-2 py-0.5 rounded">
@@ -1436,22 +1417,19 @@ export function PurchaseOrderManagement() {
             <div className="grid grid-cols-2 gap-4">
               <ModalSelect
                 value={addForm.branch_id}
-                onChange={(v) => setAddForm({ ...addForm, branch_id: v, supplier_id: "" })}
+                onChange={(v) => {
+                  setAddForm({ ...addForm, branch_id: v });
+                  setDraftItems([]);
+                  setSelectedInventoryId("");
+                }}
                 options={branchOptions}
                 placeholder="Select Branch *"
               />
               <ModalSelect
                 value={addForm.supplier_id}
-                onChange={(v) => {
-                  setAddForm({ ...addForm, supplier_id: v });
-                  // Clear item selections when supplier changes
-                  setDraftItems([]);
-                  setSelectedInventoryId("");
-                  setSelectedUnitCost("");
-                }}
-                options={getSupplierOptions(addForm.branch_id)}
+                onChange={(v) => setAddForm({ ...addForm, supplier_id: v })}
+                options={getSupplierOptions()}
                 placeholder="Select Supplier *"
-                disabled={!addForm.branch_id}
               />
             </div>
             <textarea
@@ -1477,8 +1455,8 @@ export function PurchaseOrderManagement() {
                   value={selectedInventoryId}
                   onChange={handleInventorySelect}
                   placeholder="Select Item"
-                  options={getSupplierItemOptions(addForm.supplier_id, addForm.branch_id)}
-                  disabled={!addForm.supplier_id}
+                  options={getInventoryItemOptions(addForm.branch_id)}
+                  disabled={!addForm.branch_id}
                 />
               </div>
               <div className="w-20">
@@ -1490,17 +1468,6 @@ export function PurchaseOrderManagement() {
                   pattern="[1-9][0-9]*"
                   maxLength={6}
                   placeholder="Qty"
-                />
-              </div>
-              <div className="w-25">
-                <ModalInput
-                  type="text"
-                  value={selectedUnitCost}
-                  onChange={(v) => setSelectedUnitCost(normalizeUnitCostInput(v))}
-                  inputMode="decimal"
-                  pattern="^\d*(\.\d{0,2})?$"
-                  maxLength={12}
-                  placeholder="Cost"
                 />
               </div>
               <button
@@ -1526,14 +1493,9 @@ export function PurchaseOrderManagement() {
                         {item.item_name}
                         <span className="text-neutral-900 font-normal ml-1">({item.sku_code})</span>
                       </p>
-                      <p className="text-xs text-neutral-900">
-                        {formatPrice(item.unit_cost)} × {item.quantity_ordered}
-                      </p>
+                      <p className="text-xs text-neutral-900">Quantity: {item.quantity_ordered}</p>
                     </div>
                     <div className="flex items-center gap-3 ml-3">
-                      <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap">
-                        {formatPrice(item.line_total)}
-                      </span>
                       <button
                         type="button"
                         onClick={() => removeDraftItem(item.inventory_item_id)}
@@ -1544,19 +1506,13 @@ export function PurchaseOrderManagement() {
                     </div>
                   </div>
                 ))}
-
-                {/* Total card */}
-                <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
-                  <span className="font-semibold text-neutral-950">Total</span>
-                  <span className="font-bold text-primary text-lg">{formatPrice(draftTotal)}</span>
-                </div>
               </div>
             )}
 
             {draftItems.length === 0 && (
               <p className="text-sm text-neutral-900 text-center py-4">
-                {!addForm.supplier_id
-                  ? "Select a branch and supplier first to see available items."
+                {!addForm.branch_id
+                  ? "Select a branch first to see available items."
                   : "No items added yet. Select an item and click +."}
               </p>
             )}
@@ -1579,12 +1535,12 @@ export function PurchaseOrderManagement() {
               <ModalInput type="text" value={viewOrder.po_number} onChange={() => { }} placeholder="PO Number" disabled />
               <div className="grid grid-cols-2 gap-4">
                 <ModalInput type="text" value={statusLabel(viewOrder.status)} onChange={() => { }} placeholder="Status" disabled />
-                <ModalInput type="text" value={formatPrice(viewOrder.total_amount)} onChange={() => { }} placeholder="Total Amount" disabled />
+                <ModalInput type="text" value={formatOrderTotal(viewOrder)} onChange={() => { }} placeholder="Total Amount" disabled />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <ModalInput
                   type="text"
-                  value={viewOrder.status === "partially_received" ? "Partial" : viewOrder.status === "received" ? "Full" : "—"}
+                  value={getReceiptTypeLabel(viewOrder)}
                   onChange={() => { }}
                   placeholder="Receipt Type"
                   disabled
@@ -1626,18 +1582,15 @@ export function PurchaseOrderManagement() {
                           <span className="text-neutral-900 font-normal ml-1">({item.inventory_items?.sku_code || "—"})</span>
                         </p>
                         <p className="text-xs text-neutral-900">
-                          {formatPrice(item.unit_cost)} × {item.quantity_ordered}
+                          Quantity: {item.quantity_ordered}
                           {item.quantity_received > 0 && ` (Received: ${item.quantity_received})`}
                         </p>
                       </div>
-                      <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap ml-3">
-                        {formatPrice(item.quantity_ordered * item.unit_cost)}
-                      </span>
                     </div>
                   ))}
                   <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl">
                     <span className="font-semibold text-neutral-950">Total</span>
-                    <span className="font-bold text-primary text-lg">{formatPrice(viewOrder.total_amount)}</span>
+                    <span className="font-bold text-primary text-lg">{formatOrderTotal(viewOrder)}</span>
                   </div>
                 </div>
               ) : (
@@ -1671,15 +1624,8 @@ export function PurchaseOrderManagement() {
               <div className="grid grid-cols-2 gap-4">
                 <ModalSelect
                   value={editForm.supplier_id}
-                  onChange={(v) => {
-                    setEditForm({ ...editForm, supplier_id: v });
-                    // Clear item selections when supplier changes
-                    setEditDraftItems([]);
-                    setEditSelectedInventoryId("");
-                    setEditSelectedUnitCost("");
-                    cancelEditDraftItem();
-                  }}
-                  options={getSupplierOptions(selectedOrder.branch_id)}
+                  onChange={(v) => setEditForm({ ...editForm, supplier_id: v })}
+                  options={getSupplierOptions()}
                   placeholder="Select Supplier"
                 />
                 <ModalInput type="text" value={selectedOrder.branches?.name || "—"} onChange={() => { }} placeholder="Branch" disabled />
@@ -1708,8 +1654,8 @@ export function PurchaseOrderManagement() {
                     value={editSelectedInventoryId}
                     onChange={handleEditInventorySelect}
                     placeholder="Select Item"
-                    options={getSupplierItemOptions(editForm.supplier_id, selectedOrder.branch_id)}
-                    disabled={!editForm.supplier_id || !!editingDraftItemId}
+                    options={getInventoryItemOptions(selectedOrder.branch_id)}
+                    disabled={!!editingDraftItemId}
                   />
                 </div>
                 <div className="w-20">
@@ -1721,17 +1667,6 @@ export function PurchaseOrderManagement() {
                     pattern="[1-9][0-9]*"
                     maxLength={6}
                     placeholder="Qty"
-                  />
-                </div>
-                <div className="w-25">
-                  <ModalInput
-                    type="text"
-                    value={editSelectedUnitCost}
-                    onChange={(v) => setEditSelectedUnitCost(normalizeUnitCostInput(v))}
-                    inputMode="decimal"
-                    pattern="^\d*(\.\d{0,2})?$"
-                    maxLength={12}
-                    placeholder="Cost"
                   />
                 </div>
                 {editingDraftItemId ? (
@@ -1766,14 +1701,9 @@ export function PurchaseOrderManagement() {
                       {item.item_name}
                       <span className="text-neutral-900 font-normal ml-1">({item.sku_code})</span>
                     </p>
-                    <p className="text-xs text-neutral-900">
-                      {formatPrice(item.unit_cost)} × {item.quantity_ordered}
-                    </p>
+                    <p className="text-xs text-neutral-900">Quantity: {item.quantity_ordered}</p>
                   </div>
                   <div className="flex items-center gap-3 ml-3">
-                    <span className="font-semibold text-neutral-950 text-sm whitespace-nowrap">
-                      {formatPrice(item.line_total)}
-                    </span>
                     {editingDraftItemId === item.inventory_item_id ? (
                       <button
                         type="button"
@@ -1805,19 +1735,9 @@ export function PurchaseOrderManagement() {
                 </div>
               ))}
 
-              {/* Total */}
-              {editDraftItems.length > 0 && (
-                <div className="flex justify-between items-center px-4 py-3 bg-primary-100 rounded-xl mt-3">
-                  <span className="font-semibold text-neutral-950">Total</span>
-                  <span className="font-bold text-primary text-lg">{formatPrice(editDraftTotal)}</span>
-                </div>
-              )}
-
               {editDraftItems.length === 0 && (
                 <p className="text-sm text-neutral-900 text-center py-4">
-                  {!editForm.supplier_id
-                    ? "Select a supplier first to see available items."
-                    : "No items. Select an item and click + to add."}
+                  Select an item and click + to add.
                 </p>
               )}
             </ModalSection>
@@ -2072,6 +1992,20 @@ export function PurchaseOrderManagement() {
                   disabled={!canModifyReceipt(receiptOrder)}
                 />
 
+                <ModalInput
+                  type="text"
+                  value={receiptTotalAmount}
+                  onChange={(value) => {
+                    setReceiptTotalAmount(normalizeMoneyInput(value));
+                    setReceiptError(null);
+                  }}
+                  inputMode="decimal"
+                  pattern="^\d*(\.\d{0,2})?$"
+                  maxLength={14}
+                  placeholder="Total Amount"
+                  disabled={!canModifyReceipt(receiptOrder)}
+                />
+
                 {receiptIsPartial && (
                   <ModalInput
                     type="number"
@@ -2175,7 +2109,7 @@ export function PurchaseOrderManagement() {
               <p className="text-sm text-neutral-900 mb-2">
                 {canReceiveThisOrder
                   ? "This will apply stock-in for the selected quantity and set status to Partially Received or Received based on remaining balance."
-                  : "Reference number and a valid quantity received are required before stock-in."}
+                  : "Reference number, total amount, and a valid quantity received are required before stock-in."}
               </p>
               <div className="flex gap-3 mt-6">
                 <button

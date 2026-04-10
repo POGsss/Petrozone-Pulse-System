@@ -40,15 +40,26 @@ const MAX_ITEM_NAME_LENGTH = 100;
 const ITEM_NAME_SANITIZE_REGEX = /[^A-Za-z0-9()\- ]+/g;
 
 const CATEGORY_PRESETS = [
-  { value: "Oil & Lubricants", label: "Oil & Lubricants" },
-  { value: "Filters", label: "Filters" },
-  { value: "Brake Parts", label: "Brake Parts" },
-  { value: "Engine Parts", label: "Engine Parts" },
-  { value: "Tires", label: "Tires" },
-  { value: "Batteries", label: "Batteries" },
   { value: "Accessories", label: "Accessories" },
-  { value: "Cleaning Supplies", label: "Cleaning Supplies" },
-  { value: "Other", label: "Other" },
+  { value: "Additives", label: "Additives" },
+  { value: "Fluid - Coolant", label: "Fluid - Coolant" },
+  { value: "Fluid - Washer Fluid", label: "Fluid - Washer Fluid" },
+  { value: "Filter - Air", label: "Filter - Air" },
+  { value: "Filter - Cabin", label: "Filter - Cabin" },
+  { value: "Filter - Fuel", label: "Filter - Fuel" },
+  { value: "Filter - Oil", label: "Filter - Oil" },
+  { value: "Gasul Accessories", label: "Gasul Accessories" },
+  { value: "Lubes - ATF", label: "Lubes - ATF" },
+  { value: "Lubes - Brake Fluid", label: "Lubes - Brake Fluid" },
+  { value: "Lubes - Coolant", label: "Lubes - Coolant" },
+  { value: "Lubes - Diesel Engine Oil", label: "Lubes - Diesel Engine Oil" },
+  { value: "Lubes - Gasoline Engine Oil", label: "Lubes - Gasoline Engine Oil" },
+  { value: "Lubes - Gear Oil", label: "Lubes - Gear Oil" },
+  { value: "Lubes - Motorcycle Engine Oil", label: "Lubes - Motorcycle Engine Oil" },
+  { value: "Lubes - Penetrating Oil", label: "Lubes - Penetrating Oil" },
+  { value: "Parts Cleaner", label: "Parts Cleaner" },
+  { value: "Spare Parts", label: "Spare Parts" },
+  { value: "Tools", label: "Tools" },
 ];
 
 const UOM_OPTIONS = [
@@ -166,6 +177,7 @@ export function InventoryManagement() {
   const [addForm, setAddForm] = useState({
     item_name: "",
     sku_code: "",
+    brand: "",
     category: "",
     unit_of_measure: "pcs",
     cost_price: "",
@@ -189,6 +201,7 @@ export function InventoryManagement() {
   const [editForm, setEditForm] = useState({
     item_name: "",
     sku_code: "",
+    brand: "",
     category: "",
     unit_of_measure: "pcs",
     cost_price: "",
@@ -273,6 +286,7 @@ export function InventoryManagement() {
         !q ||
         item.item_name.toLowerCase().includes(q) ||
         item.sku_code.toLowerCase().includes(q) ||
+        item.brand.toLowerCase().includes(q) ||
         item.category.toLowerCase().includes(q);
 
       const matchStatus =
@@ -382,6 +396,7 @@ export function InventoryManagement() {
     setAddForm({
       item_name: "",
       sku_code: "",
+      brand: "",
       category: "",
       unit_of_measure: "pcs",
       cost_price: "",
@@ -418,6 +433,7 @@ export function InventoryManagement() {
       return;
     }
     if (!addForm.sku_code.trim()) { setAddError("SKU code is required"); return; }
+    if (!addForm.brand.trim()) { setAddError("Brand is required"); return; }
     if (!addForm.category) { setAddError("Category is required"); return; }
     if (!addForm.cost_price || isNaN(parseFloat(addForm.cost_price)) || parseFloat(addForm.cost_price) < 0) {
       setAddError("Cost price must be a valid non-negative number"); return;
@@ -429,6 +445,7 @@ export function InventoryManagement() {
       await inventoryApi.create({
         item_name: addForm.item_name.trim(),
         sku_code: addForm.sku_code.trim(),
+        brand: addForm.brand.trim(),
         category: addForm.category,
         unit_of_measure: addForm.unit_of_measure,
         cost_price: parseFloat(addForm.cost_price),
@@ -460,6 +477,7 @@ export function InventoryManagement() {
     setEditForm({
       item_name: item.item_name,
       sku_code: item.sku_code,
+      brand: item.brand,
       category: item.category,
       unit_of_measure: item.unit_of_measure,
       cost_price: item.cost_price.toString(),
@@ -485,6 +503,7 @@ export function InventoryManagement() {
       return;
     }
     if (!editForm.sku_code.trim()) { setEditError("SKU code cannot be empty"); return; }
+    if (!editForm.brand.trim()) { setEditError("Brand cannot be empty"); return; }
     if (!editForm.cost_price || isNaN(parseFloat(editForm.cost_price)) || parseFloat(editForm.cost_price) < 0) {
       setEditError("Cost price must be a valid non-negative number"); return;
     }
@@ -494,6 +513,7 @@ export function InventoryManagement() {
       const payload: {
         item_name: string;
         sku_code: string;
+        brand: string;
         category: string;
         unit_of_measure: string;
         cost_price: number;
@@ -502,6 +522,7 @@ export function InventoryManagement() {
       } = {
         item_name: editForm.item_name.trim(),
         sku_code: editForm.sku_code.trim(),
+        brand: editForm.brand.trim(),
         category: editForm.category,
         unit_of_measure: editForm.unit_of_measure,
         cost_price: parseFloat(editForm.cost_price),
@@ -985,9 +1006,10 @@ export function InventoryManagement() {
           <ModalSection title="Item Information">
             <ModalInput type="text" value={addForm.item_name} onChange={(v) => setAddForm(p => ({ ...p, item_name: sanitizeItemNameInput(v) }))} placeholder="Item Name *" required />
             <ModalInput type="text" value={addForm.sku_code} onChange={(v) => setAddForm(p => ({ ...p, sku_code: v.toUpperCase() }))} placeholder="SKU Code * (unique per branch)" required />
+            <ModalInput type="text" value={addForm.brand} onChange={(v) => setAddForm(p => ({ ...p, brand: v }))} placeholder="Brand *" required />
             <div className="grid grid-cols-2 gap-4">
               <ModalSelect value={addForm.category} onChange={(v) => setAddForm(p => ({ ...p, category: v }))} placeholder="Category *" options={CATEGORY_PRESETS} />
-              <ModalSelect value={addForm.unit_of_measure} onChange={(v) => setAddForm(p => ({ ...p, unit_of_measure: v }))} options={UOM_OPTIONS} />
+              <ModalSelect value={addForm.unit_of_measure} onChange={(v) => setAddForm(p => ({ ...p, unit_of_measure: v }))} placeholder="Pieces *" options={UOM_OPTIONS} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <ModalInput type="number" value={addForm.cost_price} onChange={(v) => setAddForm(p => ({ ...p, cost_price: v }))} placeholder="Cost Price *" required />
@@ -1000,7 +1022,7 @@ export function InventoryManagement() {
             <ModalSelect
               value={addForm.supplier_id}
               onChange={(v) => setAddForm(p => ({ ...p, supplier_id: v }))}
-              placeholder={loadingSuppliers ? "Loading suppliers..." : "Link Supplier (optional)"}
+              placeholder={loadingSuppliers ? "Loading suppliers..." : "Link Supplier"}
               options={supplierOptions}
               disabled={!addForm.branch_id || loadingSuppliers}
             />
@@ -1048,11 +1070,15 @@ export function InventoryManagement() {
               <ModalInput type="text" value={viewItem.item_name} onChange={() => { }} placeholder="Item Name" disabled />
               <div className="grid grid-cols-2 gap-4">
                 <ModalInput type="text" value={viewItem.sku_code} onChange={() => { }} placeholder="SKU Code" disabled />
-                <ModalInput type="text" value={viewItem.category} onChange={() => { }} placeholder="Category" disabled />
+                <ModalInput type="text" value={viewItem.brand} onChange={() => { }} placeholder="Brand" disabled />
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <ModalInput type="text" value={viewItem.unit_of_measure} onChange={() => { }} placeholder="Unit of Measure" disabled />
+                <ModalInput type="text" value={viewItem.category} onChange={() => { }} placeholder="Category" disabled />
+                <ModalInput type="text" value={viewItem.unit_of_measure} onChange={() => { }} placeholder="Pieces" disabled />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
                 <ModalInput type="text" value={formatPrice(viewItem.cost_price)} onChange={() => { }} placeholder="Cost Price" disabled />
+                <ModalInput type="text" value={String(viewItem.reorder_threshold)} onChange={() => { }} placeholder="Reorder Threshold" disabled />
               </div>
               <ModalInput type="text" value={viewItem.branches ? `${viewItem.branches.name} (${viewItem.branches.code})` : viewItem.branch_id} onChange={() => { }} placeholder="Branch" disabled />
             </ModalSection>
@@ -1078,9 +1104,10 @@ export function InventoryManagement() {
           <ModalSection title="Item Information">
             <ModalInput type="text" value={editForm.item_name} onChange={(v) => setEditForm(p => ({ ...p, item_name: sanitizeItemNameInput(v) }))} placeholder="Item Name *" required />
             <ModalInput type="text" value={editForm.sku_code} onChange={(v) => setEditForm(p => ({ ...p, sku_code: v.toUpperCase() }))} placeholder="SKU Code *" required />
+            <ModalInput type="text" value={editForm.brand} onChange={(v) => setEditForm(p => ({ ...p, brand: v }))} placeholder="Brand *" required />
             <div className="grid grid-cols-2 gap-4">
               <ModalSelect value={editForm.category} onChange={(v) => setEditForm(p => ({ ...p, category: v }))} placeholder="Category *" options={CATEGORY_PRESETS} />
-              <ModalSelect value={editForm.unit_of_measure} onChange={(v) => setEditForm(p => ({ ...p, unit_of_measure: v }))} options={UOM_OPTIONS} />
+              <ModalSelect value={editForm.unit_of_measure} onChange={(v) => setEditForm(p => ({ ...p, unit_of_measure: v }))} placeholder="Pieces *" options={UOM_OPTIONS} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <ModalInput type="number" value={editForm.cost_price} onChange={(v) => setEditForm(p => ({ ...p, cost_price: v }))} placeholder="Cost Price *" required />

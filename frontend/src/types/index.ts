@@ -414,6 +414,7 @@ export interface InventoryItem {
   id: string;
   item_name: string;
   sku_code: string;
+  brand: string;
   category: string;
   unit_of_measure: string;
   cost_price: number;
